@@ -1,6 +1,6 @@
 import { BrowserWindow, app } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
-import { createWriteStream, existsSync, readdirSync, rmSync } from 'node:fs'
+import { createWriteStream, existsSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareVersions, pickAsset } from '../shared/version'
@@ -87,9 +87,26 @@ function installFromDmg(dmgPath: string): void {
     if (!appName) throw new Error('Kein App-Bundle in der DMG gefunden.')
     const source = join(mount, appName)
     const target = join('/Applications', appName)
-    if (existsSync(target)) rmSync(target, { recursive: true, force: true })
-    const copy = spawnSync('ditto', [source, target])
-    if (copy.status !== 0) throw new Error('Kopieren nach /Applications fehlgeschlagen.')
+    // Electron blendet app.asar als Ordner ein – fürs echte Löschen/Verschieben
+    // des Bundles muss dieses Mapping aus sein, sonst scheitert rmSync (ENOTDIR).
+    process.noAsar = true
+    // Alte Version erst beiseitelegen (Rename im selben Ordner ist atomar) und
+    // nur bei erfolgreichem Kopieren löschen – schlägt etwas fehl, kommt sie zurück.
+    const backup = join('/Applications', `.${appName}.alt-${Date.now()}`)
+    try {
+      if (existsSync(target)) renameSync(target, backup)
+      const copy = spawnSync('ditto', [source, target])
+      if (copy.status !== 0) {
+        if (existsSync(backup)) {
+          rmSync(target, { recursive: true, force: true })
+          renameSync(backup, target)
+        }
+        throw new Error('Kopieren nach /Applications fehlgeschlagen.')
+      }
+      rmSync(backup, { recursive: true, force: true })
+    } finally {
+      process.noAsar = false
+    }
   } finally {
     spawnSync('hdiutil', ['detach', mount, '-quiet'])
   }
