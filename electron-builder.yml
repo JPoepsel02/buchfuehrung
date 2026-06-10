@@ -1,7 +1,6 @@
 appId: de.kljb-herzfeld.buchfuehrung
 productName: Buchführung
-# Umlaut-freie Dateinamen für Installer und Windows-Executable
-executableName: Buchfuehrung
+# Umlaut-freie Dateinamen für die Installer-Artefakte
 artifactName: Buchfuehrung-${version}-${arch}.${ext}
 directories:
   output: release
