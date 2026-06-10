@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import logoUrl from './assets/kljb-logo.png'
 import { api, isElectron } from './api'
+import { LogoMark } from './components/LogoMark'
 import { useStore } from './store'
 import { SetupView } from './views/SetupView'
 import { UebersichtView } from './views/UebersichtView'
@@ -24,7 +24,7 @@ const VIEWS = [
 type ViewId = (typeof VIEWS)[number]['id']
 
 export function App() {
-  const { loading, file, years, selectYear } = useStore()
+  const { loading, file, years, selectYear, settings } = useStore()
   const [view, setView] = useState<ViewId>('uebersicht')
   const [updateHint, setUpdateHint] = useState('')
 
@@ -56,7 +56,7 @@ export function App() {
       <aside className="sidebar">
         <div className="sidebar__brand">
           <span className="sidebar__logo">
-            <img src={logoUrl} alt="" width={30} height={30} />
+            <LogoMark logo={settings.logoDataUrl} size={30} />
           </span>
           Buchführung
         </div>

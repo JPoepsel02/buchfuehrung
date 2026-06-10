@@ -1,4 +1,4 @@
-appId: de.kljb-herzfeld.buchfuehrung
+appId: de.buchfuehrung.app
 # ASCII-Paketname: ein Umlaut im Bundle-/Executable-Namen lässt Electron
 # auf macOS beim Start abstürzen (Helper-Pfade, NFC/NFD-Problem).
 # Der sichtbare Name „Buchführung“ kommt über CFBundleDisplayName.

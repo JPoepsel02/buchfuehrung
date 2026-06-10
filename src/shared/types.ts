@@ -37,6 +37,12 @@ export interface Booking {
   importHash?: string
 }
 
+/** Jahresübergreifende App-Einstellungen (eigene Datei neben den Jahresdateien). */
+export interface AppSettings {
+  /** Eigenes Vereinslogo als Data-URL (PNG/JPEG); erscheint in Seitenleiste, Prüfbericht und Dock */
+  logoDataUrl?: string | null
+}
+
 /** Eine Zeile eines zwischengespeicherten Kontoauszug-Imports. */
 export interface ImportDraftRow {
   /** ISO-Datum YYYY-MM-DD */

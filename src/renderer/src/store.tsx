@@ -3,12 +3,14 @@ import type { ReactNode } from 'react'
 import { api } from './api'
 import { emptyYearFile, makeId } from '@shared/defaults'
 import { nextSeq } from '@shared/ledger'
-import type { Booking, Category, YearFile } from '@shared/types'
+import type { AppSettings, Booking, Category, YearFile } from '@shared/types'
 
 interface Store {
   loading: boolean
   years: number[]
   file: YearFile | null
+  settings: AppSettings
+  updateSettings(patch: Partial<AppSettings>): Promise<void>
   /** Jahr wechseln */
   selectYear(year: number): Promise<void>
   /** Neues Jahr anlegen (optional mit Anfangssaldo) */
@@ -31,12 +33,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [years, setYears] = useState<number[]>([])
   const [file, setFile] = useState<YearFile | null>(null)
+  const [settings, setSettings] = useState<AppSettings>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     ;(async () => {
-      const list = await api.listYears()
+      const [list, loadedSettings] = await Promise.all([api.listYears(), api.loadSettings()])
       setYears(list)
+      setSettings((loadedSettings as AppSettings) ?? {})
       if (list.length > 0) {
         const data = (await api.loadYear(list[0])) as YearFile | null
         if (data) setFile(data)
@@ -65,6 +69,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loading,
       years,
       file,
+      settings,
+      async updateSettings(patch) {
+        const next = { ...settings, ...patch }
+        setSettings(next)
+        await api.saveSettings(next)
+      },
       async selectYear(year) {
         const data = (await api.loadYear(year)) as YearFile | null
         if (data) setFile(data)
@@ -135,7 +145,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true
       },
     }),
-    [loading, years, file, update],
+    [loading, years, file, settings, update],
   )
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>

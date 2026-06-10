@@ -13,7 +13,7 @@ import { compareVersions, pickAsset } from '../shared/version'
  * App selbst keine Quarantäne-Markierung erhält.
  */
 
-const REPO = 'JPoepsel02/kassenwart'
+const REPO = 'JPoepsel02/buchfuehrung'
 
 export interface UpdateInfo {
   current: string

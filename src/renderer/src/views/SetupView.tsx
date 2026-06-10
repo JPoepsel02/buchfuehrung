@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import logoUrl from '../assets/kljb-logo.png'
+import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { parseAmountToCents } from '@shared/money'
 
 /** Erststart: Kassenjahr anlegen. */
 export function SetupView() {
-  const { createYear } = useStore()
+  const { createYear, settings } = useStore()
   const [year, setYear] = useState(String(new Date().getFullYear()))
   const [balance, setBalance] = useState('0,00')
   const [clubName, setClubName] = useState('')
@@ -30,7 +30,9 @@ export function SetupView() {
   return (
     <div className="setup">
       <form className="setup__card" onSubmit={submit}>
-        <img src={logoUrl} alt="KLJB Herzfeld" width={96} style={{ marginBottom: 'var(--space-3)' }} />
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <LogoMark logo={settings.logoDataUrl} size={96} />
+        </div>
         <div className="setup__brand">Buchführung</div>
         <p className="setup__sub">
           Lege dein erstes Kassenjahr an. Der Anfangssaldo ist der Abschlusssaldo des Vorjahres.

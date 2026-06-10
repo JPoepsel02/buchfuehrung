@@ -1,7 +1,9 @@
-# Buchführung (KLJB Herzfeld)
+# Buchführung
 
-Desktop-App für die Vereinskasse der KLJB Herzfeld – der Nachfolger des
-Excel-Kassenberichts. Läuft auf **Windows und macOS**.
+Desktop-App für die Vereinskasse – der Nachfolger des Excel-Kassenberichts.
+Läuft auf **Windows und macOS**. Vereinsname und Logo sind in den
+Einstellungen frei konfigurierbar; das Logo erscheint in der Seitenleiste,
+im Prüfbericht und als Dock-Symbol.
 
 > Hinweis: Der interne Paketname bleibt `kassenwart`, damit der
 > Datenordner (`…/Application Support/kassenwart`) über Updates hinweg
@@ -69,7 +71,7 @@ git tag v1.0.0 && git push origin v1.0.0
 ## Technik
 
 Electron + React + TypeScript (electron-vite). Das App-Icon wird aus
-`build/icon.png` (KLJB-Herzfeld-Logo) für macOS und Windows generiert.
+`build/icon.png` für macOS und Windows generiert.
 Beträge werden intern in Cent
 (ganzzahlig) gerechnet, damit keine Rundungsfehler entstehen. Die Kernlogik
 (Beleg-Nummern, Sortierung, Salden, CSV-Parser) ist in `src/shared/` gekapselt

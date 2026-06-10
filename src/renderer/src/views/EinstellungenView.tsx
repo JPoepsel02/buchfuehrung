@@ -1,9 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, isElectron } from '../api'
 import type { UpdateInfo } from '../api'
+import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { yearTotals } from '@shared/ledger'
 import { formatEur, parseAmountToCents } from '@shared/money'
+
+const LOGO_MAX_PX = 512
+
+/** Liest ein Bild ein und verkleinert es auf maximal 512 px Kantenlänge (PNG-Data-URL). */
+function readLogoFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'))
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Das ist kein lesbares Bild (PNG oder JPEG verwenden).'))
+      img.onload = () => {
+        const scale = Math.min(1, LOGO_MAX_PX / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(img.width * scale))
+        canvas.height = Math.max(1, Math.round(img.height * scale))
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/png'))
+      }
+      img.src = String(reader.result)
+    }
+    reader.readAsDataURL(file)
+  })
+}
 
 export function EinstellungenView() {
   const { file, years, update, createYear, deleteYear, selectYear, addCategory, updateCategory, deleteCategory } =
@@ -125,6 +150,8 @@ export function EinstellungenView() {
           </p>
         )}
       </section>
+
+      <LogoCard notify={notify} />
 
       {isElectron && <UpdateCard />}
 
@@ -251,6 +278,64 @@ export function EinstellungenView() {
       </section>
       {toast && <div className="toast">{toast}</div>}
     </div>
+  )
+}
+
+/** Eigenes Vereinslogo hochladen – erscheint in Seitenleiste, Prüfbericht und Dock. */
+function LogoCard({ notify }: { notify: (msg: string) => void }) {
+  const { settings, updateSettings } = useStore()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const dataUrl = await readLogoFile(file)
+      await updateSettings({ logoDataUrl: dataUrl })
+      notify('Logo gespeichert.')
+    } catch (err) {
+      notify(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  return (
+    <section className="card">
+      <h2 className="card__title">Vereinslogo</h2>
+      <div className="toolbar">
+        <span className="logo-preview">
+          <LogoMark logo={settings.logoDataUrl} size={64} />
+        </span>
+        <div className="toolbar__spacer" />
+        {settings.logoDataUrl && (
+          <button
+            className="btn btn--ghost btn--danger"
+            onClick={() => {
+              void updateSettings({ logoDataUrl: null })
+              notify('Logo entfernt.')
+            }}
+          >
+            Logo entfernen
+          </button>
+        )}
+        <button className="btn" onClick={() => inputRef.current?.click()}>
+          {settings.logoDataUrl ? 'Logo ändern …' : 'Logo hochladen …'}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          style={{ display: 'none' }}
+          onChange={(e) => void onPick(e)}
+          aria-label="Logo-Datei wählen"
+        />
+      </div>
+      <p className="hint" style={{ marginBottom: 0 }}>
+        Das Logo erscheint in der Seitenleiste, im Kopf des Prüfberichts und als Dock-Symbol.
+        Ohne eigenes Logo zeigt die App eine neutrale Wortmarke. Nach dem Entfernen erscheint das
+        Standard-Dock-Symbol erst nach einem Neustart wieder.
+      </p>
+    </section>
   )
 }
 

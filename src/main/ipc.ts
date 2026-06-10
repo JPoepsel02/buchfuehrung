@@ -1,10 +1,28 @@
-import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, nativeImage, shell } from 'electron'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { dataDirPath, deleteYear, listYears, loadYear, saveYear } from './storage'
+import { dataDirPath, deleteYear, listYears, loadSettings, loadYear, saveSettings, saveYear } from './storage'
 import { checkForUpdate, downloadAndInstall } from './updater'
 import type { UpdateInfo } from './updater'
+
+/** Setzt das hochgeladene Vereinslogo als Dock-/Fenster-Symbol. */
+export function applyLogo(logoDataUrl?: string | null): void {
+  if (!logoDataUrl) return
+  try {
+    const img = nativeImage.createFromDataURL(logoDataUrl)
+    if (img.isEmpty()) return
+    if (process.platform === 'darwin') app.dock?.setIcon(img)
+    else for (const win of BrowserWindow.getAllWindows()) win.setIcon(img)
+  } catch {
+    // Ein defektes Logo darf die App nie beeinträchtigen
+  }
+}
+
+export function currentLogo(): string | null {
+  const settings = loadSettings() as { logoDataUrl?: string | null }
+  return settings?.logoDataUrl ?? null
+}
 
 export function registerIpc(): void {
   ipcMain.handle('app:version', () => app.getVersion())
@@ -16,6 +34,12 @@ export function registerIpc(): void {
   ipcMain.handle('years:load', (_e, year: number) => loadYear(year))
   ipcMain.handle('years:save', (_e, year: number, data: unknown) => saveYear(year, data))
   ipcMain.handle('years:delete', (_e, year: number) => deleteYear(year))
+
+  ipcMain.handle('settings:load', () => loadSettings())
+  ipcMain.handle('settings:save', (_e, data: { logoDataUrl?: string | null }) => {
+    saveSettings(data)
+    applyLogo(data?.logoDataUrl)
+  })
 
   ipcMain.handle('data:openFolder', () => shell.openPath(dataDirPath()))
 

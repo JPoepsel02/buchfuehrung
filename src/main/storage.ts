@@ -65,6 +65,25 @@ function rotateBackup(year: number, file: string): void {
   }
 }
 
+function settingsFile(): string {
+  return join(dataDir(), 'einstellungen.json')
+}
+
+export function loadSettings(): unknown {
+  if (!existsSync(settingsFile())) return {}
+  try {
+    return JSON.parse(readFileSync(settingsFile(), 'utf-8'))
+  } catch {
+    return {}
+  }
+}
+
+export function saveSettings(data: unknown): void {
+  const tmp = settingsFile() + '.tmp'
+  writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
+  renameSync(tmp, settingsFile())
+}
+
 /**
  * Löscht ein Kassenjahr, indem die Datei in den Backup-Ordner verschoben
  * wird – versehentliches Löschen bleibt damit wiederherstellbar.

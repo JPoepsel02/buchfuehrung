@@ -6,9 +6,12 @@ import { yearTotals } from '@shared/ledger'
 import { formatEur } from '@shared/money'
 
 export function PruefberichtView() {
-  const { file } = useStore()
+  const { file, settings } = useStore()
   const [toast, setToast] = useState('')
-  const html = useMemo(() => (file ? buildReportHtml(file) : ''), [file])
+  const html = useMemo(
+    () => (file ? buildReportHtml(file, settings.logoDataUrl) : ''),
+    [file, settings.logoDataUrl],
+  )
   if (!file) return null
   const totals = yearTotals(file)
 
