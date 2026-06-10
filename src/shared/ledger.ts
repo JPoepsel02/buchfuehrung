@@ -1,3 +1,4 @@
+import { formatEur } from './money'
 import type {
   Booking,
   CategoryGroup,
@@ -123,6 +124,23 @@ export function yearTotals(file: YearFile): YearTotals {
     closingBalance: file.openingBalance + einnahmen - ausgaben,
     count: rows.length,
   }
+}
+
+/**
+ * Treffer-Logik für die globale Suche UND den Filter der Buchungsliste –
+ * beide müssen identisch suchen, sonst zeigt ein angeklickter Suchtreffer
+ * (z. B. über den Betrag gefunden) in der Liste nichts an.
+ */
+export function bookingMatches(b: ComputedBooking, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    b.description.toLowerCase().includes(q) ||
+    b.note.toLowerCase().includes(q) ||
+    b.categoryName.toLowerCase().includes(q) ||
+    b.ref.toLowerCase().includes(q) ||
+    formatEur(b.signedAmount).includes(q)
+  )
 }
 
 export function nextSeq(file: YearFile): number {

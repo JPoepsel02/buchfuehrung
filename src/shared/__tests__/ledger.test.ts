@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { byCategory, chronological, computeBookings, monthSummaries, nextSeq, yearTotals } from '../ledger'
+import { bookingMatches, byCategory, chronological, computeBookings, monthSummaries, nextSeq, yearTotals } from '../ledger'
 import type { Booking, YearFile } from '../types'
 
 function booking(partial: Partial<Booking> & Pick<Booking, 'seq' | 'date' | 'categoryId' | 'type' | 'amount'>): Booking {
@@ -155,5 +155,20 @@ describe('Auswertung', () => {
   test('nextSeq liefert fortlaufende Nummern', () => {
     const f = file([booking({ seq: 7, date: '2026-01-01', categoryId: 'b', type: 'einnahme', amount: 1 })])
     expect(nextSeq(f)).toBe(8)
+  })
+
+  test('bookingMatches findet Beträge, Notizen, Beleg-Nr. und Kategorie', () => {
+    const f = file([
+      booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'ausgabe', amount: 10080, description: 'Getränke', note: 'VR BANK Lastschrift' }),
+    ])
+    const row = computeBookings(f)[0]
+    // Über den Betrag gefunden (wie in der globalen Suche) → muss auch im Listenfilter treffen
+    expect(bookingMatches(row, '100')).toBe(true)
+    expect(bookingMatches(row, '100,80')).toBe(true)
+    expect(bookingMatches(row, 'getränke')).toBe(true)
+    expect(bookingMatches(row, 'vr bank')).toBe(true)
+    expect(bookingMatches(row, 'M1')).toBe(true)
+    expect(bookingMatches(row, 'maskenball')).toBe(true)
+    expect(bookingMatches(row, '999,99')).toBe(false)
   })
 })

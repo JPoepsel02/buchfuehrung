@@ -10,7 +10,7 @@ import { VeranstaltungenView } from './views/VeranstaltungenView'
 import { ImportView } from './views/ImportView'
 import { PruefberichtView } from './views/PruefberichtView'
 import { EinstellungenView } from './views/EinstellungenView'
-import { computeBookings } from '@shared/ledger'
+import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, formatEur } from '@shared/money'
 
 const VIEWS = [
@@ -165,16 +165,8 @@ function SearchOverlay({ onClose, onJump }: { onClose: () => void; onJump: (term
 
   const results = useMemo(() => {
     if (!file || !query.trim()) return []
-    const q = query.toLowerCase()
     return computeBookings(file)
-      .filter(
-        (r) =>
-          r.description.toLowerCase().includes(q) ||
-          r.note.toLowerCase().includes(q) ||
-          r.categoryName.toLowerCase().includes(q) ||
-          r.ref.toLowerCase().includes(q) ||
-          formatEur(r.signedAmount).includes(q),
-      )
+      .filter((r) => bookingMatches(r, query))
       .slice(0, 12)
   }, [file, query])
 

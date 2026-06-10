@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
-import { computeBookings } from '@shared/ledger'
+import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, parseAmountToCents } from '@shared/money'
 import type { Booking, BookingType } from '@shared/types'
 
@@ -57,15 +57,7 @@ export function BuchungenView({
   if (!file) return null
   const rows = computeBookings(file)
     .sort((a, b) => b.seq - a.seq)
-    .filter((r) => {
-      if (!filter.trim()) return true
-      const q = filter.toLowerCase()
-      return (
-        r.description.toLowerCase().includes(q) ||
-        r.categoryName.toLowerCase().includes(q) ||
-        r.ref.toLowerCase().includes(q)
-      )
-    })
+    .filter((r) => bookingMatches(r, filter))
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
