@@ -37,6 +37,34 @@ export interface Booking {
   importHash?: string
 }
 
+/** Eine Zeile eines zwischengespeicherten Kontoauszug-Imports. */
+export interface ImportDraftRow {
+  /** ISO-Datum YYYY-MM-DD */
+  date: string
+  /** Original-Verwendungszweck aus dem Kontoauszug (nur zur Anzeige) */
+  bankText: string
+  /** Betrag in Cent, vorzeichenbehaftet wie im Auszug */
+  amount: Cents
+  /** Duplikat-Erkennung */
+  hash: string
+  /** Eigener, kurzer Verwendungszweck – Pflicht vor der Übernahme */
+  description: string
+  selected: boolean
+  categoryId: string
+  isUmsatz: boolean
+}
+
+/**
+ * Entwurf eines Kontoauszug-Imports. Wird in der Jahresdatei gespeichert,
+ * damit er beim Tab-Wechsel oder Neustart nicht verloren geht.
+ */
+export interface ImportDraft {
+  fileName: string
+  /** Beim Einlesen übersprungene Zeilen (Kopf-/Saldozeilen) */
+  skipped: number
+  rows: ImportDraftRow[]
+}
+
 export interface YearFile {
   schemaVersion: 1
   year: number
@@ -48,6 +76,8 @@ export interface YearFile {
   treasurerName: string
   categories: Category[]
   bookings: Booking[]
+  /** Nicht abgeschlossener Kontoauszug-Import */
+  importDraft?: ImportDraft | null
 }
 
 /** Buchung mit allen abgeleiteten Feldern (Beleg-Nr., Vorzeichenbetrag, Umsatz). */

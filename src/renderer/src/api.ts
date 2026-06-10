@@ -7,6 +7,7 @@ export interface Api {
   listYears(): Promise<number[]>
   loadYear(year: number): Promise<unknown | null>
   saveYear(year: number, data: unknown): Promise<void>
+  deleteYear(year: number): Promise<void>
   openDataFolder(): Promise<void>
   openCsv(): Promise<{ name: string; content: string } | null>
   exportPdf(html: string, suggestedName: string): Promise<{ ok: boolean; path?: string }>
@@ -33,6 +34,9 @@ const webFallback: Api = {
   },
   async saveYear(year, data) {
     localStorage.setItem(PREFIX + year, JSON.stringify(data))
+  },
+  async deleteYear(year) {
+    localStorage.removeItem(PREFIX + year)
   },
   async openDataFolder() {
     alert('Im Browser-Modus werden die Daten im localStorage gespeichert.')

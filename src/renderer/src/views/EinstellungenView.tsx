@@ -5,7 +5,8 @@ import { yearTotals } from '@shared/ledger'
 import { formatEur, parseAmountToCents } from '@shared/money'
 
 export function EinstellungenView() {
-  const { file, update, createYear, addCategory, updateCategory, deleteCategory } = useStore()
+  const { file, years, update, createYear, deleteYear, selectYear, addCategory, updateCategory, deleteCategory } =
+    useStore()
   const [toast, setToast] = useState('')
   const [newCat, setNewCat] = useState({ name: '', code: '' })
   const [balanceInput, setBalanceInput] = useState(() =>
@@ -46,6 +47,17 @@ export function EinstellungenView() {
     const current = cats[idx]
     updateCategory(current.id, { sortOrder: other.sortOrder })
     updateCategory(other.id, { sortOrder: current.sortOrder })
+  }
+
+  async function removeYear(year: number) {
+    if (
+      !confirm(
+        `Kassenjahr ${year} wirklich löschen?\n\nEine Sicherungskopie wird im Backup-Ordner abgelegt (Einstellungen → „Datenordner öffnen“ → backups).`,
+      )
+    )
+      return
+    await deleteYear(year)
+    notify(`Kassenjahr ${year} gelöscht.`)
   }
 
   async function startNextYear() {
@@ -111,6 +123,41 @@ export function EinstellungenView() {
             </button>
           </p>
         )}
+      </section>
+
+      <section className="card">
+        <h2 className="card__title">Kassenjahre</h2>
+        <table className="ledger">
+          <tbody>
+            {years.map((y) => (
+              <tr key={y}>
+                <td style={{ fontWeight: 600 }}>
+                  {y}
+                  {y === file.year && <span className="pill pill--in" style={{ marginLeft: 8 }}>geöffnet</span>}
+                </td>
+                <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                  {y !== file.year && (
+                    <button className="btn btn--ghost btn--sm" onClick={() => void selectYear(y)}>
+                      Öffnen
+                    </button>
+                  )}
+                  <button
+                    className="btn btn--ghost btn--sm btn--danger"
+                    disabled={years.length < 2}
+                    onClick={() => void removeYear(y)}
+                  >
+                    Löschen
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="hint">
+          Gelöschte Jahre wandern als Sicherungskopie in den Backup-Ordner – z. B. falls ein
+          Jahresabschluss versehentlich ausgelöst wurde. Das letzte verbleibende Jahr kann nicht
+          gelöscht werden.
+        </p>
       </section>
 
       <section className="card">

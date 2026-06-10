@@ -31,14 +31,38 @@ function file(bookings: Booking[]): YearFile {
 }
 
 describe('computeBookings – Beleg-Nr. und Beträge', () => {
-  test('vergibt Beleg-Nr. je Kategorie in Erfassungsreihenfolge', () => {
+  test('vergibt Beleg-Nr. je Kategorie chronologisch', () => {
     const f = file([
       booking({ seq: 1, date: '2026-02-10', categoryId: 'm', type: 'ausgabe', amount: 50000 }),
       booking({ seq: 2, date: '2026-01-05', categoryId: 'b', type: 'einnahme', amount: 92800 }),
       booking({ seq: 3, date: '2026-02-12', categoryId: 'm', type: 'einnahme', amount: 218000 }),
     ])
     const refs = computeBookings(f).map((b) => b.ref)
-    expect(refs).toEqual(['M1', 'B1', 'M2'])
+    expect(refs).toEqual(['B1', 'M1', 'M2'])
+  })
+
+  test('Beleg-Nr. ist unabhängig von der Erfassungs-/Import-Reihenfolge', () => {
+    // Rückwärts erfasst (z. B. Kontoauszug neueste zuerst importiert):
+    // der früheste Umsatz des Jahres bekommt trotzdem die kleinste Nummer.
+    const f = file([
+      booking({ seq: 1, date: '2026-03-20', categoryId: 'm', type: 'ausgabe', amount: 300 }),
+      booking({ seq: 2, date: '2026-02-15', categoryId: 'm', type: 'einnahme', amount: 200 }),
+      booking({ seq: 3, date: '2026-01-02', categoryId: 'm', type: 'einnahme', amount: 100 }),
+    ])
+    const byId = new Map(computeBookings(f).map((b) => [b.id, b.ref]))
+    expect(byId.get('b3')).toBe('M1')
+    expect(byId.get('b2')).toBe('M2')
+    expect(byId.get('b1')).toBe('M3')
+  })
+
+  test('bei gleichem Datum entscheidet die Erfassungsreihenfolge', () => {
+    const f = file([
+      booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'ausgabe', amount: 100 }),
+      booking({ seq: 2, date: '2026-01-10', categoryId: 'm', type: 'einnahme', amount: 200 }),
+    ])
+    const byId = new Map(computeBookings(f).map((b) => [b.id, b.ref]))
+    expect(byId.get('b1')).toBe('M1')
+    expect(byId.get('b2')).toBe('M2')
   })
 
   test('Ausgaben erhalten negativen Vorzeichenbetrag', () => {
@@ -52,10 +76,10 @@ describe('computeBookings – Beleg-Nr. und Beträge', () => {
       booking({ seq: 2, date: '2026-02-12', categoryId: 'm', type: 'einnahme', amount: 150000, isUmsatz: true }),
       booking({ seq: 3, date: '2026-02-10', categoryId: 'm', type: 'ausgabe', amount: 50000, isUmsatz: false }),
     ])
-    const rows = computeBookings(f)
-    expect(rows[0].umsatzAmount).toBe(168000)
-    expect(rows[1].umsatzAmount).toBe(150000)
-    expect(rows[2].umsatzAmount).toBe(0)
+    const byId = new Map(computeBookings(f).map((b) => [b.id, b.umsatzAmount]))
+    expect(byId.get('b1')).toBe(168000)
+    expect(byId.get('b2')).toBe(150000)
+    expect(byId.get('b3')).toBe(0)
   })
 })
 

@@ -2,12 +2,13 @@ import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { dataDirPath, listYears, loadYear, saveYear } from './storage'
+import { dataDirPath, deleteYear, listYears, loadYear, saveYear } from './storage'
 
 export function registerIpc(): void {
   ipcMain.handle('years:list', () => listYears())
   ipcMain.handle('years:load', (_e, year: number) => loadYear(year))
   ipcMain.handle('years:save', (_e, year: number, data: unknown) => saveYear(year, data))
+  ipcMain.handle('years:delete', (_e, year: number) => deleteYear(year))
 
   ipcMain.handle('data:openFolder', () => shell.openPath(dataDirPath()))
 

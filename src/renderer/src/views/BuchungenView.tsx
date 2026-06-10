@@ -242,10 +242,14 @@ export function BuchungenView() {
                   <td className="ref">{r.ref}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
                   <td>{r.categoryName}</td>
-                  <td>
+                  <td className="cell-desc">
                     {r.description}
-                    {r.note && <div className="hint">{r.note}</div>}
                     {r.source === 'import' && <span className="pill" style={{ marginLeft: 6 }}>Import</span>}
+                    {r.note && (
+                      <div className="hint hint--clamp" title={r.note}>
+                        {r.note}
+                      </div>
+                    )}
                   </td>
                   <td className="num">
                     <Amount cents={r.signedAmount} withSign />

@@ -65,6 +65,17 @@ function rotateBackup(year: number, file: string): void {
   }
 }
 
+/**
+ * Löscht ein Kassenjahr, indem die Datei in den Backup-Ordner verschoben
+ * wird – versehentliches Löschen bleibt damit wiederherstellbar.
+ */
+export function deleteYear(year: number): void {
+  const file = fileFor(year)
+  if (!existsSync(file)) return
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  renameSync(file, join(backupDir(), `kassenbuch-${year}-geloescht-${stamp}.json`))
+}
+
 export function dataDirPath(): string {
   return dataDir()
 }

@@ -57,7 +57,7 @@ function GroupRows({ group }: { group: ReturnType<typeof byCategory>[number] }) 
         <tr key={r.id}>
           <td className="ref">{r.ref}</td>
           <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
-          <td>{r.description}</td>
+          <td className="cell-desc">{r.description}</td>
           <td className="num">{r.type === 'ausgabe' ? <Amount cents={-r.amount} /> : ''}</td>
           <td className="num">{r.type === 'einnahme' ? <Amount cents={r.amount} /> : ''}</td>
           <td></td>
