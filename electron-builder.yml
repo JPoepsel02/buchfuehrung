@@ -1,6 +1,8 @@
 appId: de.kljb-herzfeld.buchfuehrung
-productName: Buchführung
-# Umlaut-freie Dateinamen für die Installer-Artefakte
+# ASCII-Paketname: ein Umlaut im Bundle-/Executable-Namen lässt Electron
+# auf macOS beim Start abstürzen (Helper-Pfade, NFC/NFD-Problem).
+# Der sichtbare Name „Buchführung“ kommt über CFBundleDisplayName.
+productName: Buchfuehrung
 artifactName: Buchfuehrung-${version}-${arch}.${ext}
 directories:
   output: release
@@ -10,6 +12,8 @@ files:
   - package.json
 mac:
   category: public.app-category.finance
+  extendInfo:
+    CFBundleDisplayName: Buchführung
   target:
     - target: dmg
       arch: [arm64, x64]
