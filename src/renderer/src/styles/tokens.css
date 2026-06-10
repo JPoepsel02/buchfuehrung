@@ -23,6 +23,9 @@
   --color-expense-soft: oklch(94% 0.03 28);
   --color-warn: oklch(70% 0.13 75);
   --color-focus: oklch(60% 0.12 160);
+  /* Eingabefelder und Text auf Akzentflächen */
+  --color-field: white;
+  --color-on-accent: white;
 
   --font-display: 'Fraunces Variable', Georgia, serif;
   --font-body: 'Inter Variable', system-ui, -apple-system, sans-serif;
@@ -52,4 +55,34 @@
   --duration-fast: 140ms;
   --duration-normal: 280ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dunkles Thema – gleiche Semantik, abgedunkeltes Papier, hellere Tinte */
+:root[data-theme='dark'] {
+  --color-paper: oklch(21% 0.012 80);
+  --color-paper-raised: oklch(25% 0.014 80);
+  --color-paper-sunken: oklch(18% 0.01 80);
+  --color-ink: oklch(92% 0.012 85);
+  --color-ink-soft: oklch(74% 0.015 85);
+  --color-ink-faint: oklch(58% 0.015 85);
+  --color-line: oklch(33% 0.012 85);
+  --color-line-strong: oklch(44% 0.015 85);
+
+  --color-pine: oklch(23% 0.045 165);
+  --color-pine-raised: oklch(29% 0.05 165);
+  --color-pine-text: oklch(92% 0.02 150);
+  --color-pine-muted: oklch(64% 0.03 160);
+
+  --color-accent: oklch(72% 0.11 160);
+  --color-accent-soft: oklch(31% 0.045 160);
+  --color-income: oklch(74% 0.11 155);
+  --color-expense: oklch(72% 0.15 28);
+  --color-expense-soft: oklch(29% 0.05 28);
+  --color-warn: oklch(76% 0.12 75);
+  --color-focus: oklch(72% 0.12 160);
+  --color-field: oklch(27% 0.014 80);
+  --color-on-accent: oklch(17% 0.03 160);
+
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.35), 0 4px 16px oklch(0% 0 0 / 0.3);
+  --shadow-pop: 0 4px 12px oklch(0% 0 0 / 0.45), 0 12px 40px oklch(0% 0 0 / 0.45);
 }

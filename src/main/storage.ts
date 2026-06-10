@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 
 /**
  * Speicherung der Jahresdateien als JSON im Benutzerdaten-Ordner.
@@ -48,6 +48,7 @@ export function saveYear(year: number, data: unknown): void {
   const tmp = file + '.tmp'
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
   renameSync(tmp, file)
+  syncDataToCloud()
 }
 
 function rotateBackup(year: number, file: string): void {
@@ -82,6 +83,7 @@ export function saveSettings(data: unknown): void {
   const tmp = settingsFile() + '.tmp'
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
   renameSync(tmp, settingsFile())
+  syncDataToCloud(data)
 }
 
 /**
@@ -93,8 +95,39 @@ export function deleteYear(year: number): void {
   if (!existsSync(file)) return
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   renameSync(file, join(backupDir(), `kassenbuch-${year}-geloescht-${stamp}.json`))
+  syncDataToCloud()
 }
 
 export function dataDirPath(): string {
   return dataDir()
+}
+
+function syncDataToCloud(settings: unknown = loadSettings()): void {
+  const dir = cloudBackupDir(settings)
+  if (!dir) return
+  try {
+    mkdirSync(dir, { recursive: true })
+    const sourceDir = dataDir()
+    if (resolve(dir) === resolve(sourceDir)) return
+    for (const file of readdirSync(dir)) {
+      if (/^(kassenbuch-\d{4}|einstellungen)\.json$/.test(file)) {
+        rmSync(join(dir, file), { force: true })
+      }
+    }
+    for (const file of readdirSync(sourceDir)) {
+      if (/^(kassenbuch-\d{4}|einstellungen)\.json$/.test(file)) {
+        copyFileSync(join(sourceDir, file), join(dir, basename(file)))
+      }
+    }
+  } catch {
+    // Cloud-Ordner sind manchmal kurzzeitig nicht verfügbar; lokales Speichern bleibt maßgeblich.
+  }
+}
+
+function cloudBackupDir(settings: unknown): string | null {
+  if (!settings || typeof settings !== 'object') return null
+  const data = settings as { cloudBackupEnabled?: unknown; cloudBackupDir?: unknown }
+  if (data.cloudBackupEnabled !== true) return null
+  if (typeof data.cloudBackupDir !== 'string' || !data.cloudBackupDir.trim()) return null
+  return data.cloudBackupDir
 }

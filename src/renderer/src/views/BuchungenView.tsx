@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
+import { AmountField } from '../components/AmountInput'
 import { computeBookings } from '@shared/ledger'
 import { formatDate, parseAmountToCents } from '@shared/money'
 import type { Booking, BookingType } from '@shared/types'
@@ -27,7 +28,14 @@ const emptyForm = (categoryId: string, year: number): FormState => ({
   note: '',
 })
 
-export function BuchungenView() {
+export function BuchungenView({
+  externalFilter = '',
+  onFilterConsumed,
+}: {
+  /** Suchbegriff aus der globalen Strg+F-Suche */
+  externalFilter?: string
+  onFilterConsumed?: () => void
+}) {
   const { file, addBooking, updateBooking, deleteBooking } = useStore()
   const activeCats = useMemo(
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
@@ -37,6 +45,14 @@ export function BuchungenView() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
+
+  // Suchbegriff aus der globalen Strg+F-Suche übernehmen
+  useEffect(() => {
+    if (externalFilter) {
+      setFilter(externalFilter)
+      onFilterConsumed?.()
+    }
+  }, [externalFilter, onFilterConsumed])
 
   if (!file) return null
   const rows = computeBookings(file)
@@ -143,12 +159,11 @@ export function BuchungenView() {
           </div>
           <div className="field" style={{ gridColumn: 'span 2' }}>
             <label htmlFor="b-amount">Betrag (€)</label>
-            <input
+            <AmountField
               id="b-amount"
               value={form.amount}
-              onChange={(e) => set('amount', e.target.value)}
+              onChange={(v) => set('amount', v)}
               placeholder="0,00"
-              inputMode="decimal"
             />
           </div>
           <div className="field" style={{ gridColumn: 'span 8' }}>
@@ -176,12 +191,11 @@ export function BuchungenView() {
             {form.isUmsatz && (
               <div className="field" style={{ minWidth: 180 }}>
                 <label htmlFor="b-nonumsatz">davon kein Umsatz (€, z. B. Wechselgeld)</label>
-                <input
+                <AmountField
                   id="b-nonumsatz"
                   value={form.nonUmsatz}
-                  onChange={(e) => set('nonUmsatz', e.target.value)}
+                  onChange={(v) => set('nonUmsatz', v)}
                   placeholder="0,00"
-                  inputMode="decimal"
                 />
               </div>
             )}

@@ -1,6 +1,12 @@
 import { byCategory, chronological, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatAmount, formatDate, formatEur, monthOf } from '@shared/money'
-import type { YearFile } from '@shared/types'
+import type { AuditInfo, YearFile } from '@shared/types'
+
+/** Leere Angaben erscheinen im Druck als Schreiblinie. */
+function val(v: string | undefined, width = 180): string {
+  const s = (v ?? '').trim()
+  return s ? esc(s) : `<span class="fill" style="min-width:${width}px"></span>`
+}
 
 /**
  * Erzeugt den druckfertigen Prüfbericht als eigenständiges HTML-Dokument
@@ -97,12 +103,19 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null): st
   .group-sum2 td { font-weight: bold; border-bottom: 2px solid #1a1a18; }
   .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px 60px; margin-top: 50px; }
   .sig { border-top: 1px solid #1a1a18; padding-top: 4px; font-size: 9pt; color: #444; }
-  .notes { border: 1px solid #888; min-height: 90px; margin-top: 8px; border-radius: 4px; }
-  .confirm { margin-top: 24px; font-size: 10pt; }
-  .checkbox-line { margin: 6px 0; }
-  .checkbox-line .box { font-size: 13pt; margin-right: 6px; }
   .pagebreak { break-before: page; }
   footer { margin-top: 30px; font-size: 8pt; color: #888; }
+  /* Kassenprüfbericht nach Vereinsvorlage */
+  .audit { font-size: 11pt; line-height: 1.7; }
+  .audit h2 { border-bottom: none; font-size: 16pt; margin-top: 18px; }
+  .audit .club { font-size: 12pt; font-weight: bold; }
+  .audit .box { font-size: 13pt; margin: 0 4px 0 10px; }
+  .audit .konto { margin: 22px 0 0; }
+  .audit .konto-head { font-weight: bold; margin-bottom: 4px; }
+  .fill { display: inline-block; border-bottom: 1px solid #1a1a18; height: 1em; vertical-align: bottom; }
+  .audit .lines { margin: 6px 0; }
+  .audit .lines .fill { width: 100%; margin-top: 14px; }
+  .audit .sig-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; margin-top: 60px; }
 </style>
 </head>
 <body>
@@ -148,25 +161,58 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null): st
   </table>
 
   <div class="pagebreak"></div>
-  <h2>4. Kassenprüfung</h2>
-  <div class="confirm">
-    <div class="checkbox-line"><span class="box">☐</span> Alle Belege lagen vor und wurden geprüft.</div>
-    <div class="checkbox-line"><span class="box">☐</span> Die Buchungen sind rechnerisch richtig.</div>
-    <div class="checkbox-line"><span class="box">☐</span> Der Kassenstand stimmt mit Konto- und Barbestand überein.</div>
-    <div class="checkbox-line"><span class="box">☐</span> Die Mittel wurden satzungsgemäß verwendet.</div>
-    <div class="checkbox-line"><span class="box">☐</span> Es wird empfohlen, den Vorstand zu entlasten.</div>
-  </div>
-  <p style="margin-top:18px">Bemerkungen / Beanstandungen:</p>
-  <div class="notes"></div>
-  <div class="sig-grid">
-    <div class="sig">Ort, Datum</div>
-    <div class="sig">Kassenwart:in: ${esc(file.treasurerName || '')}</div>
-    <div class="sig">Kassenprüfer:in 1 (Name, Unterschrift)</div>
-    <div class="sig">Kassenprüfer:in 2 (Name, Unterschrift)</div>
-  </div>
+  ${auditSection(file)}
   <footer>Erstellt mit Buchführung · Kassenbericht ${file.year}</footer>
 </body>
 </html>`
+}
+
+/** Kassenprüfbericht – Aufbau und Formulierungen folgen der Vereinsvorlage. */
+function auditSection(file: YearFile): string {
+  const a: Partial<AuditInfo> = file.audit ?? {}
+  const konten = [a.konto1, a.konto2].filter((k) => (k ?? '').trim() !== '')
+  const kontoBlocks = (konten.length > 0 ? konten : [undefined]).map(
+    (konto) => `
+    <div class="konto">
+      <div class="konto-head">Geprüft wurde das Bankkonto ${val(konto, 160)}</div>
+      <div>
+        <span class="box">☐</span> lückenlos
+        <span class="box">☐</span> stichprobenartig
+        &nbsp;&nbsp;auf&nbsp;&nbsp;
+        <span class="box">☐</span> rechnerische
+        <span class="box">☐</span> sachliche Richtigkeit
+      </div>
+      <div class="lines">
+        Dabei ist uns Folgendes aufgefallen: <span class="fill" style="width:55%"></span>
+        <span class="fill"></span>
+      </div>
+      <div><span class="box" style="margin-left:0">☐</span> Die Kontoführung war (ansonsten) einwandfrei. (Weitere) Mängel konnten nicht festgestellt werden.</div>
+    </div>`,
+  )
+
+  return `
+  <section class="audit">
+    <div class="club">${esc(file.clubName || '')}</div>
+    <h2>Kassenprüfbericht ${file.year}</h2>
+    <p>
+      Am ${val(a.pruefDatum, 110)} haben die von der letzten Mitgliederversammlung am
+      ${val(a.wahlDatum, 110)} gewählten Kassenprüfer <strong>${val(a.pruefer1)}</strong> und
+      <strong>${val(a.pruefer2)}</strong> im Beisein von ${val(a.beisein, 260)} die Kasse und das
+      Konto der ${esc(file.clubName || 'Ortsgruppe')} entsprechend ihrem Auftrag aus der
+      Generalversammlung vom ${val(a.wahlDatum, 110)} geprüft.
+    </p>
+    ${kontoBlocks.join('\n')}
+    <p style="margin-top:28px">
+      Wir bitten auf der Grundlage unserer Prüfung um Entlastung des Kassierers
+      <strong>${esc(file.treasurerName || '')}</strong> / des Vorstandes in der
+      Generalversammlung am ${val(a.gvDatum, 110)}.
+    </p>
+    <div class="sig-row">
+      <div class="sig">Ort, Datum${a.ort ? `: ${esc(a.ort)}` : ''}</div>
+      <div class="sig">${esc(a.pruefer1 || 'Kassenprüfer:in 1')}</div>
+      <div class="sig">${esc(a.pruefer2 || 'Kassenprüfer:in 2')}</div>
+    </div>
+  </section>`
 }
 
 function esc(s: string): string {

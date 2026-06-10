@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isElectron } from '../api'
 import type { UpdateInfo } from '../api'
+import { AmountField } from '../components/AmountInput'
 import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { yearTotals } from '@shared/ledger'
 import { formatEur, parseAmountToCents } from '@shared/money'
+import type { ThemeSetting } from '@shared/types'
 
 const LOGO_MAX_PX = 512
 
@@ -127,13 +129,7 @@ export function EinstellungenView() {
           </div>
           <div className="field" style={{ gridColumn: 'span 2' }}>
             <label htmlFor="s-balance">Anfangssaldo (€)</label>
-            <input
-              id="s-balance"
-              value={balanceInput}
-              onChange={(e) => setBalanceInput(e.target.value)}
-              onBlur={saveBalance}
-              inputMode="decimal"
-            />
+            <AmountField id="s-balance" value={balanceInput} onChange={setBalanceInput} onBlur={saveBalance} />
           </div>
           <div style={{ gridColumn: 'span 2' }}>
             <button className="btn" onClick={() => void startNextYear()}>
@@ -141,15 +137,11 @@ export function EinstellungenView() {
             </button>
           </div>
         </div>
-        {isElectron && (
-          <p className="hint" style={{ marginBottom: 0 }}>
-            Daten werden lokal gespeichert (mit automatischen Backups). {' '}
-            <button className="btn btn--ghost btn--sm" onClick={() => void api.openDataFolder()}>
-              Datenordner öffnen
-            </button>
-          </p>
-        )}
       </section>
+
+      <AppearanceCard />
+
+      <DataStorageCard notify={notify} />
 
       <LogoCard notify={notify} />
 
@@ -278,6 +270,104 @@ export function EinstellungenView() {
       </section>
       {toast && <div className="toast">{toast}</div>}
     </div>
+  )
+}
+
+/** Farbschema: hell, dunkel oder dem System folgen. */
+function AppearanceCard() {
+  const { settings, updateSettings } = useStore()
+  return (
+    <section className="card">
+      <h2 className="card__title">Darstellung</h2>
+      <div className="field" style={{ maxWidth: 280 }}>
+        <label htmlFor="s-theme">Farbschema</label>
+        <select
+          id="s-theme"
+          value={settings.theme ?? 'system'}
+          onChange={(e) => void updateSettings({ theme: e.target.value as ThemeSetting })}
+        >
+          <option value="system">Wie das System</option>
+          <option value="hell">Hell</option>
+          <option value="dunkel">Dunkel</option>
+        </select>
+      </div>
+    </section>
+  )
+}
+
+/** Lokale Speicherung plus optionale Spiegelung in einen Cloud-synchronisierten Ordner. */
+function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
+  const { settings, updateSettings } = useStore()
+  const cloudEnabled = settings.cloudBackupEnabled === true
+  const cloudDir = settings.cloudBackupDir?.trim() ?? ''
+
+  async function chooseCloudFolder() {
+    const dir = await api.selectCloudFolder()
+    if (!dir) return
+    await updateSettings({ cloudBackupDir: dir, cloudBackupEnabled: true })
+    notify('Cloud-Sicherung gespeichert.')
+  }
+
+  async function toggleCloudBackup(enabled: boolean) {
+    if (enabled && !cloudDir) {
+      await chooseCloudFolder()
+      return
+    }
+    await updateSettings({ cloudBackupEnabled: enabled })
+    notify(enabled ? 'Cloud-Sicherung aktiviert.' : 'Cloud-Sicherung deaktiviert.')
+  }
+
+  async function clearCloudFolder() {
+    await updateSettings({ cloudBackupDir: null, cloudBackupEnabled: false })
+    notify('Cloud-Sicherung entfernt.')
+  }
+
+  return (
+    <section className="card">
+      <h2 className="card__title">Datenspeicherung</h2>
+      <div className="toolbar">
+        <span>
+          Lokale Speicherung mit automatischen Backups
+          {isElectron && (
+            <button className="btn btn--ghost btn--sm" style={{ marginLeft: 8 }} onClick={() => void api.openDataFolder()}>
+              Datenordner öffnen
+            </button>
+          )}
+        </span>
+      </div>
+      <div className="storage-cloud">
+        <label className="storage-cloud__toggle">
+          <input
+            type="checkbox"
+            checked={cloudEnabled}
+            disabled={!isElectron}
+            onChange={(e) => void toggleCloudBackup(e.target.checked)}
+          />
+          Zusätzliche Sicherung in iCloud, OneDrive oder einem anderen Cloud-Ordner
+        </label>
+        <div className="toolbar">
+          <code className="storage-cloud__path">{cloudDir || 'Kein Cloud-Ordner ausgewählt'}</code>
+          <div className="toolbar__spacer" />
+          {cloudDir && (
+            <button className="btn btn--ghost btn--sm" onClick={() => void api.openCloudFolder()}>
+              Ordner öffnen
+            </button>
+          )}
+          {cloudDir && (
+            <button className="btn btn--ghost btn--sm btn--danger" onClick={() => void clearCloudFolder()}>
+              Entfernen
+            </button>
+          )}
+          <button className="btn btn--sm" disabled={!isElectron} onClick={() => void chooseCloudFolder()}>
+            {cloudDir ? 'Ordner ändern …' : 'Cloud-Ordner wählen …'}
+          </button>
+        </div>
+        <p className="hint" style={{ marginBottom: 0 }}>
+          Die App speichert weiterhin lokal. Wenn die Cloud-Sicherung aktiv ist, werden Jahresdateien
+          und Einstellungen zusätzlich in den gewählten Ordner kopiert.
+        </p>
+      </div>
+    </section>
   )
 }
 

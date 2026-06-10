@@ -37,10 +37,26 @@ export interface Booking {
   importHash?: string
 }
 
+export type ThemeSetting = 'hell' | 'dunkel' | 'system'
+
 /** Jahresübergreifende App-Einstellungen (eigene Datei neben den Jahresdateien). */
 export interface AppSettings {
   /** Eigenes Vereinslogo als Data-URL (PNG/JPEG); erscheint in Seitenleiste, Prüfbericht und Dock */
   logoDataUrl?: string | null
+  /** Farbschema der App (Standard: system) */
+  theme?: ThemeSetting
+  /** Optionaler zusätzlicher Sicherungsordner, z. B. in iCloud Drive oder OneDrive */
+  cloudBackupDir?: string | null
+  /** Spiegelt Jahresdateien und Einstellungen zusätzlich in den Cloud-Ordner */
+  cloudBackupEnabled?: boolean
+}
+
+export interface ImportDraftSplit {
+  id: string
+  description: string
+  categoryId: string
+  amount: Cents
+  isUmsatz: boolean
 }
 
 /** Eine Zeile eines zwischengespeicherten Kontoauszug-Imports. */
@@ -58,6 +74,7 @@ export interface ImportDraftRow {
   selected: boolean
   categoryId: string
   isUmsatz: boolean
+  splits?: ImportDraftSplit[]
 }
 
 /**
@@ -69,6 +86,26 @@ export interface ImportDraft {
   /** Beim Einlesen übersprungene Zeilen (Kopf-/Saldozeilen) */
   skipped: number
   rows: ImportDraftRow[]
+}
+
+/** Angaben für den Kassenprüfbericht (nach der Vorlage des Vereins). */
+export interface AuditInfo {
+  /** Namen der beiden Kassenprüfer */
+  pruefer1: string
+  pruefer2: string
+  /** Anwesende bei der Prüfung ("im Beisein von …") */
+  beisein: string
+  /** Geprüfte Konten (zweites optional) */
+  konto1: string
+  konto2: string
+  /** Datum der Mitgliederversammlung, die die Prüfer gewählt hat */
+  wahlDatum: string
+  /** Datum der Kassenprüfung */
+  pruefDatum: string
+  /** Datum der Generalversammlung, in der entlastet wird */
+  gvDatum: string
+  /** Ort für die Unterschriftszeile */
+  ort: string
 }
 
 export interface YearFile {
@@ -84,6 +121,8 @@ export interface YearFile {
   bookings: Booking[]
   /** Nicht abgeschlossener Kontoauszug-Import */
   importDraft?: ImportDraft | null
+  /** Angaben für den Kassenprüfbericht */
+  audit?: Partial<AuditInfo>
 }
 
 /** Buchung mit allen abgeleiteten Feldern (Beleg-Nr., Vorzeichenbetrag, Umsatz). */

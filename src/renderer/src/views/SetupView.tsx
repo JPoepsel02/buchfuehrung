@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AmountField } from '../components/AmountInput'
 import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { parseAmountToCents } from '@shared/money'
@@ -44,7 +45,7 @@ export function SetupView() {
           </div>
           <div className="field" style={{ gridColumn: 'span 6' }}>
             <label htmlFor="setup-balance">Anfangssaldo (€)</label>
-            <input id="setup-balance" value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" />
+            <AmountField id="setup-balance" value={balance} onChange={setBalance} />
           </div>
           <div className="field" style={{ gridColumn: 'span 12' }}>
             <label htmlFor="setup-club">Verein / Ortsgruppe (für den Prüfbericht)</label>

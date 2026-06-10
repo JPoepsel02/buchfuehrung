@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, isElectron } from './api'
 import { LogoMark } from './components/LogoMark'
 import { useStore } from './store'
@@ -10,6 +10,8 @@ import { VeranstaltungenView } from './views/VeranstaltungenView'
 import { ImportView } from './views/ImportView'
 import { PruefberichtView } from './views/PruefberichtView'
 import { EinstellungenView } from './views/EinstellungenView'
+import { computeBookings } from '@shared/ledger'
+import { formatDate, formatEur } from '@shared/money'
 
 const VIEWS = [
   { id: 'uebersicht', label: 'Übersicht', icon: '◫' },
@@ -23,10 +25,40 @@ const VIEWS = [
 
 type ViewId = (typeof VIEWS)[number]['id']
 
+const isMac = navigator.userAgent.includes('Macintosh')
+
 export function App() {
   const { loading, file, years, selectYear, settings } = useStore()
   const [view, setView] = useState<ViewId>('uebersicht')
   const [updateHint, setUpdateHint] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [bookingsFilter, setBookingsFilter] = useState('')
+
+  // Farbschema anwenden (hell/dunkel/system) – auch schon im Setup
+  useEffect(() => {
+    const theme = settings.theme ?? 'system'
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => {
+      const dark = theme === 'dunkel' || (theme === 'system' && mq.matches)
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    }
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [settings.theme])
+
+  // Strg/Cmd+F öffnet die globale Suche
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+      if (e.key === 'Escape') setSearchOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Stiller Update-Check beim Start – bei neuer Version nur ein Hinweis,
   // installiert wird bewusst erst auf Klick in den Einstellungen.
@@ -48,11 +80,27 @@ export function App() {
     return () => clearTimeout(timer)
   }, [])
 
+  // Bei ausgeblendeter Titelleiste (macOS) bleibt oben eine Greif-Leiste zum Verschieben
+  const dragStrip = isElectron && isMac ? <div className="titlebar-drag" aria-hidden /> : null
+
   if (loading) return null
-  if (!file) return <SetupView />
+  if (!file)
+    return (
+      <>
+        {dragStrip}
+        <SetupView />
+      </>
+    )
+
+  function jumpToBooking(term: string) {
+    setBookingsFilter(term)
+    setView('buchungen')
+    setSearchOpen(false)
+  }
 
   return (
     <div className="app">
+      {dragStrip}
       <aside className="sidebar">
         <div className="sidebar__brand">
           <span className="sidebar__logo">
@@ -92,14 +140,73 @@ export function App() {
       </aside>
       <main className="main">
         {view === 'uebersicht' && <UebersichtView />}
-        {view === 'buchungen' && <BuchungenView />}
+        {view === 'buchungen' && (
+          <BuchungenView externalFilter={bookingsFilter} onFilterConsumed={() => setBookingsFilter('')} />
+        )}
         {view === 'chronologisch' && <ChronoView />}
         {view === 'veranstaltungen' && <VeranstaltungenView />}
         {view === 'import' && <ImportView />}
         {view === 'pruefbericht' && <PruefberichtView />}
         {view === 'einstellungen' && <EinstellungenView />}
       </main>
+      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} onJump={jumpToBooking} />}
       {updateHint && <div className="toast">{updateHint}</div>}
+    </div>
+  )
+}
+
+/** Globale Suche (Strg/Cmd+F): durchsucht alle Buchungen des Kassenjahres. */
+function SearchOverlay({ onClose, onJump }: { onClose: () => void; onJump: (term: string) => void }) {
+  const { file } = useStore()
+  const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => inputRef.current?.focus(), [])
+
+  const results = useMemo(() => {
+    if (!file || !query.trim()) return []
+    const q = query.toLowerCase()
+    return computeBookings(file)
+      .filter(
+        (r) =>
+          r.description.toLowerCase().includes(q) ||
+          r.note.toLowerCase().includes(q) ||
+          r.categoryName.toLowerCase().includes(q) ||
+          r.ref.toLowerCase().includes(q) ||
+          formatEur(r.signedAmount).includes(q),
+      )
+      .slice(0, 12)
+  }, [file, query])
+
+  return (
+    <div className="search-overlay" onClick={onClose}>
+      <div className="search-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Buchungen durchsuchen">
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && query.trim()) onJump(query.trim())
+          }}
+          placeholder="Buchungen durchsuchen … (Enter zeigt alle Treffer)"
+          aria-label="Suchbegriff"
+        />
+        {query.trim() && (
+          <div className="search-results">
+            {results.length === 0 && <div className="search-empty">Keine Treffer.</div>}
+            {results.map((r) => (
+              <button key={r.id} className="search-hit" onClick={() => onJump(query.trim())}>
+                <span className="ref">{r.ref}</span>
+                <span className="search-hit__text">
+                  {r.description}
+                  <span className="hint"> · {r.categoryName} · {formatDate(r.date)}</span>
+                </span>
+                <span className="search-hit__amount">{formatEur(r.signedAmount)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
