@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
+import { CentsAmountInput } from '../components/AmountInput'
 import { parseBankCsv } from '@shared/csv'
 import { makeId } from '@shared/defaults'
 import { nextSeq } from '@shared/ledger'
 import { formatDate } from '@shared/money'
-import type { ImportDraftRow } from '@shared/types'
+import type { ImportDraftRow, ImportDraftSplit } from '@shared/types'
 
 /**
  * Kontoauszug-Import: Der eingelesene Auszug wird als Entwurf in der
@@ -29,20 +30,32 @@ export function ImportView() {
 
   if (!file) return null
   const draft = file.importDraft ?? null
-  const defaultCat = activeCats[activeCats.length - 1]?.id ?? ''
 
   async function openFile() {
     const result = await api.openCsv()
     if (!result) return
     const parsed = parseBankCsv(result.content)
-    const rows: ImportDraftRow[] = parsed.rows.map((r) => ({
+    // Chronologisch aufsteigend sortieren, damit die Beleg-Nr.-Vergabe auch
+    // bei gleichem Datum der echten Reihenfolge folgt. Bank-Exporte sind
+    // meist "neueste zuerst" – dann spiegelt der umgekehrte Zeilenindex die
+    // tatsächliche Buchungsreihenfolge innerhalb eines Tages wider.
+    const newestFirst =
+      parsed.rows.length > 1 && parsed.rows[0].date > parsed.rows[parsed.rows.length - 1].date
+    const sorted = parsed.rows
+      .map((r, idx) => ({ r, idx }))
+      .sort(
+        (a, b) =>
+          a.r.date.localeCompare(b.r.date) || (newestFirst ? b.idx - a.idx : a.idx - b.idx),
+      )
+    const rows: ImportDraftRow[] = sorted.map(({ r }) => ({
       date: r.date,
       bankText: r.description,
       amount: r.amount,
       hash: r.hash,
       description: '',
       selected: !existingHashes.has(r.hash) && r.date.startsWith(String(file!.year)),
-      categoryId: defaultCat,
+      // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
+      categoryId: '',
       isUmsatz: false,
     }))
     update((f) => ({
@@ -63,6 +76,64 @@ export function ImportView() {
           }
         : f,
     )
+  }
+
+  function setSplit(rowIndex: number, splitId: string, patch: Partial<ImportDraftSplit>) {
+    const current = draft?.rows[rowIndex]
+    if (!current?.splits) return
+    setRow(rowIndex, {
+      splits: current.splits.map((s) => (s.id === splitId ? { ...s, ...patch } : s)),
+    })
+  }
+
+  function startSplit(index: number) {
+    const row = draft?.rows[index]
+    if (!row) return
+    const total = Math.abs(row.amount)
+    const first = Math.floor(total / 2)
+    const second = total - first
+    setRow(index, {
+      splits: [
+        {
+          id: makeId(),
+          description: row.description.trim(),
+          categoryId: row.categoryId,
+          amount: first,
+          isUmsatz: row.isUmsatz,
+        },
+        {
+          id: makeId(),
+          description: '',
+          categoryId: row.categoryId,
+          amount: second,
+          isUmsatz: row.isUmsatz,
+        },
+      ],
+    })
+  }
+
+  function addSplit(index: number) {
+    const row = draft?.rows[index]
+    if (!row?.splits) return
+    setRow(index, {
+      splits: [
+        ...row.splits,
+        {
+          id: makeId(),
+          description: '',
+          categoryId: row.categoryId,
+          amount: 0,
+          isUmsatz: row.isUmsatz,
+        },
+      ],
+    })
+  }
+
+  function removeSplit(rowIndex: number, splitId: string) {
+    const row = draft?.rows[rowIndex]
+    if (!row?.splits) return
+    const next = row.splits.filter((s) => s.id !== splitId)
+    setRow(rowIndex, { splits: next.length >= 2 ? next : undefined })
   }
 
   function setAllSelected(selected: boolean) {
@@ -88,33 +159,33 @@ export function ImportView() {
 
   /** Übernimmt alle ausgewählten Zeilen als Buchungen und entfernt sie aus dem Entwurf. */
   function doImport() {
-    const selectedIdx = new Set(
-      draft!.rows
-        .map((r, i) => (r.selected && r.description.trim() && !existingHashes.has(r.hash) ? i : -1))
-        .filter((i) => i >= 0),
-    )
+    const selectedRows = draft!.rows
+      .map((r, i) => ({ row: r, index: i }))
+      .filter(({ row }) => row.selected && rowIsImportable(row) && !existingHashes.has(row.hash))
+    const selectedIdx = new Set(selectedRows.map(({ index }) => index))
     if (selectedIdx.size === 0) return
-    let importedCount = 0
+    const importedBookingsCount = selectedRows.reduce((count, { row }) => count + bookingParts(row).length, 0)
     update((f) => {
       if (!f.importDraft) return f
       let seq = nextSeq(f)
       const added = f.importDraft.rows
         .filter((_, i) => selectedIdx.has(i))
-        .map((r) => ({
-          id: makeId(),
-          seq: seq++,
-          date: r.date,
-          categoryId: r.categoryId,
-          description: r.description.trim(),
-          type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
-          amount: Math.abs(r.amount),
-          isUmsatz: r.isUmsatz,
-          nonUmsatzAmount: 0,
-          note: r.bankText,
-          source: 'import' as const,
-          importHash: r.hash,
-        }))
-      importedCount = added.length
+        .flatMap((r) =>
+          bookingParts(r).map((part) => ({
+            id: makeId(),
+            seq: seq++,
+            date: r.date,
+            categoryId: part.categoryId,
+            description: part.description.trim(),
+            type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
+            amount: part.amount,
+            isUmsatz: part.isUmsatz,
+            nonUmsatzAmount: 0,
+            note: r.bankText,
+            source: 'import' as const,
+            importHash: r.hash,
+          })),
+        )
       const remaining = f.importDraft.rows.filter((_, i) => !selectedIdx.has(i))
       return {
         ...f,
@@ -122,13 +193,14 @@ export function ImportView() {
         importDraft: remaining.length > 0 ? { ...f.importDraft, rows: remaining } : null,
       }
     })
-    setToast(`${importedCount} Buchungen importiert.`)
+    setToast(`${importedBookingsCount} Buchungen aus ${selectedRows.length} Bankpositionen importiert.`)
     setTimeout(() => setToast(''), 4000)
   }
 
   const selected = draft ? draft.rows.filter((r) => r.selected && !existingHashes.has(r.hash)) : []
-  const missingText = selected.filter((r) => !r.description.trim()).length
-  const readyCount = selected.length - missingText
+  const invalidRows = selected.filter((r) => !rowIsImportable(r)).length
+  const readyRows = selected.filter(rowIsImportable)
+  const readyBookings = readyRows.reduce((count, r) => count + bookingParts(r).length, 0)
 
   return (
     <div className="view">
@@ -194,8 +266,11 @@ export function ImportView() {
               {draft.rows.map((r, i) => {
                 const isDuplicate = existingHashes.has(r.hash)
                 const inYear = r.date.startsWith(String(file.year))
+                const splitTotal = sumSplits(r.splits)
+                const splitDiff = Math.abs(r.amount) - splitTotal
                 return (
-                  <tr key={`${r.hash}-${i}`} style={isDuplicate || !inYear ? { opacity: 0.5 } : undefined}>
+                  <Fragment key={`${r.hash}-${i}`}>
+                  <tr style={isDuplicate || !inYear ? { opacity: 0.5 } : undefined}>
                     <td>
                       <input
                         type="checkbox"
@@ -222,11 +297,25 @@ export function ImportView() {
                         value={r.description}
                         onChange={(e) => setRow(i, { description: e.target.value })}
                         placeholder="z. B. Erstattung Pizza"
-                        disabled={!r.selected || isDuplicate}
+                        disabled={!r.selected || isDuplicate || Boolean(r.splits?.length)}
                         aria-label="Eigener Verwendungszweck"
-                        aria-invalid={r.selected && !isDuplicate && !r.description.trim()}
+                        aria-invalid={r.selected && !isDuplicate && !(r.splits?.length) && !r.description.trim()}
                         style={{ minWidth: 140, width: '100%' }}
                       />
+                      {r.splits?.length ? (
+                        <span className="pill" style={{ marginTop: 6 }}>
+                          auf {r.splits.length} Buchungen aufgeteilt
+                        </span>
+                      ) : (
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          style={{ marginTop: 6 }}
+                          disabled={!r.selected || isDuplicate}
+                          onClick={() => startSplit(i)}
+                        >
+                          Aufteilen
+                        </button>
+                      )}
                     </td>
                     <td className="num">
                       <Amount cents={r.amount} withSign />
@@ -235,10 +324,14 @@ export function ImportView() {
                       <select
                         value={r.categoryId}
                         onChange={(e) => setRow(i, { categoryId: e.target.value })}
-                        disabled={!r.selected || isDuplicate}
+                        disabled={!r.selected || isDuplicate || Boolean(r.splits?.length)}
                         aria-label="Kategorie"
+                        aria-invalid={r.selected && !isDuplicate && !r.splits?.length && !r.categoryId}
                         style={{ maxWidth: 160 }}
                       >
+                        <option value="" disabled>
+                          – Kategorie wählen –
+                        </option>
                         {activeCats.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name}
@@ -250,25 +343,108 @@ export function ImportView() {
                       <input
                         type="checkbox"
                         checked={r.isUmsatz}
-                        disabled={!r.selected || isDuplicate}
+                        disabled={!r.selected || isDuplicate || Boolean(r.splits?.length)}
                         onChange={(e) => setRow(i, { isUmsatz: e.target.checked })}
                         aria-label="Zählt als Umsatz"
                       />
                     </td>
                   </tr>
+                  {r.splits?.length ? (
+                    <tr key={`${r.hash}-${i}-splits`} className="split-row">
+                      <td></td>
+                      <td colSpan={6}>
+                        <div className="split-editor">
+                          {r.splits.map((split) => (
+                            <div className="split-editor__line" key={split.id}>
+                              <input
+                                value={split.description}
+                                onChange={(e) => setSplit(i, split.id, { description: e.target.value })}
+                                placeholder="z. B. Getränke Event A"
+                                disabled={!r.selected || isDuplicate}
+                                aria-label="Split-Verwendungszweck"
+                                aria-invalid={r.selected && !isDuplicate && !split.description.trim()}
+                              />
+                              <select
+                                value={split.categoryId}
+                                onChange={(e) => setSplit(i, split.id, { categoryId: e.target.value })}
+                                disabled={!r.selected || isDuplicate}
+                                aria-label="Split-Kategorie"
+                                aria-invalid={r.selected && !isDuplicate && !split.categoryId}
+                              >
+                                <option value="" disabled>
+                                  – Kategorie wählen –
+                                </option>
+                                {activeCats.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <CentsAmountInput
+                                cents={split.amount}
+                                disabled={!r.selected || isDuplicate}
+                                invalid={r.selected && !isDuplicate && split.amount <= 0}
+                                onCommit={(amount) => setSplit(i, split.id, { amount })}
+                                aria-label="Split-Betrag"
+                                style={{ maxWidth: 120, textAlign: 'right' }}
+                              />
+                              <label className="split-editor__check">
+                                <input
+                                  type="checkbox"
+                                  checked={split.isUmsatz}
+                                  disabled={!r.selected || isDuplicate}
+                                  onChange={(e) => setSplit(i, split.id, { isUmsatz: e.target.checked })}
+                                />
+                                Umsatz
+                              </label>
+                              <button
+                                className="btn btn--ghost btn--sm btn--danger"
+                                disabled={!r.selected || isDuplicate || r.splits!.length <= 2}
+                                onClick={() => removeSplit(i, split.id)}
+                              >
+                                Entfernen
+                              </button>
+                            </div>
+                          ))}
+                          <div className="toolbar">
+                            <button
+                              className="btn btn--ghost btn--sm"
+                              disabled={!r.selected || isDuplicate}
+                              onClick={() => addSplit(i)}
+                            >
+                              Teil hinzufügen
+                            </button>
+                            <button
+                              className="btn btn--ghost btn--sm"
+                              disabled={!r.selected || isDuplicate}
+                              onClick={() => setRow(i, { splits: undefined })}
+                            >
+                              Split entfernen
+                            </button>
+                            <div className="toolbar__spacer" />
+                            <span className={splitDiff === 0 ? 'hint' : 'hint split-editor__error'}>
+                              Aufgeteilt: <Amount cents={splitTotal} /> / Original: <Amount cents={Math.abs(r.amount)} />
+                              {splitDiff !== 0 && <> · Differenz: <Amount cents={splitDiff} /></>}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 )
               })}
             </tbody>
           </table>
           <div className="toolbar" style={{ marginTop: 'var(--space-4)' }}>
-            {missingText > 0 && (
+            {invalidRows > 0 && (
               <p className="hint" style={{ margin: 0 }}>
-                {missingText} ausgewählte Umsätze haben noch keinen eigenen Verwendungszweck.
+                {invalidRows} ausgewählte Umsätze sind noch unvollständig oder Split-Summen passen nicht.
               </p>
             )}
             <div className="toolbar__spacer" />
-            <button className="btn btn--primary" disabled={readyCount === 0} onClick={doImport}>
-              {readyCount} Buchungen übernehmen
+            <button className="btn btn--primary" disabled={readyRows.length === 0} onClick={doImport}>
+              {readyBookings} Buchungen übernehmen
             </button>
           </div>
         </section>
@@ -277,3 +453,28 @@ export function ImportView() {
     </div>
   )
 }
+
+function bookingParts(row: ImportDraftRow): ImportDraftSplit[] {
+  if (row.splits?.length) return row.splits
+  return [
+    {
+      id: row.hash,
+      description: row.description,
+      categoryId: row.categoryId,
+      amount: Math.abs(row.amount),
+      isUmsatz: row.isUmsatz,
+    },
+  ]
+}
+
+function rowIsImportable(row: ImportDraftRow): boolean {
+  const parts = bookingParts(row)
+  if (parts.some((p) => !p.description.trim() || !p.categoryId || p.amount <= 0)) return false
+  if (!row.splits?.length) return true
+  return sumSplits(row.splits) === Math.abs(row.amount)
+}
+
+function sumSplits(splits: ImportDraftSplit[] | undefined): number {
+  return splits?.reduce((sum, split) => sum + split.amount, 0) ?? 0
+}
+

@@ -27,9 +27,14 @@ const api = {
   loadSettings: (): Promise<unknown> => ipcRenderer.invoke('settings:load'),
   saveSettings: (data: unknown): Promise<void> => ipcRenderer.invoke('settings:save', data),
   openDataFolder: (): Promise<void> => ipcRenderer.invoke('data:openFolder'),
+  openCloudFolder: (): Promise<void> => ipcRenderer.invoke('data:openCloudFolder'),
+  selectCloudFolder: (): Promise<string | null> => ipcRenderer.invoke('data:selectCloudFolder'),
   openCsv: (): Promise<{ name: string; content: string } | null> => ipcRenderer.invoke('csv:open'),
-  exportPdf: (html: string, suggestedName: string): Promise<{ ok: boolean; path?: string }> =>
-    ipcRenderer.invoke('pdf:export', html, suggestedName),
+  exportPdf: (
+    html: string,
+    suggestedName: string,
+    options?: { landscape?: boolean },
+  ): Promise<{ ok: boolean; path?: string }> => ipcRenderer.invoke('pdf:export', html, suggestedName, options),
 }
 
 export type KassenwartApi = typeof api

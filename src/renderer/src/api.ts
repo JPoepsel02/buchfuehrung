@@ -20,8 +20,14 @@ export interface Api {
   loadSettings(): Promise<unknown>
   saveSettings(data: unknown): Promise<void>
   openDataFolder(): Promise<void>
+  openCloudFolder(): Promise<void>
+  selectCloudFolder(): Promise<string | null>
   openCsv(): Promise<{ name: string; content: string } | null>
-  exportPdf(html: string, suggestedName: string): Promise<{ ok: boolean; path?: string }>
+  exportPdf(
+    html: string,
+    suggestedName: string,
+    options?: { landscape?: boolean },
+  ): Promise<{ ok: boolean; path?: string }>
   getVersion(): Promise<string>
   checkForUpdate(): Promise<UpdateInfo>
   installUpdate(info: UpdateInfo): Promise<{ ok: boolean; error?: string }>
@@ -62,6 +68,13 @@ const webFallback: Api = {
   },
   async openDataFolder() {
     alert('Im Browser-Modus werden die Daten im localStorage gespeichert.')
+  },
+  async openCloudFolder() {
+    alert('Ordner öffnen ist nur in der installierten App verfügbar.')
+  },
+  async selectCloudFolder() {
+    alert('Cloud-Sicherung ist nur in der installierten App verfügbar.')
+    return null
   },
   openCsv() {
     return new Promise((resolve) => {

@@ -1,6 +1,7 @@
-import { BrowserWindow, app, shell } from 'electron'
+import { BrowserWindow, app, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 import { applyLogo, currentLogo, registerIpc } from './ipc'
+import { loadSettings } from './storage'
 
 // Datenordner explizit festnageln: bleibt „kassenwart“, egal wie die App
 // nach außen heißt – sonst verlören Bestandsnutzer beim Umbenennen ihre Daten.
@@ -8,13 +9,16 @@ app.setPath('userData', join(app.getPath('appData'), 'kassenwart'))
 app.setName('Buchführung')
 
 function createWindow(): void {
+  // Fensterfarbe passend zum gewählten Farbschema, damit beim Start nichts aufblitzt
+  const theme = (loadSettings() as { theme?: string }).theme
+  const dark = theme === 'dunkel' || (theme !== 'hell' && nativeTheme.shouldUseDarkColors)
   const win = new BrowserWindow({
     width: 1280,
     height: 840,
     minWidth: 960,
     minHeight: 640,
     title: 'Buchführung',
-    backgroundColor: '#f7f5f0',
+    backgroundColor: dark ? '#211e1b' : '#f7f5f0',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
