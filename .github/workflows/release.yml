@@ -1,0 +1,44 @@
+name: Release
+
+# Baut Installer für Windows und macOS, sobald ein Tag wie v1.0.0 gepusht
+# wird, und hängt sie an einen GitHub-Release an.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            args: --mac
+          - os: windows-latest
+            args: --win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Installer bauen
+        run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          # Unsignierte Builds (kein Apple-Developer-Zertifikat nötig)
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: An Release anhängen
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe

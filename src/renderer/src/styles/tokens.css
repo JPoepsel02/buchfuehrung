@@ -1,0 +1,55 @@
+:root {
+  /* Papier & Tinte – warmes Ledger-Thema */
+  --color-paper: oklch(97.5% 0.008 90);
+  --color-paper-raised: oklch(99% 0.005 90);
+  --color-paper-sunken: oklch(95% 0.01 90);
+  --color-ink: oklch(24% 0.02 80);
+  --color-ink-soft: oklch(45% 0.02 80);
+  --color-ink-faint: oklch(62% 0.015 80);
+  --color-line: oklch(88% 0.012 85);
+  --color-line-strong: oklch(78% 0.015 85);
+
+  /* Sidebar: tiefes Flaschengrün */
+  --color-pine: oklch(28% 0.05 165);
+  --color-pine-raised: oklch(33% 0.055 165);
+  --color-pine-text: oklch(92% 0.02 150);
+  --color-pine-muted: oklch(70% 0.03 160);
+
+  /* Semantik */
+  --color-accent: oklch(48% 0.11 160);
+  --color-accent-soft: oklch(93% 0.035 160);
+  --color-income: oklch(46% 0.11 155);
+  --color-expense: oklch(48% 0.14 28);
+  --color-expense-soft: oklch(94% 0.03 28);
+  --color-warn: oklch(70% 0.13 75);
+  --color-focus: oklch(60% 0.12 160);
+
+  --font-display: 'Fraunces Variable', Georgia, serif;
+  --font-body: 'Inter Variable', system-ui, -apple-system, sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.85rem;
+  --text-base: 0.95rem;
+  --text-lg: 1.15rem;
+  --text-xl: 1.5rem;
+  --text-display: clamp(1.7rem, 1.4rem + 1vw, 2.2rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 1px 2px oklch(30% 0.02 80 / 0.06), 0 4px 16px oklch(30% 0.02 80 / 0.05);
+  --shadow-pop: 0 4px 12px oklch(30% 0.02 80 / 0.12), 0 12px 40px oklch(30% 0.02 80 / 0.12);
+
+  --duration-fast: 140ms;
+  --duration-normal: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
