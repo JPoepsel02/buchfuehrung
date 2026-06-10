@@ -45,7 +45,7 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: 256px 1fr;
   height: 100%;
 }
 
@@ -65,6 +65,21 @@ textarea {
   font-weight: 600;
   padding: var(--space-4) var(--space-3) var(--space-2);
   letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sidebar__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px oklch(20% 0.03 165 / 0.35);
+  flex: none;
 }
 
 .sidebar__year {

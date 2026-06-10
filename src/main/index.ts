@@ -8,7 +8,7 @@ function createWindow(): void {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: 'Kassenwart',
+    title: 'Buchführung',
     backgroundColor: '#f7f5f0',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
