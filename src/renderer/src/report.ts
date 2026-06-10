@@ -1,4 +1,3 @@
-import logoDataUrl from './assets/app-logo.png?inline'
 import { byCategory, chronological, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatAmount, formatDate, formatEur, monthOf } from '@shared/money'
 import type { YearFile } from '@shared/types'
@@ -8,7 +7,7 @@ import type { YearFile } from '@shared/types'
  * (A4). Enthält Abhak-Kästchen je Beleg sowie Unterschriftsfelder für die
  * Kassenprüfung.
  */
-export function buildReportHtml(file: YearFile): string {
+export function buildReportHtml(file: YearFile, logoDataUrl?: string | null): string {
   const totals = yearTotals(file)
   const chrono = chronological(file)
   const groups = byCategory(file)
@@ -115,7 +114,7 @@ export function buildReportHtml(file: YearFile): string {
         · Erstellt am ${formatDate(new Date().toISOString().slice(0, 10))}
       </div>
     </div>
-    <img src="${logoDataUrl}" alt="Vereinslogo">
+    ${logoDataUrl ? `<img src="${logoDataUrl}" alt="">` : ''}
   </header>
 
   <h2>1. Zusammenfassung</h2>

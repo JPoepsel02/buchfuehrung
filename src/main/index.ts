@@ -1,6 +1,6 @@
 import { BrowserWindow, app, shell } from 'electron'
 import { join } from 'node:path'
-import { registerIpc } from './ipc'
+import { applyLogo, currentLogo, registerIpc } from './ipc'
 
 // Datenordner explizit festnageln: bleibt „kassenwart“, egal wie die App
 // nach außen heißt – sonst verlören Bestandsnutzer beim Umbenennen ihre Daten.
@@ -39,6 +39,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerIpc()
   createWindow()
+  applyLogo(currentLogo())
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

@@ -347,6 +347,31 @@ table.ledger {
   overflow-x: auto;
 }
 
+/* Neutrale Wortmarke, wenn kein eigenes Logo hochgeladen ist */
+.logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-pine);
+  color: var(--color-paper);
+  font-family: var(--font-display);
+  font-weight: 700;
+  border-radius: 22%;
+  line-height: 1;
+  flex: none;
+}
+
+.logo-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: white;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+
 .ledger tr.group-head td {
   background: var(--color-accent-soft);
   font-weight: 650;
