@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import logoUrl from '../assets/kljb-logo.png'
 import { useStore } from '../store'
 import { parseAmountToCents } from '@shared/money'
 
@@ -29,7 +30,8 @@ export function SetupView() {
   return (
     <div className="setup">
       <form className="setup__card" onSubmit={submit}>
-        <div className="setup__brand">Kassenwart</div>
+        <img src={logoUrl} alt="KLJB Herzfeld" width={96} style={{ marginBottom: 'var(--space-3)' }} />
+        <div className="setup__brand">Buchführung</div>
         <p className="setup__sub">
           Lege dein erstes Kassenjahr an. Der Anfangssaldo ist der Abschlusssaldo des Vorjahres.
         </p>

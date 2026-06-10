@@ -1,3 +1,4 @@
+import logoDataUrl from './assets/kljb-logo.png?inline'
 import { byCategory, chronological, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatAmount, formatDate, formatEur, monthOf } from '@shared/money'
 import type { YearFile } from '@shared/types'
@@ -76,7 +77,9 @@ export function buildReportHtml(file: YearFile): string {
     font-size: 10.5pt;
     line-height: 1.45;
   }
-  header { border-bottom: 3px double #1a1a18; padding-bottom: 10px; margin-bottom: 18px; }
+  header { border-bottom: 3px double #1a1a18; padding-bottom: 10px; margin-bottom: 18px;
+           display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  header img { width: 86px; height: auto; flex: none; }
   h1 { font-size: 20pt; margin: 0; }
   h2 { font-size: 13pt; margin: 26px 0 8px; border-bottom: 1px solid #1a1a18; padding-bottom: 3px; }
   .meta { color: #555; margin-top: 4px; }
@@ -105,11 +108,14 @@ export function buildReportHtml(file: YearFile): string {
 </head>
 <body>
   <header>
-    <h1>Kassenbericht ${file.year}</h1>
-    <div class="meta">
-      ${esc(file.clubName || '')}${file.clubName ? ' · ' : ''}Kassenführung: ${esc(file.treasurerName || '–')}
-      · Erstellt am ${formatDate(new Date().toISOString().slice(0, 10))}
+    <div>
+      <h1>Kassenbericht ${file.year}</h1>
+      <div class="meta">
+        ${esc(file.clubName || '')}${file.clubName ? ' · ' : ''}Kassenführung: ${esc(file.treasurerName || '–')}
+        · Erstellt am ${formatDate(new Date().toISOString().slice(0, 10))}
+      </div>
     </div>
+    <img src="${logoDataUrl}" alt="KLJB Herzfeld">
   </header>
 
   <h2>1. Zusammenfassung</h2>
@@ -159,7 +165,7 @@ export function buildReportHtml(file: YearFile): string {
     <div class="sig">Kassenprüfer:in 1 (Name, Unterschrift)</div>
     <div class="sig">Kassenprüfer:in 2 (Name, Unterschrift)</div>
   </div>
-  <footer>Erstellt mit Kassenwart · Kassenbericht ${file.year}</footer>
+  <footer>Erstellt mit Buchführung (KLJB Herzfeld) · Kassenbericht ${file.year}</footer>
 </body>
 </html>`
 }

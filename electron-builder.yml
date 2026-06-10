@@ -1,7 +1,11 @@
-appId: de.kassenwart.app
-productName: Kassenwart
+appId: de.kljb-herzfeld.buchfuehrung
+productName: Buchführung
+# Umlaut-freie Dateinamen für Installer und Windows-Executable
+executableName: Buchfuehrung
+artifactName: Buchfuehrung-${version}-${arch}.${ext}
 directories:
   output: release
+  buildResources: build
 files:
   - out/**
   - package.json
