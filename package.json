@@ -1,6 +1,6 @@
 {
   "name": "kassenwart",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Buchführung – Kassenbericht-App für Vereine: Buchungen, Auswertung, Kontoauszug-Import und Prüfbericht",
   "main": "out/main/index.js",
   "author": "Jannik Pöpsel",
