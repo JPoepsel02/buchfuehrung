@@ -26,14 +26,16 @@ function umsatzAmount(b: Booking): number {
 }
 
 /**
- * Berechnet Beleg-Nr. (Kürzel + Zähler in Erfassungsreihenfolge, wie
- * COUNTIF in der Excel) und alle abgeleiteten Beträge.
+ * Berechnet Beleg-Nr. und alle abgeleiteten Beträge. Die Nummern werden je
+ * Kategorie chronologisch vergeben (erster Umsatz des Jahres = kleinste
+ * Nummer) – unabhängig davon, in welcher Reihenfolge erfasst oder
+ * importiert wurde. Bei gleichem Datum zählt die Erfassungsreihenfolge.
  */
 export function computeBookings(file: YearFile): ComputedBooking[] {
   const byId = new Map(file.categories.map((c) => [c.id, c]))
   const counters = new Map<string, number>()
   return [...file.bookings]
-    .sort((a, b) => a.seq - b.seq)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.seq - b.seq)
     .map((b) => {
       const cat = byId.get(b.categoryId)
       const count = (counters.get(b.categoryId) ?? 0) + 1

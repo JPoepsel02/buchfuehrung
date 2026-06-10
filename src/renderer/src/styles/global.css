@@ -45,7 +45,8 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-columns: 256px 1fr;
+  /* minmax(0, …) erlaubt dem Inhalt zu schrumpfen, statt das Layout zu sprengen */
+  grid-template-columns: 256px minmax(0, 1fr);
   height: 100%;
 }
 
@@ -305,6 +306,45 @@ table.ledger {
   color: var(--color-ink-soft);
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* Verwendungszweck: bricht lange Wörter (IBANs) um, statt die Tabelle zu sprengen */
+.ledger td.cell-desc {
+  overflow-wrap: anywhere;
+  min-width: 140px;
+  max-width: 360px;
+}
+
+/* Original-Verwendungszweck aus dem Kontoauszug: klein, auf 2 Zeilen gekürzt */
+.ledger td.cell-bank {
+  max-width: 200px;
+}
+
+.bank-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+}
+
+/* Notizen (z. B. Original-Bank-Text) einzeilig kürzen */
+.hint--clamp {
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger input[aria-invalid='true'] {
+  border-color: var(--color-expense);
+}
+
+/* Breite Tabellen scrollen innerhalb der Karte, statt das Layout zu sprengen */
+.card {
+  overflow-x: auto;
 }
 
 .ledger tr.group-head td {

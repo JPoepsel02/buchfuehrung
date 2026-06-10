@@ -2,6 +2,11 @@ import { BrowserWindow, app, shell } from 'electron'
 import { join } from 'node:path'
 import { registerIpc } from './ipc'
 
+// Datenordner explizit festnageln: bleibt „kassenwart“, egal wie die App
+// nach außen heißt – sonst verlören Bestandsnutzer beim Umbenennen ihre Daten.
+app.setPath('userData', join(app.getPath('appData'), 'kassenwart'))
+app.setName('Buchführung')
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,

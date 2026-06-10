@@ -42,7 +42,7 @@ export function ChronoView() {
                 <tr key={r.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
                   <td className="ref">{r.ref}</td>
-                  <td>{r.description}</td>
+                  <td className="cell-desc">{r.description}</td>
                   <td className="num">{r.type === 'ausgabe' ? <Amount cents={-r.amount} /> : ''}</td>
                   <td className="num">{r.type === 'einnahme' ? <Amount cents={r.amount} /> : ''}</td>
                   <td className="num">{r.isUmsatz ? <Amount cents={r.umsatzAmount} /> : ''}</td>

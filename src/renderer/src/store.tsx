@@ -13,6 +13,8 @@ interface Store {
   selectYear(year: number): Promise<void>
   /** Neues Jahr anlegen (optional mit Anfangssaldo) */
   createYear(year: number, openingBalance: number, clubName: string, treasurerName: string): Promise<void>
+  /** Jahr löschen (Datei wandert in den Backup-Ordner). Nicht für das letzte Jahr. */
+  deleteYear(year: number): Promise<void>
   update(mutate: (file: YearFile) => YearFile): void
   addBooking(data: Omit<Booking, 'id' | 'seq'>): void
   addBookings(data: Omit<Booking, 'id' | 'seq'>[]): void
@@ -78,6 +80,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await api.saveYear(year, next)
         setYears((y) => [...new Set([year, ...y])].sort((a, b) => b - a))
         setFile(next)
+      },
+      async deleteYear(year) {
+        const remaining = years.filter((y) => y !== year)
+        if (remaining.length === 0) return
+        if (file?.year === year && saveTimer.current) {
+          // Ausstehende Speicherung verwerfen, sonst wird das Jahr gleich neu angelegt
+          clearTimeout(saveTimer.current)
+          saveTimer.current = null
+        }
+        await api.deleteYear(year)
+        setYears(remaining)
+        if (file?.year === year) {
+          const data = (await api.loadYear(remaining[0])) as YearFile | null
+          if (data) setFile(data)
+        }
       },
       update,
       addBooking(data) {
