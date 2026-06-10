@@ -3,6 +3,15 @@
  * springt ein localStorage-Fallback ein, damit alle Ansichten bedienbar sind.
  */
 
+export interface UpdateInfo {
+  current: string
+  latest: string
+  hasUpdate: boolean
+  assetName?: string
+  assetUrl?: string
+  notes?: string
+}
+
 export interface Api {
   listYears(): Promise<number[]>
   loadYear(year: number): Promise<unknown | null>
@@ -11,6 +20,10 @@ export interface Api {
   openDataFolder(): Promise<void>
   openCsv(): Promise<{ name: string; content: string } | null>
   exportPdf(html: string, suggestedName: string): Promise<{ ok: boolean; path?: string }>
+  getVersion(): Promise<string>
+  checkForUpdate(): Promise<UpdateInfo>
+  installUpdate(info: UpdateInfo): Promise<{ ok: boolean; error?: string }>
+  onUpdateProgress(cb: (p: { received: number; total: number }) => void): () => void
 }
 
 declare global {
@@ -64,6 +77,18 @@ const webFallback: Api = {
     win.document.close()
     win.print()
     return { ok: true }
+  },
+  async getVersion() {
+    return 'Browser-Vorschau'
+  },
+  async checkForUpdate() {
+    return { current: 'Browser-Vorschau', latest: '', hasUpdate: false }
+  },
+  async installUpdate() {
+    return { ok: false, error: 'Updates nur in der installierten App.' }
+  },
+  onUpdateProgress() {
+    return () => {}
   },
 }
 

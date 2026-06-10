@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, isElectron } from '../api'
+import type { UpdateInfo } from '../api'
 import { useStore } from '../store'
 import { yearTotals } from '@shared/ledger'
 import { formatEur, parseAmountToCents } from '@shared/money'
@@ -125,6 +126,8 @@ export function EinstellungenView() {
         )}
       </section>
 
+      {isElectron && <UpdateCard />}
+
       <section className="card">
         <h2 className="card__title">Kassenjahre</h2>
         <table className="ledger">
@@ -248,5 +251,84 @@ export function EinstellungenView() {
       </section>
       {toast && <div className="toast">{toast}</div>}
     </div>
+  )
+}
+
+/** Update-Bereich: Version anzeigen, Release prüfen, herunterladen und installieren. */
+function UpdateCard() {
+  const [version, setVersion] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [info, setInfo] = useState<UpdateInfo | null>(null)
+  const [error, setError] = useState('')
+  const [progress, setProgress] = useState<number | null>(null)
+
+  useEffect(() => {
+    void api.getVersion().then(setVersion)
+    return api.onUpdateProgress((p) => {
+      setProgress(p.total > 0 ? Math.round((p.received / p.total) * 100) : -1)
+    })
+  }, [])
+
+  async function check() {
+    setChecking(true)
+    setError('')
+    setInfo(null)
+    try {
+      setInfo(await api.checkForUpdate())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  async function install() {
+    if (!info) return
+    setError('')
+    setProgress(0)
+    const result = await api.installUpdate(info)
+    // Bei Erfolg startet die App neu – diesen Zweig sieht man nur im Fehlerfall
+    if (!result.ok) {
+      setProgress(null)
+      setError(result.error ?? 'Installation fehlgeschlagen.')
+    }
+  }
+
+  return (
+    <section className="card">
+      <h2 className="card__title">Updates</h2>
+      <div className="toolbar">
+        <span>
+          Installierte Version: <strong>{version || '…'}</strong>
+          {info && !info.hasUpdate && <span className="pill pill--in" style={{ marginLeft: 8 }}>aktuell</span>}
+        </span>
+        <div className="toolbar__spacer" />
+        {info?.hasUpdate && progress === null && (
+          <button className="btn btn--primary" onClick={() => void install()}>
+            Version {info.latest} installieren
+          </button>
+        )}
+        <button className="btn" disabled={checking || progress !== null} onClick={() => void check()}>
+          {checking ? 'Prüfe …' : 'Nach Updates suchen'}
+        </button>
+      </div>
+      {progress !== null && (
+        <p className="hint" style={{ marginBottom: 0 }}>
+          {progress < 0 ? 'Lade herunter …' : `Lade herunter … ${progress} %`} Die App startet nach
+          der Installation automatisch neu.
+        </p>
+      )}
+      {info?.hasUpdate && progress === null && (
+        <p className="hint" style={{ marginBottom: 0 }}>
+          Neue Version {info.latest} verfügbar (installiert: {info.current}). Die Daten bleiben bei
+          der Aktualisierung erhalten.
+        </p>
+      )}
+      {error && (
+        <p className="hint" style={{ marginBottom: 0, color: 'var(--color-expense)' }}>
+          {error}
+        </p>
+      )}
+    </section>
   )
 }

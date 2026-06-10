@@ -1,7 +1,25 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+interface UpdateInfo {
+  current: string
+  latest: string
+  hasUpdate: boolean
+  assetName?: string
+  assetUrl?: string
+  notes?: string
+}
+
 /** Schmale, typisierte Brücke zwischen Renderer und Main-Prozess. */
 const api = {
+  getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  checkForUpdate: (): Promise<UpdateInfo> => ipcRenderer.invoke('update:check'),
+  installUpdate: (info: UpdateInfo): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('update:install', info),
+  onUpdateProgress: (cb: (p: { received: number; total: number }) => void): (() => void) => {
+    const listener = (_e: unknown, p: { received: number; total: number }) => cb(p)
+    ipcRenderer.on('update:progress', listener)
+    return () => ipcRenderer.removeListener('update:progress', listener)
+  },
   listYears: (): Promise<number[]> => ipcRenderer.invoke('years:list'),
   loadYear: (year: number): Promise<unknown | null> => ipcRenderer.invoke('years:load', year),
   saveYear: (year: number, data: unknown): Promise<void> => ipcRenderer.invoke('years:save', year, data),

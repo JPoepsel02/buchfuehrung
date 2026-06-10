@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import logoUrl from './assets/kljb-logo.png'
+import { api, isElectron } from './api'
 import { useStore } from './store'
 import { SetupView } from './views/SetupView'
 import { UebersichtView } from './views/UebersichtView'
@@ -25,6 +26,27 @@ type ViewId = (typeof VIEWS)[number]['id']
 export function App() {
   const { loading, file, years, selectYear } = useStore()
   const [view, setView] = useState<ViewId>('uebersicht')
+  const [updateHint, setUpdateHint] = useState('')
+
+  // Stiller Update-Check beim Start – bei neuer Version nur ein Hinweis,
+  // installiert wird bewusst erst auf Klick in den Einstellungen.
+  useEffect(() => {
+    if (!isElectron) return
+    const timer = setTimeout(() => {
+      api
+        .checkForUpdate()
+        .then((info) => {
+          if (info.hasUpdate) {
+            setUpdateHint(`Neue Version ${info.latest} verfügbar – installieren unter Einstellungen → Updates.`)
+            setTimeout(() => setUpdateHint(''), 12000)
+          }
+        })
+        .catch(() => {
+          // Kein Internet o. Ä. – der Start soll davon nichts merken
+        })
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [])
 
   if (loading) return null
   if (!file) return <SetupView />
@@ -77,6 +99,7 @@ export function App() {
         {view === 'pruefbericht' && <PruefberichtView />}
         {view === 'einstellungen' && <EinstellungenView />}
       </main>
+      {updateHint && <div className="toast">{updateHint}</div>}
     </div>
   )
 }

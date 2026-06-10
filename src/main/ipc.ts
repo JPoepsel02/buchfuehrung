@@ -3,8 +3,15 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { dataDirPath, deleteYear, listYears, loadYear, saveYear } from './storage'
+import { checkForUpdate, downloadAndInstall } from './updater'
+import type { UpdateInfo } from './updater'
 
 export function registerIpc(): void {
+  ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('update:check', () => checkForUpdate())
+  ipcMain.handle('update:install', (e, info: UpdateInfo) =>
+    downloadAndInstall(BrowserWindow.fromWebContents(e.sender), info),
+  )
   ipcMain.handle('years:list', () => listYears())
   ipcMain.handle('years:load', (_e, year: number) => loadYear(year))
   ipcMain.handle('years:save', (_e, year: number, data: unknown) => saveYear(year, data))
