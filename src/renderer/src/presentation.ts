@@ -57,6 +57,10 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
 
   const logo = logoDataUrl ? `<img class="logo" src="${logoDataUrl}" alt="">` : ''
   const heroLogo = logoDataUrl ? `<img class="hero-logo" src="${logoDataUrl}" alt="">` : ''
+  // Auf den Großzahl-Folien: kleines Logo statt Zierstrich (wenn vorhanden)
+  const centerMark = logoDataUrl
+    ? `<img class="center-logo" src="${logoDataUrl}" alt="">`
+    : '<div class="rule"></div>'
 
   const flowSlides = chunks
     .map((chunk, idx) => {
@@ -160,6 +164,8 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
              opacity: 0.5; margin-top: 10mm; }
   .rule { width: 22mm; height: 1mm; border-radius: 1mm; background: ${GREEN}; margin: 0 auto 10mm; }
   .slide.dark .rule { background: ${GREEN_SOFT}; }
+  .center-logo { width: 22mm; height: auto; margin: 0 auto 9mm; display: block; }
+  .slide.dark .center-logo { filter: drop-shadow(0 1.5mm 4mm rgb(0 0 0 / 0.35)); }
 
   /* Jahres-Flow: Stationen an durchlaufender Zeitlinie */
   .flow {
@@ -231,7 +237,7 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   <section class="slide light">
     <div class="giant-year">${file.year}</div>
     <div class="big-center">
-      <div class="rule"></div>
+      ${centerMark}
       <div class="big-label">Kontostand zu Beginn des Jahres ${file.year}</div>
       <div class="big-number">${formatEur(file.openingBalance)}</div>
       <div class="big-sub">1. Januar ${file.year}</div>
@@ -243,7 +249,7 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   <section class="slide light">
     <div class="giant-year">${file.year}</div>
     <div class="big-center">
-      <div class="rule"></div>
+      ${centerMark}
       <div class="big-label">Saldo für das Geschäftsjahr ${file.year}</div>
       <div class="big-number ${totals.saldo < 0 ? 'neg' : 'pos'}">${totals.saldo > 0 ? '+ ' : totals.saldo < 0 ? '− ' : ''}${formatEur(Math.abs(totals.saldo))}</div>
       <div class="big-sub">Einnahmen ${formatEur(totals.einnahmen)} · Ausgaben ${formatEur(totals.ausgaben)} · ${totals.count} Buchungen</div>
@@ -253,7 +259,7 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   <section class="slide dark">
     <div class="giant-year">${file.year}</div>
     <div class="big-center">
-      <div class="rule"></div>
+      ${centerMark}
       <div class="big-label">Kassenbestand</div>
       <div class="big-number">${formatEur(totals.closingBalance)}</div>
       <div class="big-sub">31. Dezember ${file.year}</div>
