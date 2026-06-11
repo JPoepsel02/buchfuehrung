@@ -112,7 +112,7 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
 <style>
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; margin: 0; }
-  body { font-family: Georgia, 'Times New Roman', serif; color: ${INK}; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: ${INK}; }
   .slide {
     width: 296mm; height: 209mm;
     page-break-after: always;
