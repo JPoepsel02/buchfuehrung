@@ -12,6 +12,15 @@ export interface Category {
   /** Reihenfolge im Veranstaltungs-Blatt und im Prüfbericht */
   sortOrder: number
   active: boolean
+  /**
+   * Darstellung in der Jahres-Präsentation:
+   * 'monat' = einmal im Jahresverlauf, 'sammel' = auf der Sammel-Folie
+   * nach den Monaten. Ohne Wert wird automatisch entschieden (Sonstiges,
+   * Beiträge, Zuschüsse und Spenden landen auf der Sammel-Folie).
+   */
+  praesentation?: 'monat' | 'sammel'
+  /** Monat (1–12) für den Jahresverlauf; ohne Wert: Monat der ersten Buchung */
+  praesentationMonat?: number
 }
 
 export interface Booking {

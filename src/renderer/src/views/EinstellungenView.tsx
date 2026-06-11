@@ -4,9 +4,10 @@ import type { UpdateInfo } from '../api'
 import { AmountField } from '../components/AmountInput'
 import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
+import { praesentationsModus } from '../presentation'
 import { yearTotals } from '@shared/ledger'
-import { formatEur, parseAmountToCents } from '@shared/money'
-import type { ThemeSetting } from '@shared/types'
+import { MONTH_NAMES, formatEur, parseAmountToCents } from '@shared/money'
+import type { Category, ThemeSetting } from '@shared/types'
 
 const LOGO_MAX_PX = 512
 
@@ -190,6 +191,7 @@ export function EinstellungenView() {
               <th>Name</th>
               <th>Kürzel</th>
               <th>Aktiv</th>
+              <th>Präsentation</th>
               <th>Reihenfolge</th>
               <th></th>
             </tr>
@@ -213,6 +215,40 @@ export function EinstellungenView() {
                     onChange={(e) => updateCategory(c.id, { active: e.target.checked })}
                     aria-label="Kategorie aktiv"
                   />
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <select
+                    value={c.praesentation ?? ''}
+                    onChange={(e) =>
+                      updateCategory(c.id, {
+                        praesentation: (e.target.value || undefined) as Category['praesentation'],
+                      })
+                    }
+                    aria-label="Darstellung in der Jahres-Präsentation"
+                  >
+                    <option value="">Automatisch ({praesentationsModus(c) === 'sammel' ? 'Sammel-Folie' : 'Jahresverlauf'})</option>
+                    <option value="monat">Im Jahresverlauf</option>
+                    <option value="sammel">Sammel-Folie</option>
+                  </select>
+                  {praesentationsModus(c) === 'monat' && (
+                    <select
+                      value={c.praesentationMonat ?? 0}
+                      onChange={(e) =>
+                        updateCategory(c.id, {
+                          praesentationMonat: Number(e.target.value) || undefined,
+                        })
+                      }
+                      aria-label="Monat im Jahresverlauf"
+                      style={{ marginLeft: 6 }}
+                    >
+                      <option value={0}>Erste Buchung</option>
+                      {MONTH_NAMES.map((m, idx) => (
+                        <option key={m} value={idx + 1}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="btn btn--ghost btn--sm" disabled={i === 0} onClick={() => move(c.id, -1)} aria-label="Nach oben">
@@ -265,7 +301,9 @@ export function EinstellungenView() {
         </form>
         <p className="hint">
           Das Kürzel bestimmt die Beleg-Nummern (z. B. „M“ → M1, M2 …). Die Reihenfolge steuert die
-          Sortierung im Veranstaltungs-Blatt und im Prüfbericht.
+          Sortierung im Veranstaltungs-Blatt und im Prüfbericht. „Präsentation“ legt fest, ob eine
+          Kategorie im Jahresverlauf der Präsentation erscheint (einmalig, im Monat der ersten
+          Buchung oder im gewählten Monat) oder auf der Sammel-Folie nach den Monaten.
         </p>
       </section>
       {toast && <div className="toast">{toast}</div>}
