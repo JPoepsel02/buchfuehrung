@@ -1,94 +1,103 @@
-import { byCategory, chronological, monthSummaries, yearTotals } from '@shared/ledger'
+import { chronological, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur, monthOf } from '@shared/money'
-import type { MonthSummary, YearFile } from '@shared/types'
+import type { YearFile } from '@shared/types'
 
 /**
  * Jahres-Präsentation für die Generalversammlung (A4 quer, eine Folie pro
- * Seite): dunkle Titelfolie, "Jahr in Zahlen" als Bento-Grid, Jahresverlauf
- * mit Saldo-Balken und Kassenstand-Kurve, Monatskarten, Veranstaltungs-
- * Ranking sowie Jahressaldo und Endbestand als Großzahlen.
+ * Seite) – erzählt das Jahr als Reise: Startsaldo, dann alle Veranstaltungen
+ * chronologisch als Stationen an einer durchlaufenden Zeitlinie, zum Schluss
+ * Jahressaldo und Kassenbestand als Großzahlen (wie die Vereins-Vorlage).
  */
 
-const INK = '#1c2a21'
-const PINE = '#14281c'
-const PINE_DEEP = '#0d1f15'
-const CREAM = '#f7f4ec'
+const PINE = '#13271b'
+const PINE_DEEP = '#0b1b11'
+const CREAM = '#f8f5ee'
+const INK = '#21301f'
 const GREEN = '#2c7a4f'
-const GREEN_SOFT = '#9fd6b1'
+const GREEN_SOFT = '#a8dcbb'
 const RED = '#b14a32'
-const RED_SOFT = '#f0a08c'
-const MUTED = '#8a9388'
+const MUTED = '#98a094'
+const LINE = '#dcd7c8'
 
-const EUR0 = new Intl.NumberFormat('de-DE', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
+/** Eine Station der Jahres-Reise: Veranstaltung mit Monat und Saldo. */
+interface Station {
+  month: number
+  name: string
+  saldo: number
+}
 
 export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | null): string {
   const totals = yearTotals(file)
-  const months = monthSummaries(file)
   const chrono = chronological(file)
-  const groups = byCategory(file)
 
-  // Saldo je Veranstaltung innerhalb jedes Monats (Reihenfolge: erstes Auftreten)
-  const monthEvents: { month: number; events: { name: string; saldo: number }[] }[] = []
+  // Chronologische Stationen: Saldo je Veranstaltung innerhalb jedes Monats
+  const stations: Station[] = []
   for (const row of chrono) {
     const m = monthOf(row.date)
-    let bucket = monthEvents.find((x) => x.month === m)
-    if (!bucket) {
-      bucket = { month: m, events: [] }
-      monthEvents.push(bucket)
+    let st = stations.find((s) => s.month === m && s.name === row.categoryName)
+    if (!st) {
+      st = { month: m, name: row.categoryName, saldo: 0 }
+      stations.push(st)
     }
-    let event = bucket.events.find((e) => e.name === row.categoryName)
-    if (!event) {
-      event = { name: row.categoryName, saldo: 0 }
-      bucket.events.push(event)
-    }
-    event.saldo += row.signedAmount
+    st.saldo += row.signedAmount
   }
-  const monthChunks: (typeof monthEvents)[] = []
-  for (let i = 0; i < monthEvents.length; i += 4) monthChunks.push(monthEvents.slice(i, i + 4))
+
+  // Stationen gleichmäßig auf Folien verteilen (max. 4 je Folie) –
+  // verhindert eine fast leere letzte Folie mit nur einer Station.
+  const chunks: Station[][] = []
+  const slideCount = Math.max(1, Math.ceil(stations.length / 4))
+  const base = Math.floor(stations.length / slideCount)
+  let rest = stations.length % slideCount
+  for (let i = 0; i < stations.length; ) {
+    const size = base + (rest > 0 ? 1 : 0)
+    rest -= 1
+    chunks.push(stations.slice(i, i + size))
+    i += size
+  }
 
   const logo = logoDataUrl ? `<img class="logo" src="${logoDataUrl}" alt="">` : ''
   const heroLogo = logoDataUrl ? `<img class="hero-logo" src="${logoDataUrl}" alt="">` : ''
-  const eur = (cents: number) =>
-    `<span class="${cents < 0 ? 'neg' : 'pos'}">${cents > 0 ? '+' : ''}${formatEur(cents)}</span>`
 
-  const monthSlides = monthChunks
-    .map(
-      (chunk, idx) => `
+  const flowSlides = chunks
+    .map((chunk, idx) => {
+      const isLast = idx === chunks.length - 1
+      const monthRange = `${MONTH_NAMES[chunk[0].month - 1]}${
+        chunk.length > 1 && chunk[chunk.length - 1].month !== chunk[0].month
+          ? ` – ${MONTH_NAMES[chunk[chunk.length - 1].month - 1]}`
+          : ''
+      }`
+      return `
   <section class="slide light">
     <header>
-      <span class="kicker">Monatsverlauf${monthChunks.length > 1 ? ` · ${idx + 1}/${monthChunks.length}` : ''}</span>
-      <span class="kicker kicker--soft">Kassenbericht ${file.year}</span>
+      <div>
+        <div class="kicker accent">Der Jahresverlauf${chunks.length > 1 ? ` · ${idx + 1}/${chunks.length}` : ''}</div>
+        <div class="headline">${monthRange}</div>
+      </div>
+      ${logo || `<span class="kicker soft">Kassenbericht ${file.year}</span>`}
     </header>
-    <div class="month-grid cols-${Math.min(chunk.length, 2)}">
+    <div class="flow" style="grid-template-columns: repeat(${chunk.length}, 1fr)">
+      <div class="flow-line"></div>
+      ${!isLast ? '<div class="flow-next">⟶</div>' : '<div class="flow-end"></div>'}
       ${chunk
-        .map((m) => {
-          const saldo = m.events.reduce((a, e) => a + e.saldo, 0)
+        .map((s, i) => {
+          const up = i % 2 === 0
+          const neg = s.saldo < 0
           return `
-      <div class="month-card">
-        <div class="month-head">
-          <span class="month-name">${MONTH_NAMES[m.month - 1]}</span>
-          <span class="badge ${saldo < 0 ? 'badge--neg' : 'badge--pos'}">${saldo > 0 ? '+' : ''}${formatEur(saldo)}</span>
+      <div class="station ${up ? 'station--up' : 'station--down'}" style="grid-column: ${i + 1}">
+        <div class="station-body">
+          <div class="station-month">${MONTH_NAMES[s.month - 1]}</div>
+          <div class="station-name">${esc(s.name)}</div>
+          <div class="station-saldo ${neg ? 'neg' : 'pos'}">${s.saldo > 0 ? '+ ' : s.saldo < 0 ? '− ' : ''}${formatEur(Math.abs(s.saldo))}</div>
         </div>
-        ${m.events
-          .map(
-            (e) => `
-        <div class="event-row">
-          <span class="event-name">${esc(e.name)}</span>
-          <span class="event-dots"></span>
-          <span class="event-saldo">${eur(e.saldo)}</span>
-        </div>`,
-          )
-          .join('')}
+        <div class="station-stem"></div>
+        <div class="station-dot ${neg ? 'dot-neg' : 'dot-pos'}"></div>
       </div>`
         })
         .join('')}
     </div>
-  </section>`,
-    )
+    <footer>${esc(file.clubName || '')} · Kassenbericht ${file.year}</footer>
+  </section>`
+    })
     .join('')
 
   return `<!doctype html>
@@ -103,89 +112,108 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   .slide {
     width: 296mm; height: 209mm;
     page-break-after: always;
-    padding: 16mm 20mm;
+    padding: 16mm 20mm 12mm;
     display: flex; flex-direction: column;
     position: relative; overflow: hidden;
   }
   .slide.dark {
-    background: radial-gradient(120% 140% at 15% 0%, #1d3a28 0%, ${PINE} 45%, ${PINE_DEEP} 100%);
+    background: radial-gradient(130% 150% at 12% -10%, #1e3d29 0%, ${PINE} 48%, ${PINE_DEEP} 100%);
     color: ${CREAM};
   }
   .slide.light { background: ${CREAM}; }
-  .sans { font-family: 'Helvetica Neue', Arial, sans-serif; }
 
-  /* Riesige Jahreszahl als Hintergrund-Ornament */
+  .kicker { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10.5pt;
+            letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; }
+  .kicker.soft { opacity: 0.4; font-weight: 400; }
+  .kicker.accent { color: ${GREEN}; }
+  .headline { font-size: 26pt; font-weight: 650; letter-spacing: -0.01em; margin-top: 2.5mm; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; z-index: 1; }
+  .logo { width: 24mm; height: auto; }
+  footer { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 9pt;
+           opacity: 0.4; z-index: 1; }
+  .slide.dark footer { opacity: 0.5; }
+
+  /* Riesige Jahreszahl als Hintergrund */
   .giant-year {
-    position: absolute; right: -8mm; bottom: -26mm;
-    font-size: 130mm; font-weight: 700; letter-spacing: -0.04em;
-    color: rgb(255 255 255 / 0.05); line-height: 1; user-select: none;
+    position: absolute; right: -10mm; bottom: -30mm;
+    font-size: 150mm; font-weight: 700; letter-spacing: -0.05em;
+    line-height: 1; color: rgb(255 255 255 / 0.045); user-select: none;
   }
-  .slide.light .giant-year { color: rgb(20 40 28 / 0.05); }
-
-  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9mm; z-index: 1; }
-  .kicker { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11pt; letter-spacing: 0.18em;
-            text-transform: uppercase; font-weight: 600; }
-  .kicker--soft { opacity: 0.45; font-weight: 400; }
-  .logo { width: 26mm; height: auto; }
+  .slide.light .giant-year { color: rgb(25 45 30 / 0.045); }
 
   /* Hero */
   .hero { margin: auto 0; z-index: 1; }
-  .hero-logo { width: 40mm; margin-bottom: 9mm; filter: drop-shadow(0 2mm 6mm rgb(0 0 0 / 0.35)); }
-  .hero .eyebrow { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13pt; letter-spacing: 0.22em;
-                   text-transform: uppercase; color: ${GREEN_SOFT}; margin-bottom: 5mm; }
-  h1 { font-size: 52pt; font-weight: 650; letter-spacing: -0.015em; line-height: 1.04; }
+  .hero-logo { width: 38mm; margin-bottom: 10mm; filter: drop-shadow(0 2mm 6mm rgb(0 0 0 / 0.4)); }
+  .hero .eyebrow { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12.5pt;
+                   letter-spacing: 0.26em; text-transform: uppercase; color: ${GREEN_SOFT}; margin-bottom: 5mm; }
+  h1 { font-size: 54pt; font-weight: 650; letter-spacing: -0.015em; line-height: 1.03; }
   .hero .year-accent { color: ${GREEN_SOFT}; }
-  .subtitle { font-size: 16pt; margin-top: 6mm; opacity: 0.75; }
-  footer { font-size: 9.5pt; opacity: 0.45; font-family: 'Helvetica Neue', Arial, sans-serif; z-index: 1; }
-
-  /* Bento "Jahr in Zahlen" */
-  .bento { display: grid; grid-template-columns: 1.5fr 1fr 1fr; grid-template-rows: 1fr 1fr;
-           gap: 7mm; flex: 1; z-index: 1; }
-  .tile { background: white; border-radius: 6mm; padding: 9mm 10mm;
-          box-shadow: 0 1.5mm 6mm rgb(25 40 30 / 0.07); display: flex; flex-direction: column; }
-  .tile--hero { grid-row: span 2; background: linear-gradient(150deg, #1d3a28, ${PINE_DEEP});
-                color: ${CREAM}; justify-content: center; }
-  .tile .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10.5pt; letter-spacing: 0.14em;
-                 text-transform: uppercase; opacity: 0.55; margin-bottom: auto; }
-  .tile--hero .label { color: ${GREEN_SOFT}; opacity: 1; margin-bottom: 6mm; }
-  .tile .value { font-size: 26pt; font-weight: 650; letter-spacing: -0.01em; margin-top: 4mm; }
-  .tile--hero .value { font-size: 42pt; }
-  .tile .sub { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 9.5pt; opacity: 0.5; margin-top: 2.5mm; }
-  .pos { color: ${GREEN}; } .neg { color: ${RED}; }
-  .tile--hero .pos { color: ${GREEN_SOFT}; } .tile--hero .neg { color: ${RED_SOFT}; }
-
-  /* Chart-Folie */
-  .chart-card { background: white; border-radius: 6mm; padding: 9mm 10mm 7mm;
-                box-shadow: 0 1.5mm 6mm rgb(25 40 30 / 0.07); z-index: 1; }
-  .chart-card + .chart-card { margin-top: 7mm; }
-  .chart-title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10.5pt; letter-spacing: 0.14em;
-                 text-transform: uppercase; opacity: 0.55; margin-bottom: 4mm; }
-  svg text { font-family: 'Helvetica Neue', Arial, sans-serif; }
-
-  /* Monatskarten */
-  .month-grid { display: grid; gap: 7mm; flex: 1; align-content: start; z-index: 1; }
-  .month-grid.cols-1 { grid-template-columns: 1fr; }
-  .month-grid.cols-2 { grid-template-columns: 1fr 1fr; }
-  .month-card { background: white; border-radius: 6mm; padding: 7mm 9mm;
-                box-shadow: 0 1.5mm 6mm rgb(25 40 30 / 0.07); }
-  .month-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4mm; }
-  .month-name { font-size: 16.5pt; font-weight: 650; color: ${PINE}; }
-  .badge { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10pt; font-weight: 600;
-           padding: 1.4mm 3.4mm; border-radius: 99mm; }
-  .badge--pos { background: #e3f1e7; color: ${GREEN}; }
-  .badge--neg { background: #f8e7e1; color: ${RED}; }
-  .event-row { display: flex; align-items: baseline; gap: 3mm; font-size: 12.5pt; padding: 1.7mm 0; }
-  .event-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; }
-  .event-dots { flex: 1; border-bottom: 0.4mm dotted #d8d4c6; transform: translateY(-1mm); }
-  .event-saldo { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+  .subtitle { font-size: 15pt; margin-top: 7mm; opacity: 0.72; }
 
   /* Großzahl-Folien */
-  .big-center { margin: auto; text-align: center; z-index: 1; }
-  .big-label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13pt; letter-spacing: 0.2em;
-               text-transform: uppercase; opacity: 0.55; margin-bottom: 9mm; }
+  .big-center { margin: auto; text-align: center; z-index: 1; max-width: 240mm; }
+  .big-label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13pt;
+               letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.5; margin-bottom: 10mm; }
   .slide.dark .big-label { color: ${GREEN_SOFT}; opacity: 1; }
-  .big-number { font-size: 70pt; font-weight: 650; letter-spacing: -0.02em; }
-  .big-sub { font-size: 12pt; opacity: 0.55; margin-top: 8mm; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .big-number { font-size: 84pt; font-weight: 650; letter-spacing: -0.025em; line-height: 1; }
+  .big-sub { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12pt;
+             opacity: 0.5; margin-top: 10mm; }
+  .rule { width: 22mm; height: 1mm; border-radius: 1mm; background: ${GREEN}; margin: 0 auto 10mm; }
+  .slide.dark .rule { background: ${GREEN_SOFT}; }
+
+  /* Jahres-Flow: Stationen an durchlaufender Zeitlinie */
+  .flow {
+    position: relative; flex: 1; z-index: 1;
+    display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 8mm;
+    margin: 4mm 2mm 6mm;
+  }
+  .flow-line {
+    position: absolute; left: -6mm; right: 2mm; top: 50%; height: 0.9mm;
+    background: linear-gradient(90deg, rgb(44 122 79 / 0) 0%, ${GREEN} 8%, ${GREEN} 92%, rgb(44 122 79 / 0.25) 100%);
+    border-radius: 1mm;
+  }
+  .flow-next {
+    position: absolute; right: -8mm; top: 50%; transform: translateY(-54%);
+    color: ${GREEN}; font-size: 20pt; font-family: 'Helvetica Neue', Arial, sans-serif;
+  }
+  .flow-end {
+    position: absolute; right: -4mm; top: 50%; transform: translateY(-50%);
+    width: 4mm; height: 4mm; border-radius: 50%;
+    background: ${PINE}; border: 1mm solid ${GREEN_SOFT};
+  }
+  .station { position: relative; display: flex; flex-direction: column; align-items: center; }
+  .station-dot {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 5.4mm; height: 5.4mm; border-radius: 50%;
+    background: ${CREAM}; border: 1.2mm solid ${GREEN};
+    box-shadow: 0 0 0 2mm ${CREAM};
+  }
+  .station-dot.dot-neg { border-color: ${RED}; }
+  .station-stem {
+    position: absolute; left: 50%; width: 0.5mm; height: 13mm;
+    background: ${LINE}; transform: translateX(-50%);
+  }
+  .station--up .station-stem { bottom: calc(50% + 4mm); }
+  .station--down .station-stem { top: calc(50% + 4mm); }
+  .station-body { position: absolute; left: 0; right: 0; text-align: center; }
+  .station--up .station-body { bottom: calc(50% + 19mm); }
+  .station--down .station-body { top: calc(50% + 19mm); }
+  .station-month {
+    font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10pt; font-weight: 600;
+    letter-spacing: 0.2em; text-transform: uppercase; color: ${MUTED}; margin-bottom: 2.6mm;
+  }
+  .station-name {
+    font-size: 16.5pt; font-weight: 650; line-height: 1.18; color: ${PINE};
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    hyphens: auto; overflow-wrap: break-word;
+  }
+  .station-saldo {
+    font-size: 16.5pt; font-weight: 600; margin-top: 3mm;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .pos { color: ${GREEN}; }
+  .neg { color: ${RED}; }
 </style>
 </head>
 <body>
@@ -202,65 +230,22 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
 
   <section class="slide light">
     <div class="giant-year">${file.year}</div>
-    <header><span class="kicker">Das Jahr in Zahlen</span>${logo || `<span class="kicker kicker--soft">Kassenbericht ${file.year}</span>`}</header>
-    <div class="bento">
-      <div class="tile tile--hero">
-        <div class="label">Kassenbestand 31.12.${file.year}</div>
-        <div class="value">${formatEur(totals.closingBalance)}</div>
-        <div class="sub" style="opacity:0.6">Jahresbeginn: ${formatEur(file.openingBalance)}</div>
-      </div>
-      <div class="tile">
-        <div class="label">Einnahmen</div>
-        <div class="value pos">${formatEur(totals.einnahmen)}</div>
-      </div>
-      <div class="tile">
-        <div class="label">Ausgaben</div>
-        <div class="value neg">−${formatEur(totals.ausgaben)}</div>
-      </div>
-      <div class="tile">
-        <div class="label">Jahressaldo</div>
-        <div class="value">${eur(totals.saldo)}</div>
-      </div>
-      <div class="tile">
-        <div class="label">Buchungen</div>
-        <div class="value">${totals.count}</div>
-        <div class="sub">Umsatz ${formatEur(totals.umsatz)} (ohne durchlaufende Posten)</div>
-      </div>
+    <div class="big-center">
+      <div class="rule"></div>
+      <div class="big-label">Kontostand zu Beginn des Jahres ${file.year}</div>
+      <div class="big-number">${formatEur(file.openingBalance)}</div>
+      <div class="big-sub">1. Januar ${file.year}</div>
     </div>
   </section>
 
-  <section class="slide light">
-    <header><span class="kicker">Jahresverlauf</span><span class="kicker kicker--soft">Kassenbericht ${file.year}</span></header>
-    <div class="chart-card">
-      <div class="chart-title">Saldo je Monat</div>
-      ${saldoBarChart(months)}
-    </div>
-    <div class="chart-card">
-      <div class="chart-title">Kassenstand im Jahresverlauf</div>
-      ${balanceLineChart(months, file.openingBalance)}
-    </div>
-  </section>
-
-  ${monthSlides}
-
-  ${
-    groups.length > 0
-      ? `
-  <section class="slide light">
-    <header><span class="kicker">Veranstaltungen im Vergleich</span><span class="kicker kicker--soft">Kassenbericht ${file.year}</span></header>
-    <div class="chart-card" style="flex:1">
-      <div class="chart-title">Saldo je Veranstaltung</div>
-      ${categoryRanking(groups.map((g) => ({ name: g.category.name, saldo: g.saldo })))}
-    </div>
-  </section>`
-      : ''
-  }
+  ${flowSlides}
 
   <section class="slide light">
     <div class="giant-year">${file.year}</div>
     <div class="big-center">
+      <div class="rule"></div>
       <div class="big-label">Saldo für das Geschäftsjahr ${file.year}</div>
-      <div class="big-number">${eur(totals.saldo)}</div>
+      <div class="big-number ${totals.saldo < 0 ? 'neg' : 'pos'}">${totals.saldo > 0 ? '+ ' : totals.saldo < 0 ? '− ' : ''}${formatEur(Math.abs(totals.saldo))}</div>
       <div class="big-sub">Einnahmen ${formatEur(totals.einnahmen)} · Ausgaben ${formatEur(totals.ausgaben)} · ${totals.count} Buchungen</div>
     </div>
   </section>
@@ -268,117 +253,15 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   <section class="slide dark">
     <div class="giant-year">${file.year}</div>
     <div class="big-center">
+      <div class="rule"></div>
       <div class="big-label">Kassenbestand</div>
       <div class="big-number">${formatEur(totals.closingBalance)}</div>
-      <div class="big-sub">31. Dezember ${file.year} · Jahresbeginn ${formatEur(file.openingBalance)}</div>
+      <div class="big-sub">31. Dezember ${file.year}</div>
     </div>
     <footer style="text-align:center">${esc(file.clubName || '')}</footer>
   </section>
 </body>
 </html>`
-}
-
-/** Balkendiagramm: Saldo je Monat, positive Balken grün nach oben, negative rot nach unten. */
-function saldoBarChart(months: MonthSummary[]): string {
-  const W = 980
-  const H = 300
-  const padX = 16
-  const labelH = 22
-  const posMax = Math.max(1, ...months.map((m) => m.saldo))
-  const negMax = Math.max(0, ...months.map((m) => -m.saldo))
-  const plotH = H - labelH - 34
-  const zeroY = 22 + (plotH * posMax) / (posMax + negMax)
-  const scale = plotH / (posMax + negMax)
-  const slot = (W - padX * 2) / 12
-  const barW = slot * 0.52
-
-  const bars = months
-    .map((m, i) => {
-      const x = padX + slot * i + (slot - barW) / 2
-      const h = Math.abs(m.saldo) * scale
-      const isPos = m.saldo >= 0
-      const y = isPos ? zeroY - h : zeroY
-      const label = m.saldo !== 0 ? EUR0.format(m.saldo / 100) : ''
-      const labelY = isPos ? y - 7 : y + h + 15
-      return `
-    <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, m.saldo !== 0 ? 2 : 0).toFixed(1)}"
-          rx="5" fill="${isPos ? GREEN : RED}" opacity="${m.saldo === 0 ? 0 : 0.92}"/>
-    ${label ? `<text x="${(x + barW / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="12" font-weight="600" fill="${isPos ? GREEN : RED}">${label}</text>` : ''}
-    <text x="${(padX + slot * i + slot / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="12" fill="${MUTED}">${MONTH_NAMES[i].slice(0, 3)}</text>`
-    })
-    .join('')
-
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%">
-    <line x1="${padX}" y1="${zeroY.toFixed(1)}" x2="${W - padX}" y2="${zeroY.toFixed(1)}" stroke="#d8d4c6" stroke-width="1.5"/>
-    ${bars}
-  </svg>`
-}
-
-/** Linien-/Flächendiagramm: Kassenstand am Monatsende, beginnend beim Anfangssaldo. */
-function balanceLineChart(months: MonthSummary[], openingBalance: number): string {
-  const W = 980
-  const H = 240
-  const padX = 16
-  const padTop = 30
-  const padBottom = 24
-  const values = [openingBalance, ...months.map((m) => m.balanceEnd)]
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const span = Math.max(1, max - min)
-  const plotH = H - padTop - padBottom
-  const stepX = (W - padX * 2) / 12
-  const pt = (i: number, v: number) =>
-    `${(padX + stepX * i).toFixed(1)},${(padTop + plotH - ((v - min) / span) * plotH).toFixed(1)}`
-  const points = values.map((v, i) => pt(i, v))
-  const lastY = points[points.length - 1].split(',')[1]
-  const firstY = points[0].split(',')[1]
-
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%">
-    <defs>
-      <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${GREEN}" stop-opacity="0.22"/>
-        <stop offset="100%" stop-color="${GREEN}" stop-opacity="0.02"/>
-      </linearGradient>
-    </defs>
-    <polygon points="${points.join(' ')} ${(W - padX).toFixed(1)},${H - padBottom} ${padX},${H - padBottom}" fill="url(#fill)"/>
-    <polyline points="${points.join(' ')}" fill="none" stroke="${GREEN}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
-    <circle cx="${padX}" cy="${firstY}" r="5" fill="${PINE}"/>
-    <circle cx="${W - padX}" cy="${lastY}" r="5" fill="${GREEN}"/>
-    <text x="${padX + 10}" y="${Number(firstY) - 10}" font-size="12.5" font-weight="600" fill="${PINE}">${EUR0.format(openingBalance / 100)}</text>
-    <text x="${W - padX - 10}" y="${Number(lastY) - 10}" text-anchor="end" font-size="12.5" font-weight="600" fill="${GREEN}">${EUR0.format(values[values.length - 1] / 100)}</text>
-    <text x="${padX}" y="${H - 6}" font-size="12" fill="${MUTED}">1. Januar</text>
-    <text x="${W - padX}" y="${H - 6}" text-anchor="end" font-size="12" fill="${MUTED}">31. Dezember</text>
-  </svg>`
-}
-
-/** Horizontales Ranking: Saldo je Veranstaltung, sortiert, maximal 9 Zeilen. */
-function categoryRanking(items: { name: string; saldo: number }[]): string {
-  const sorted = [...items].sort((a, b) => b.saldo - a.saldo).slice(0, 9)
-  const W = 980
-  const rowH = 44
-  const H = sorted.length * rowH + 8
-  const labelW = 250
-  const valueW = 110
-  const barMax = W - labelW - valueW - 24
-  const maxAbs = Math.max(1, ...sorted.map((i) => Math.abs(i.saldo)))
-
-  const rows = sorted
-    .map((item, i) => {
-      const y = i * rowH + 8
-      const w = Math.max(4, (Math.abs(item.saldo) / maxAbs) * barMax)
-      const isPos = item.saldo >= 0
-      return `
-    <text x="0" y="${y + 22}" font-size="14.5" fill="${INK}">${esc(shorten(item.name, 26))}</text>
-    <rect x="${labelW}" y="${y + 6}" width="${w.toFixed(1)}" height="22" rx="6" fill="${isPos ? GREEN : RED}" opacity="0.9"/>
-    <text x="${labelW + w + 12}" y="${y + 22}" font-size="13.5" font-weight="600" fill="${isPos ? GREEN : RED}">${item.saldo > 0 ? '+' : ''}${EUR0.format(item.saldo / 100)}</text>`
-    })
-    .join('')
-
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%">${rows}</svg>`
-}
-
-function shorten(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + '…' : s
 }
 
 function esc(s: string): string {
