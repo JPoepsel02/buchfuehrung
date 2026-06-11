@@ -76,7 +76,7 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null): st
   @page { size: A4; }
   * { box-sizing: border-box; }
   body {
-    font-family: Georgia, 'Times New Roman', serif;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     color: #1a1a18;
     margin: 0;
     font-size: 10.5pt;
