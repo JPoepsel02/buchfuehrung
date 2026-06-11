@@ -1,6 +1,6 @@
-import { chronological, yearTotals } from '@shared/ledger'
+import { byCategory, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur, monthOf } from '@shared/money'
-import type { YearFile } from '@shared/types'
+import type { Category, YearFile } from '@shared/types'
 
 /**
  * Jahres-Präsentation für die Generalversammlung (A4 quer, eine Folie pro
@@ -19,28 +19,45 @@ const RED = '#b14a32'
 const MUTED = '#98a094'
 const LINE = '#dcd7c8'
 
-/** Eine Station der Jahres-Reise: Veranstaltung mit Monat und Saldo. */
+/** Eine Station der Jahres-Reise: Veranstaltung mit Monat und Jahres-Saldo. */
 interface Station {
   month: number
   name: string
   saldo: number
+  /** Datum der ersten Buchung – Tiebreaker für die Reihenfolge */
+  firstDate: string
+}
+
+/**
+ * Sammel-Folie oder Jahresverlauf? Ohne explizite Einstellung landen
+ * typische Sammelposten (Sonstiges, Beiträge, Zuschüsse, Spenden) auf
+ * der eigenen Folie nach den Monaten – wie in der Vereins-Vorlage.
+ */
+export function praesentationsModus(c: Category): 'monat' | 'sammel' {
+  if (c.praesentation) return c.praesentation
+  return /sonstig|beitr[aä]g|zusch[uü]ss|spende/i.test(c.name) ? 'sammel' : 'monat'
 }
 
 export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | null): string {
   const totals = yearTotals(file)
-  const chrono = chronological(file)
+  const groups = byCategory(file)
 
-  // Chronologische Stationen: Saldo je Veranstaltung innerhalb jedes Monats
-  const stations: Station[] = []
-  for (const row of chrono) {
-    const m = monthOf(row.date)
-    let st = stations.find((s) => s.month === m && s.name === row.categoryName)
-    if (!st) {
-      st = { month: m, name: row.categoryName, saldo: 0 }
-      stations.push(st)
-    }
-    st.saldo += row.signedAmount
-  }
+  // Jede Kategorie genau einmal: Jahres-Saldo im Monat der ersten Buchung
+  // (oder im manuell eingestellten Monat).
+  const stations: Station[] = groups
+    .filter((g) => praesentationsModus(g.category) === 'monat')
+    .map((g) => ({
+      month: g.category.praesentationMonat ?? monthOf(g.rows[0].date),
+      name: g.category.name,
+      saldo: g.saldo,
+      firstDate: g.rows[0].date,
+    }))
+    .sort((a, b) => a.month - b.month || a.firstDate.localeCompare(b.firstDate))
+
+  // Sammelposten für die Extra-Folie (in Kategorien-Reihenfolge)
+  const sammel = groups
+    .filter((g) => praesentationsModus(g.category) === 'sammel')
+    .map((g) => ({ name: g.category.name, saldo: g.saldo }))
 
   // Stationen gleichmäßig auf Folien verteilen (max. 4 je Folie) –
   // verhindert eine fast leere letzte Folie mit nur einer Station.
@@ -167,6 +184,19 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   .center-logo { width: 22mm; height: auto; margin: 0 auto 9mm; display: block; }
   .slide.dark .center-logo { filter: drop-shadow(0 1.5mm 4mm rgb(0 0 0 / 0.35)); }
 
+  /* Sammel-Folie: Beiträge, Zuschüsse, Spenden, Sonstiges */
+  .sammel-grid {
+    flex: 1; display: grid; align-content: center; justify-items: center;
+    gap: 14mm 10mm; z-index: 1; padding-bottom: 8mm;
+  }
+  .sammel-grid.cols-1 { grid-template-columns: 1fr; }
+  .sammel-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .sammel-item { text-align: center; }
+  .sammel-value { font-size: 38pt; font-weight: 650; letter-spacing: -0.015em;
+                  font-variant-numeric: tabular-nums; }
+  .sammel-name { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11.5pt;
+                 letter-spacing: 0.2em; text-transform: uppercase; color: ${MUTED}; margin-top: 3.5mm; }
+
   /* Jahres-Flow: Stationen an durchlaufender Zeitlinie */
   .flow {
     position: relative; flex: 1; z-index: 1;
@@ -245,6 +275,34 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   </section>
 
   ${flowSlides}
+
+  ${
+    sammel.length > 0
+      ? `
+  <section class="slide light">
+    <div class="giant-year">${file.year}</div>
+    <header>
+      <div>
+        <div class="kicker accent">Weitere Posten</div>
+        <div class="headline">Beiträge, Zuschüsse &amp; Co.</div>
+      </div>
+      ${logo || `<span class="kicker soft">Kassenbericht ${file.year}</span>`}
+    </header>
+    <div class="sammel-grid cols-${Math.min(sammel.length, 2)}">
+      ${sammel
+        .map(
+          (s) => `
+      <div class="sammel-item">
+        <div class="sammel-value ${s.saldo < 0 ? 'neg' : 'pos'}">${s.saldo > 0 ? '+ ' : s.saldo < 0 ? '− ' : ''}${formatEur(Math.abs(s.saldo))}</div>
+        <div class="sammel-name">${esc(s.name)}</div>
+      </div>`,
+        )
+        .join('')}
+    </div>
+    <footer>${esc(file.clubName || '')} · Kassenbericht ${file.year}</footer>
+  </section>`
+      : ''
+  }
 
   <section class="slide light">
     <div class="giant-year">${file.year}</div>
