@@ -167,7 +167,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
   const aggregated: EventRow[] = [...bySub.entries()].map(([sub, rows]) => ({
     kind: 'unterkategorie',
     date: rows[0].date,
-    refs: rows.length === 1 ? rows[0].ref : `${rows[0].ref}–${rows[rows.length - 1].ref}`,
+    refs: '',
     label: sub,
     ausgaben: rows.filter((r) => r.type === 'ausgabe').reduce((a, r) => a + r.amount, 0),
     einnahmen: rows.filter((r) => r.type === 'einnahme').reduce((a, r) => a + r.amount, 0),

@@ -189,7 +189,7 @@ export interface EventRow {
   kind: 'einzeln' | 'unterkategorie'
   /** Datum der (ersten) Buchung – bestimmt die Sortierung in der Gruppe */
   date: string
-  /** Beleg-Nr. bzw. Bereich, z. B. "K5" oder "K5–K12" */
+  /** Beleg-Nr. für Einzelzeilen; bei gruppierten Unterkategorien bewusst leer */
   refs: string
   /** Verwendungszweck bzw. Name der Unterkategorie */
   label: string
