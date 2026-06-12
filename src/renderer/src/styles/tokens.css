@@ -1,31 +1,43 @@
 :root {
-  /* Papier & Tinte – warmes Ledger-Thema */
-  --color-paper: oklch(97.5% 0.008 90);
-  --color-paper-raised: oklch(99% 0.005 90);
-  --color-paper-sunken: oklch(95% 0.01 90);
-  --color-ink: oklch(24% 0.02 80);
-  --color-ink-soft: oklch(45% 0.02 80);
-  --color-ink-faint: oklch(62% 0.015 80);
-  --color-line: oklch(88% 0.012 85);
-  --color-line-strong: oklch(78% 0.015 85);
+  /* ---------- Liquid-Glass-Thema (hell) ----------
+     Lichtdurchlässige Flächen über einem farbigen Aurora-Hintergrund.
+     Token-Namen sind historisch ("paper"/"pine"), die Werte bilden das
+     Glas-Thema ab. */
 
-  /* Sidebar: tiefes Flaschengrün */
-  --color-pine: oklch(28% 0.05 165);
-  --color-pine-raised: oklch(33% 0.055 165);
-  --color-pine-text: oklch(92% 0.02 150);
-  --color-pine-muted: oklch(70% 0.03 160);
+  /* Grundflächen & Tinte */
+  --color-paper: #eef2ee;
+  --color-paper-raised: rgb(255 255 255 / 0.62);
+  --color-paper-sunken: rgb(255 255 255 / 0.45);
+  --color-ink: #122019;
+  --color-ink-soft: #3d4f45;
+  --color-ink-faint: #6b7a71;
+  --color-line: rgb(18 32 25 / 0.08);
+  --color-line-strong: rgb(18 32 25 / 0.16);
 
-  /* Semantik */
-  --color-accent: oklch(48% 0.11 160);
-  --color-accent-soft: oklch(93% 0.035 160);
-  --color-income: oklch(46% 0.11 155);
-  --color-expense: oklch(48% 0.14 28);
-  --color-expense-soft: oklch(94% 0.03 28);
-  --color-warn: oklch(70% 0.13 75);
-  --color-focus: oklch(60% 0.12 160);
-  /* Eingabefelder und Text auf Akzentflächen */
-  --color-field: white;
-  --color-on-accent: white;
+  /* Markengrün (tief) + lebendige Akzente */
+  --color-pine: #0e3b26;
+  --color-pine-raised: #14532f;
+  --color-pine-text: #0e3b26;
+  --color-pine-muted: #51725f;
+
+  --color-accent: #0fa968;
+  --color-accent-soft: rgb(15 169 104 / 0.14);
+  --color-income: #0c8f58;
+  --color-expense: #d5503a;
+  --color-expense-soft: rgb(213 80 58 / 0.14);
+  --color-warn: #d99a25;
+  --color-focus: #0fa968;
+  --color-field: rgb(255 255 255 / 0.66);
+  --color-on-accent: #ffffff;
+
+  /* Glas-Effekte */
+  --glass-bg: rgb(255 255 255 / 0.55);
+  --glass-bg-strong: rgb(255 255 255 / 0.72);
+  --glass-border: rgb(255 255 255 / 0.65);
+  --glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.85);
+  --glass-blur: blur(22px) saturate(1.5);
+  --accent-grad: linear-gradient(135deg, #16c07c 0%, #0a9e63 55%, #0c7d52 100%);
+  --accent-glow: 0 6px 22px rgb(15 169 104 / 0.35);
 
   --font-display: 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
   --font-body: 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
@@ -45,44 +57,14 @@
   --space-6: 2rem;
   --space-7: 3rem;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
 
-  --shadow-card: 0 1px 2px oklch(30% 0.02 80 / 0.06), 0 4px 16px oklch(30% 0.02 80 / 0.05);
-  --shadow-pop: 0 4px 12px oklch(30% 0.02 80 / 0.12), 0 12px 40px oklch(30% 0.02 80 / 0.12);
+  --shadow-card: 0 1px 1px rgb(14 40 26 / 0.04), 0 10px 30px rgb(14 40 26 / 0.08);
+  --shadow-pop: 0 8px 24px rgb(14 40 26 / 0.16), 0 24px 70px rgb(14 40 26 / 0.18);
 
   --duration-fast: 140ms;
   --duration-normal: 280ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Dunkles Thema – gleiche Semantik, abgedunkeltes Papier, hellere Tinte */
-:root[data-theme='dark'] {
-  --color-paper: oklch(21% 0.012 80);
-  --color-paper-raised: oklch(25% 0.014 80);
-  --color-paper-sunken: oklch(18% 0.01 80);
-  --color-ink: oklch(92% 0.012 85);
-  --color-ink-soft: oklch(74% 0.015 85);
-  --color-ink-faint: oklch(58% 0.015 85);
-  --color-line: oklch(33% 0.012 85);
-  --color-line-strong: oklch(44% 0.015 85);
-
-  --color-pine: oklch(23% 0.045 165);
-  --color-pine-raised: oklch(29% 0.05 165);
-  --color-pine-text: oklch(92% 0.02 150);
-  --color-pine-muted: oklch(64% 0.03 160);
-
-  --color-accent: oklch(72% 0.11 160);
-  --color-accent-soft: oklch(31% 0.045 160);
-  --color-income: oklch(74% 0.11 155);
-  --color-expense: oklch(72% 0.15 28);
-  --color-expense-soft: oklch(29% 0.05 28);
-  --color-warn: oklch(76% 0.12 75);
-  --color-focus: oklch(72% 0.12 160);
-  --color-field: oklch(27% 0.014 80);
-  --color-on-accent: oklch(17% 0.03 160);
-
-  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.35), 0 4px 16px oklch(0% 0 0 / 0.3);
-  --shadow-pop: 0 4px 12px oklch(0% 0 0 / 0.45), 0 12px 40px oklch(0% 0 0 / 0.45);
 }

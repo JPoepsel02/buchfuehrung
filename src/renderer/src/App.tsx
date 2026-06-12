@@ -37,19 +37,6 @@ export function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [bookingsFilter, setBookingsFilter] = useState('')
 
-  // Farbschema anwenden (hell/dunkel/system) – auch schon im Setup
-  useEffect(() => {
-    const theme = settings.theme ?? 'system'
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = () => {
-      const dark = theme === 'dunkel' || (theme === 'system' && mq.matches)
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-    }
-    apply()
-    mq.addEventListener('change', apply)
-    return () => mq.removeEventListener('change', apply)
-  }, [settings.theme])
-
   // Strg/Cmd+F öffnet die globale Suche
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
