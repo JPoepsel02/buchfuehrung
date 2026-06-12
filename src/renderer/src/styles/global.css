@@ -111,23 +111,30 @@ textarea {
 }
 
 .sidebar__year {
-  padding: 0 var(--space-3) var(--space-5);
-  color: var(--color-pine-muted);
-  font-size: var(--text-sm);
-  display: flex;
+  /* Label und Feld als festes Raster – beide Zeilen exakt gleich ausgerichtet */
+  display: grid;
+  grid-template-columns: 78px 1fr;
   align-items: center;
   gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
+  color: var(--color-ink-faint);
+  font-size: var(--text-sm);
+}
+
+.sidebar__year:last-of-type {
+  padding-bottom: var(--space-5);
 }
 
 .sidebar__year select {
   -webkit-app-region: no-drag;
+  width: 100%;
   background: var(--color-field);
   color: var(--color-ink);
   border: 1px solid var(--glass-border);
   border-radius: 99px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   font-variant-numeric: tabular-nums;
-  box-shadow: var(--glass-edge);
+  box-shadow: var(--glass-edge), 0 1px 4px rgb(14 40 26 / 0.06);
   cursor: pointer;
 }
 
