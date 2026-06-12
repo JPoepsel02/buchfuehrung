@@ -58,6 +58,37 @@ export function registerIpc(): void {
     return result.filePaths[0]
   })
 
+  /** Textdatei speichern (z. B. Sicherungs-Export) – Vorschlag: Downloads-Ordner. */
+  ipcMain.handle('file:saveText', async (e, suggestedName: string, content: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win) return { ok: false }
+    const target = await dialog.showSaveDialog(win, {
+      title: 'Sicherung speichern',
+      defaultPath: join(app.getPath('downloads'), suggestedName),
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    })
+    if (target.canceled || !target.filePath) return { ok: false }
+    writeFileSync(target.filePath, content, 'utf-8')
+    shell.showItemInFolder(target.filePath)
+    return { ok: true, path: target.filePath }
+  })
+
+  /** Textdatei öffnen (z. B. Sicherungs-Import). */
+  ipcMain.handle('file:openText', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Sicherung auswählen',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return {
+      name: result.filePaths[0].split(/[\\/]/).pop() ?? 'sicherung.json',
+      content: readFileSync(result.filePaths[0], 'utf-8'),
+    }
+  })
+
   /** CSV-Kontoauszug wählen und einlesen (Encoding-Erkennung UTF-8/Latin-1). */
   ipcMain.handle('csv:open', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
