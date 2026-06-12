@@ -127,6 +127,8 @@ export function validateBackup(data: unknown): ValidationResult {
       if (typeof bo.note !== 'string') err(`${bw}: Notiz-Feld fehlt.`)
       if (bo.subcategory !== undefined && typeof bo.subcategory !== 'string')
         err(`${bw}: Unterkategorie ist kein Text.`)
+      if (bo.receiptAvailable !== undefined && typeof bo.receiptAvailable !== 'boolean')
+        err(`${bw}: Beleg-Kennzeichen ist kein Wahr/Falsch-Wert.`)
       if (!Number.isInteger(bo.seq)) err(`${bw}: laufende Nummer fehlt.`)
       if (bo.source !== 'manuell' && bo.source !== 'import') err(`${bw}: ungültige Herkunft.`)
     })

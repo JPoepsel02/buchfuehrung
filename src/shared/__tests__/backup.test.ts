@@ -75,6 +75,14 @@ describe('validateBackup', () => {
     expect(r.ok).toBe(false)
   })
 
+  test('lehnt ungültiges Beleg-Kennzeichen ab', () => {
+    const b = backup()
+    b.years[0].bookings[0].receiptAvailable = 'ja'
+    const r = validateBackup(b)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors.join(' ')).toContain('Beleg')
+  })
+
   test('meldet doppelte Kassenjahre', () => {
     const r = validateBackup(backup([year(), year()]))
     expect(r.ok).toBe(false)

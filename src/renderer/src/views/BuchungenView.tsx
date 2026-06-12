@@ -15,6 +15,7 @@ interface FormState {
   type: BookingType
   amount: string
   isUmsatz: boolean
+  receiptAvailable: boolean
   nonUmsatz: string
   note: string
 }
@@ -30,6 +31,7 @@ const emptyForm = (categoryId: string, fiscal: { year: number; fiscalStartMonth?
   type: 'ausgabe',
   amount: '',
   isUmsatz: false,
+  receiptAvailable: true,
   nonUmsatz: '',
   note: '',
 })
@@ -93,6 +95,7 @@ export function BuchungenView({
       type: b.type,
       amount: (b.amount / 100).toFixed(2).replace('.', ','),
       isUmsatz: b.isUmsatz,
+      receiptAvailable: b.receiptAvailable ?? true,
       nonUmsatz: b.nonUmsatzAmount ? (b.nonUmsatzAmount / 100).toFixed(2).replace('.', ',') : '',
       note: b.note,
     })
@@ -119,6 +122,7 @@ export function BuchungenView({
       type: form.type,
       amount,
       isUmsatz: form.isUmsatz,
+      receiptAvailable: form.receiptAvailable,
       nonUmsatzAmount: form.isUmsatz ? nonUmsatz : 0,
       note: form.note.trim(),
       source: 'manuell' as const,
@@ -217,6 +221,14 @@ export function BuchungenView({
               />
               Zählt als Umsatz
             </label>
+            <label className="checkrow">
+              <input
+                type="checkbox"
+                checked={form.receiptAvailable}
+                onChange={(e) => set('receiptAvailable', e.target.checked)}
+              />
+              Beleg vorhanden
+            </label>
             {form.isUmsatz && (
               <div className="field" style={{ minWidth: 180 }}>
                 <label htmlFor="b-nonumsatz">davon kein Umsatz (€, z. B. Wechselgeld)</label>
@@ -275,6 +287,7 @@ export function BuchungenView({
                 <th>Kategorie</th>
                 <th>Verwendungszweck</th>
                 <th className="num">Betrag</th>
+                <th>Beleg</th>
                 <th>Umsatz</th>
                 <th></th>
               </tr>
@@ -297,6 +310,13 @@ export function BuchungenView({
                   </td>
                   <td className="num">
                     <Amount cents={r.signedAmount} withSign />
+                  </td>
+                  <td>
+                    {r.receiptAvailable ?? true ? (
+                      <span className="pill pill--in">vorhanden</span>
+                    ) : (
+                      <span className="pill pill--out">fehlt</span>
+                    )}
                   </td>
                   <td>
                     {r.isUmsatz ? (
