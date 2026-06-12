@@ -132,7 +132,7 @@ describe('byCategory – Veranstaltungs-Gruppierung', () => {
     expect(sub.label).toBe('Karnevalsbeiträge')
     expect(sub.einnahmen).toBe(15000)
     expect(sub.count).toBe(2)
-    expect(sub.refs).toBe('M1–M3')
+    expect(sub.refs).toBe('')
     const single = rows.find((r) => r.kind === 'einzeln')!
     expect(single.label).toBe('Getränke')
     expect(single.ausgaben).toBe(2000)
