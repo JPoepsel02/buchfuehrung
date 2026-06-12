@@ -117,9 +117,22 @@ export interface AuditInfo {
   ort: string
 }
 
+/** Kennung der geführten Bücher: Hauptkonto und optionales Zweitkonto. */
+export type KontoId = 'haupt' | 'zweit'
+
 export interface YearFile {
   schemaVersion: 1
+  /**
+   * Kalenderjahr bzw. – bei abweichendem Wirtschaftsjahr – das Jahr, in dem
+   * das Wirtschaftsjahr BEGINNT (z. B. 2025 für November 2025 – Oktober 2026).
+   */
   year: number
+  /** Zu welchem Buch die Datei gehört (Standard: haupt) */
+  konto?: KontoId
+  /** Anzeigename des Kontos, z. B. "Karnevalskonto" */
+  kontoName?: string
+  /** Erster Monat des Wirtschaftsjahres (1 = Januar, 11 = November); Standard 1 */
+  fiscalStartMonth?: number
   /** Anfangssaldo in Cent (Abschlusssaldo des Vorjahres) */
   openingBalance: Cents
   /** Name des Vereins / der Ortsgruppe für Berichte */
@@ -160,8 +173,10 @@ export interface CategoryGroup {
 }
 
 export interface MonthSummary {
-  /** 1–12 */
+  /** 1–12 (bei Wirtschaftsjahren in Wirtschaftsjahr-Reihenfolge) */
   month: number
+  /** Kalenderjahr des Monats (kann beim Wirtschaftsjahr ins Folgejahr reichen) */
+  year: number
   einnahmen: Cents
   ausgaben: Cents
   saldo: Cents

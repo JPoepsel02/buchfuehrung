@@ -90,17 +90,27 @@ export function byCategory(file: YearFile): CategoryGroup[] {
   return groups
 }
 
+/**
+ * Monatsauswertung in Wirtschaftsjahr-Reihenfolge: beginnt beim
+ * fiscalStartMonth (Standard Januar) und läuft 12 Monate, bei
+ * abweichenden Wirtschaftsjahren ins Folgejahr hinein.
+ */
 export function monthSummaries(file: YearFile): MonthSummary[] {
+  const start = file.fiscalStartMonth && file.fiscalStartMonth >= 1 && file.fiscalStartMonth <= 12 ? file.fiscalStartMonth : 1
   const chrono = chronological(file)
   const result: MonthSummary[] = []
   let balance = file.openingBalance
-  for (let month = 1; month <= 12; month++) {
-    const rows = chrono.filter((r) => Number(r.date.slice(5, 7)) === month)
+  for (let i = 0; i < 12; i++) {
+    const month = ((start - 1 + i) % 12) + 1
+    const year = start > 1 && month < start ? file.year + 1 : file.year
+    const prefix = `${year}-${String(month).padStart(2, '0')}`
+    const rows = chrono.filter((r) => r.date.startsWith(prefix))
     const einnahmen = sum(rows.filter((r) => r.type === 'einnahme').map((r) => r.amount))
     const ausgaben = sum(rows.filter((r) => r.type === 'ausgabe').map((r) => r.amount))
     balance += einnahmen - ausgaben
     result.push({
       month,
+      year,
       einnahmen,
       ausgaben,
       saldo: einnahmen - ausgaben,

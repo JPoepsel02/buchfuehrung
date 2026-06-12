@@ -1,5 +1,6 @@
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
+import { fiscalLabel } from '@shared/fiscal'
 import { byCategory } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 
@@ -13,7 +14,7 @@ export function VeranstaltungenView() {
     <div className="view">
       <header className="view__header">
         <div>
-          <h1 className="view__title">Veranstaltungen {file.year}</h1>
+          <h1 className="view__title">Veranstaltungen {fiscalLabel(file)}</h1>
           <p className="view__subtitle">Buchungen nach Veranstaltung sortiert, mit Saldo je Veranstaltung.</p>
         </div>
       </header>

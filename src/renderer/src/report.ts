@@ -1,3 +1,4 @@
+import { fiscalEndLabel, fiscalLabel, prevFiscalEndLabel } from '@shared/fiscal'
 import { byCategory, chronological, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatAmount, formatDate, formatEur, monthOf } from '@shared/money'
 import type { AuditInfo, YearFile } from '@shared/types'
@@ -13,7 +14,12 @@ function val(v: string | undefined, width = 180): string {
  * (A4). Enthält Abhak-Kästchen je Beleg sowie Unterschriftsfelder für die
  * Kassenprüfung.
  */
-export function buildReportHtml(file: YearFile, logoDataUrl?: string | null): string {
+/**
+ * Erzeugt Zusammenfassung, Chronologie und Veranstaltungs-Tabelle für EIN
+ * Buch – wird für Haupt- und Zweitkonto identisch verwendet, nur mit
+ * unterschiedlicher Abschnitts-Nummerierung und Wirtschaftsjahr-Labels.
+ */
+function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): string {
   const totals = yearTotals(file)
   const chrono = chronological(file)
   const groups = byCategory(file)
@@ -66,6 +72,48 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null): st
     .sort((a, b) => a - b)
     .map((m) => MONTH_NAMES[m - 1])
     .join(', ')
+
+  return `
+  <h2>${startNo}. ${titlePrefix}Zusammenfassung</h2>
+  <table class="summary">
+    <tr><td>Anfangssaldo (Abschlusssaldo ${prevFiscalEndLabel(file)})</td><td class="num">${formatEur(file.openingBalance)}</td></tr>
+    <tr><td>Summe Einnahmen</td><td class="num">${formatEur(totals.einnahmen)}</td></tr>
+    <tr><td>Summe Ausgaben</td><td class="num">−${formatEur(totals.ausgaben)}</td></tr>
+    <tr><td>Jahressaldo</td><td class="num">${formatEur(totals.saldo)}</td></tr>
+    <tr><td>Umsatz (ohne durchlaufende Posten)</td><td class="num">${formatEur(totals.umsatz)}</td></tr>
+    <tr><td>Anzahl Buchungen (${monthsWithBookings || 'keine'})</td><td class="num">${totals.count}</td></tr>
+    <tr class="total"><td>Abschlusssaldo ${fiscalEndLabel(file)}</td><td class="num">${formatEur(totals.closingBalance)}</td></tr>
+  </table>
+
+  <h2>${startNo + 1}. ${titlePrefix}Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(☐ = Beleg geprüft)</span></h2>
+  <table>
+    <thead>
+      <tr><th></th><th>Datum</th><th>Nr.</th><th>Verwendungszweck</th>
+      <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th><th class="num">Kassenstand (€)</th></tr>
+    </thead>
+    <tbody>${chronoRows}</tbody>
+  </table>
+
+  <div class="pagebreak"></div>
+  <h2>${startNo + 2}. ${titlePrefix}Buchungen nach Veranstaltung</h2>
+  <table>
+    <thead>
+      <tr><th></th><th>Nr.</th><th>Datum</th><th>Verwendungszweck</th>
+      <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th></tr>
+    </thead>
+    <tbody>${groupSections}</tbody>
+  </table>`
+}
+
+/**
+ * Erzeugt den druckfertigen Prüfbericht als eigenständiges HTML-Dokument
+ * (A4): Titel + Abschnitte des Hauptkontos, optional die Abschnitte des
+ * Zweitkontos (eigenes Wirtschaftsjahr, strikt getrennt – keine Summen
+ * über beide Konten) und zum Schluss der Kassenprüfbericht nach Vorlage,
+ * der beide Konten abdeckt.
+ */
+export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zweit?: YearFile | null): string {
+  const zweitTitle = zweit ? `${zweit.kontoName || 'Zweitkonto'} ${fiscalLabel(zweit)}: ` : ''
 
   return `<!doctype html>
 <html lang="de">
@@ -130,35 +178,16 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null): st
     ${logoDataUrl ? `<img src="${logoDataUrl}" alt="">` : ''}
   </header>
 
-  <h2>1. Zusammenfassung</h2>
-  <table class="summary">
-    <tr><td>Anfangssaldo (Abschlusssaldo 31.12.${file.year - 1})</td><td class="num">${formatEur(file.openingBalance)}</td></tr>
-    <tr><td>Summe Einnahmen</td><td class="num">${formatEur(totals.einnahmen)}</td></tr>
-    <tr><td>Summe Ausgaben</td><td class="num">−${formatEur(totals.ausgaben)}</td></tr>
-    <tr><td>Jahressaldo</td><td class="num">${formatEur(totals.saldo)}</td></tr>
-    <tr><td>Umsatz (ohne durchlaufende Posten)</td><td class="num">${formatEur(totals.umsatz)}</td></tr>
-    <tr><td>Anzahl Buchungen (${monthsWithBookings || 'keine'})</td><td class="num">${totals.count}</td></tr>
-    <tr class="total"><td>Abschlusssaldo 31.12.${file.year}</td><td class="num">${formatEur(totals.closingBalance)}</td></tr>
-  </table>
+  ${ledgerSections(file, 1, '')}
 
-  <h2>2. Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(☐ = Beleg geprüft)</span></h2>
-  <table>
-    <thead>
-      <tr><th></th><th>Datum</th><th>Nr.</th><th>Verwendungszweck</th>
-      <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th><th class="num">Kassenstand (€)</th></tr>
-    </thead>
-    <tbody>${chronoRows}</tbody>
-  </table>
-
+  ${
+    zweit
+      ? `
   <div class="pagebreak"></div>
-  <h2>3. Buchungen nach Veranstaltung</h2>
-  <table>
-    <thead>
-      <tr><th></th><th>Nr.</th><th>Datum</th><th>Verwendungszweck</th>
-      <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th></tr>
-    </thead>
-    <tbody>${groupSections}</tbody>
-  </table>
+  ${ledgerSections(zweit, 4, zweitTitle)}
+  `
+      : ''
+  }
 
   <div class="pagebreak"></div>
   ${auditSection(file)}

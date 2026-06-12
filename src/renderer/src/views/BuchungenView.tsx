@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
+import { fiscalRange, inFiscalYear } from '@shared/fiscal'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, parseAmountToCents } from '@shared/money'
 import type { Booking, BookingType } from '@shared/types'
@@ -17,8 +18,11 @@ interface FormState {
   note: string
 }
 
-const emptyForm = (categoryId: string, year: number): FormState => ({
-  date: new Date().getFullYear() === year ? new Date().toISOString().slice(0, 10) : `${year}-01-01`,
+const emptyForm = (categoryId: string, fiscal: { year: number; fiscalStartMonth?: number }): FormState => ({
+  // Heute, wenn es im Wirtschaftsjahr liegt – sonst der erste Tag des Wirtschaftsjahres
+  date: inFiscalYear(fiscal, new Date().toISOString().slice(0, 10))
+    ? new Date().toISOString().slice(0, 10)
+    : fiscalRange(fiscal).start,
   categoryId,
   description: '',
   type: 'ausgabe',
@@ -41,7 +45,7 @@ export function BuchungenView({
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
     [file],
   )
-  const [form, setForm] = useState<FormState>(() => emptyForm(activeCats[0]?.id ?? '', file?.year ?? 2026))
+  const [form, setForm] = useState<FormState>(() => emptyForm(activeCats[0]?.id ?? '', file ?? { year: 2026 }))
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
@@ -107,12 +111,12 @@ export function BuchungenView({
     } else {
       addBooking(data)
     }
-    setForm((f) => ({ ...emptyForm(f.categoryId, file!.year), date: f.date }))
+    setForm((f) => ({ ...emptyForm(f.categoryId, file!), date: f.date }))
   }
 
   function cancelEdit() {
     setEditingId(null)
-    setForm(emptyForm(activeCats[0]?.id ?? '', file!.year))
+    setForm(emptyForm(activeCats[0]?.id ?? '', file!))
     setError('')
   }
 

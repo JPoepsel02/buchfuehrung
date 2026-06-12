@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import { buildReportHtml } from '../report'
 import { buildPresentationHtml } from '../presentation'
+import { fiscalLabel, fiscalRange } from '@shared/fiscal'
 import { yearTotals } from '@shared/ledger'
 import { formatEur } from '@shared/money'
-import type { AuditInfo } from '@shared/types'
+import type { AuditInfo, YearFile } from '@shared/types'
 
 const AUDIT_FIELDS: { key: keyof AuditInfo; label: string; span: number; placeholder?: string }[] = [
   { key: 'pruefer1', label: 'Kassenprüfer:in 1', span: 4 },
@@ -20,11 +21,36 @@ const AUDIT_FIELDS: { key: keyof AuditInfo; label: string; span: number; placeho
 ]
 
 export function PruefberichtView() {
-  const { file, settings, update } = useStore()
+  const { file, settings, update, zweitExists } = useStore()
   const [toast, setToast] = useState('')
+  const [zweit, setZweit] = useState<YearFile | null>(null)
+
+  // Passendes Wirtschaftsjahr des Zweitkontos laden: das, dessen Ende im
+  // Kassenjahr des Hauptkontos liegt (Nov 2025–Okt 2026 gehört zu 2026).
+  useEffect(() => {
+    if (!file || !zweitExists) {
+      setZweit(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      for (const candidate of [file.year, file.year - 1]) {
+        const data = (await api.loadYear('zweit', candidate)) as YearFile | null
+        if (data && Number(fiscalRange(data).end.slice(0, 4)) === file.year) {
+          if (!cancelled) setZweit(data)
+          return
+        }
+      }
+      if (!cancelled) setZweit(null)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [file, zweitExists])
+
   const html = useMemo(
-    () => (file ? buildReportHtml(file, settings.logoDataUrl) : ''),
-    [file, settings.logoDataUrl],
+    () => (file ? buildReportHtml(file, settings.logoDataUrl, zweit) : ''),
+    [file, settings.logoDataUrl, zweit],
   )
   if (!file) return null
   const totals = yearTotals(file)
@@ -84,7 +110,9 @@ export function PruefberichtView() {
         <div className="stat">
           <div className="stat__label">Inhalt</div>
           <div className="stat__hint" style={{ marginTop: 8 }}>
-            Zusammenfassung · Chronologie · Veranstaltungen · Kassenprüfbericht mit Unterschriften
+            Hauptkonto: Zusammenfassung · Chronologie · Veranstaltungen
+            {zweit ? ` · danach ${zweit.kontoName || 'Zweitkonto'} ${fiscalLabel(zweit)} (getrennt, keine Gesamtsummen)` : ''}
+            {' '}· Kassenprüfbericht mit Unterschriften
           </div>
         </div>
       </div>
