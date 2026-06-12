@@ -5,6 +5,7 @@ import { AmountField } from '../components/AmountInput'
 import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { praesentationsModus } from '../presentation'
+import { fiscalLabel } from '@shared/fiscal'
 import { buildBackup, validateBackup } from '@shared/backup'
 import { yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur, parseAmountToCents } from '@shared/money'
@@ -35,15 +36,35 @@ function readLogoFile(file: File): Promise<string> {
 }
 
 export function EinstellungenView() {
-  const { file, years, update, createYear, deleteYear, selectYear, addCategory, updateCategory, deleteCategory } =
-    useStore()
+  const {
+    file,
+    years,
+    konto,
+    zweitExists,
+    zweitName,
+    selectKonto,
+    update,
+    createYear,
+    deleteYear,
+    selectYear,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+  } = useStore()
   const [toast, setToast] = useState('')
   const [newCat, setNewCat] = useState({ name: '', code: '' })
   const [balanceInput, setBalanceInput] = useState(() =>
     file ? (file.openingBalance / 100).toFixed(2).replace('.', ',') : '0,00',
   )
 
+  // Anfangssaldo-Feld nachziehen, wenn Jahr oder Konto wechseln
+  useEffect(() => {
+    if (file) setBalanceInput((file.openingBalance / 100).toFixed(2).replace('.', ','))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file?.konto, file?.year])
+
   if (!file) return null
+  const jahrWort = (file.fiscalStartMonth ?? 1) === 1 ? 'Kassenjahr' : 'Wirtschaftsjahr'
   const totals = yearTotals(file)
   const cats = [...file.categories].sort((a, b) => a.sortOrder - b.sortOrder)
 
@@ -80,26 +101,28 @@ export function EinstellungenView() {
   }
 
   async function removeYear(year: number) {
+    const label = fiscalLabel({ year, fiscalStartMonth: file!.fiscalStartMonth })
     if (
       !confirm(
-        `Kassenjahr ${year} wirklich löschen?\n\nEine Sicherungskopie wird im Backup-Ordner abgelegt (Einstellungen → „Datenordner öffnen“ → backups).`,
+        `${jahrWort} ${label} wirklich löschen?\n\nEine Sicherungskopie wird im Backup-Ordner abgelegt (Einstellungen → „Datenordner öffnen“ → backups).`,
       )
     )
       return
     await deleteYear(year)
-    notify(`Kassenjahr ${year} gelöscht.`)
+    notify(`${jahrWort} ${label} gelöscht.`)
   }
 
   async function startNextYear() {
     const nextYear = file!.year + 1
+    const label = fiscalLabel({ year: nextYear, fiscalStartMonth: file!.fiscalStartMonth })
     if (
       !confirm(
-        `Jahresabschluss: Kassenjahr ${nextYear} anlegen?\n\nDer Abschlusssaldo ${formatEur(totals.closingBalance)} wird als Anfangssaldo übernommen, die Kategorien werden kopiert.`,
+        `Jahresabschluss: ${jahrWort} ${label} anlegen?\n\nDer Abschlusssaldo ${formatEur(totals.closingBalance)} wird als Anfangssaldo übernommen, die Kategorien werden kopiert.`,
       )
     )
       return
     await createYear(nextYear, totals.closingBalance, file!.clubName, file!.treasurerName)
-    notify(`Kassenjahr ${nextYear} angelegt.`)
+    notify(`${jahrWort} ${label} angelegt.`)
   }
 
   return (
@@ -111,7 +134,10 @@ export function EinstellungenView() {
       </header>
 
       <section className="card">
-        <h2 className="card__title">Kassenjahr {file.year}</h2>
+        <h2 className="card__title">
+          {konto === 'zweit' ? `${file.kontoName ?? 'Zweitkonto'} · ` : ''}
+          {jahrWort} {fiscalLabel(file)}
+        </h2>
         <div className="form-grid">
           <div className="field" style={{ gridColumn: 'span 4' }}>
             <label htmlFor="s-club">Verein / Ortsgruppe</label>
@@ -135,9 +161,20 @@ export function EinstellungenView() {
           </div>
           <div style={{ gridColumn: 'span 2' }}>
             <button className="btn" onClick={() => void startNextYear()}>
-              Jahresabschluss → {file.year + 1}
+              Jahresabschluss → {fiscalLabel({ year: file.year + 1, fiscalStartMonth: file.fiscalStartMonth })}
             </button>
           </div>
+          {konto === 'zweit' && (
+            <div className="field" style={{ gridColumn: 'span 4' }}>
+              <label htmlFor="s-kontoname">Konto-Name</label>
+              <input
+                id="s-kontoname"
+                value={file.kontoName ?? ''}
+                onChange={(e) => update((f) => ({ ...f, kontoName: e.target.value }))}
+                placeholder="z. B. Karnevalskonto"
+              />
+            </div>
+          )}
         </div>
       </section>
 
@@ -150,13 +187,30 @@ export function EinstellungenView() {
       {isElectron && <UpdateCard />}
 
       <section className="card">
-        <h2 className="card__title">Kassenjahre</h2>
+        <h2 className="card__title">Konten</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Hauptkonto und Zweitkonto werden vollständig getrennt geführt – eigene Kategorien,
+          eigene Beleg-Nummern, eigenes Wirtschaftsjahr. Summen werden nie verrechnet.
+        </p>
+        {zweitExists ? (
+          <p className="hint">
+            Zweitkonto „{zweitName}“ ist angelegt – Wechsel über die Konto-Auswahl in der Seitenleiste.
+          </p>
+        ) : (
+          <button className="btn" onClick={() => void selectKonto('zweit')}>
+            Zweites Konto anlegen …
+          </button>
+        )}
+      </section>
+
+      <section className="card">
+        <h2 className="card__title">{jahrWort}e{konto === 'zweit' ? ` · ${file.kontoName ?? 'Zweitkonto'}` : ''}</h2>
         <table className="ledger">
           <tbody>
             {years.map((y) => (
               <tr key={y}>
                 <td style={{ fontWeight: 600 }}>
-                  {y}
+                  {fiscalLabel({ year: y, fiscalStartMonth: file.fiscalStartMonth })}
                   {y === file.year && <span className="pill pill--in" style={{ marginLeft: 8 }}>geöffnet</span>}
                 </td>
                 <td className="num" style={{ whiteSpace: 'nowrap' }}>
@@ -167,7 +221,7 @@ export function EinstellungenView() {
                   )}
                   <button
                     className="btn btn--ghost btn--sm btn--danger"
-                    disabled={years.length < 2}
+                    disabled={konto === 'haupt' && years.length < 2}
                     onClick={() => void removeYear(y)}
                   >
                     Löschen
@@ -179,8 +233,8 @@ export function EinstellungenView() {
         </table>
         <p className="hint">
           Gelöschte Jahre wandern als Sicherungskopie in den Backup-Ordner – z. B. falls ein
-          Jahresabschluss versehentlich ausgelöst wurde. Das letzte verbleibende Jahr kann nicht
-          gelöscht werden.
+          Jahresabschluss versehentlich ausgelöst wurde. Das letzte Jahr des Hauptkontos kann nicht
+          gelöscht werden; wird das letzte Jahr des Zweitkontos gelöscht, verschwindet das Zweitkonto.
         </p>
       </section>
 
@@ -336,13 +390,20 @@ function AppearanceCard() {
 
 /** Lokale Speicherung plus optionale Spiegelung in einen Cloud-synchronisierten Ordner. */
 function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
-  const { years, settings, updateSettings } = useStore()
+  const { settings, updateSettings } = useStore()
   const cloudEnabled = settings.cloudBackupEnabled === true
   const cloudDir = settings.cloudBackupDir?.trim() ?? ''
 
-  /** Alle Kassenjahre plus Einstellungen als eine Sicherungsdatei exportieren. */
+  /** Alle Jahre beider Konten plus Einstellungen als eine Sicherungsdatei exportieren. */
   async function exportBackup() {
-    const files = (await Promise.all(years.map((y) => api.loadYear(y)))).filter(Boolean) as YearFile[]
+    const files: YearFile[] = []
+    for (const konto of ['haupt', 'zweit'] as const) {
+      const list = await api.listYears(konto)
+      for (const y of list) {
+        const data = (await api.loadYear(konto, y)) as YearFile | null
+        if (data) files.push({ ...data, konto })
+      }
+    }
     if (files.length === 0) return notify('Keine Daten zum Exportieren gefunden.')
     const backup = buildBackup(files, settings, new Date().toISOString())
     const name = `Buchfuehrung-Sicherung-${new Date().toISOString().slice(0, 10)}.json`
@@ -367,9 +428,15 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
       )
     }
     const summary = result.backup.years
-      .map((y) => `• Kassenjahr ${y.year}: ${y.bookings.length} Buchungen, ${y.categories.length} Kategorien`)
+      .map(
+        (y) =>
+          `• ${y.konto === 'zweit' ? `${y.kontoName ?? 'Zweitkonto'} ` : ''}${y.year}: ${y.bookings.length} Buchungen, ${y.categories.length} Kategorien`,
+      )
       .join('\n')
-    const replaces = result.backup.years.filter((y) => years.includes(y.year)).map((y) => y.year)
+    const existing = { haupt: await api.listYears('haupt'), zweit: await api.listYears('zweit') }
+    const replaces = result.backup.years
+      .filter((y) => existing[y.konto ?? 'haupt'].includes(y.year))
+      .map((y) => `${y.konto === 'zweit' ? 'Zweitkonto ' : ''}${y.year}`)
     if (
       !confirm(
         `Sicherung „${file.name}“ importieren?\n\n${summary}\n\n${
@@ -380,7 +447,7 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
       )
     )
       return
-    for (const y of result.backup.years) await api.saveYear(y.year, y)
+    for (const y of result.backup.years) await api.saveYear(y.konto ?? 'haupt', y.year, y)
     if (result.backup.settings) await api.saveSettings(result.backup.settings)
     window.location.reload()
   }

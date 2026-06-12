@@ -30,10 +30,12 @@ export function registerIpc(): void {
   ipcMain.handle('update:install', (e, info: UpdateInfo) =>
     downloadAndInstall(BrowserWindow.fromWebContents(e.sender), info),
   )
-  ipcMain.handle('years:list', () => listYears())
-  ipcMain.handle('years:load', (_e, year: number) => loadYear(year))
-  ipcMain.handle('years:save', (_e, year: number, data: unknown) => saveYear(year, data))
-  ipcMain.handle('years:delete', (_e, year: number) => deleteYear(year))
+  ipcMain.handle('years:list', (_e, konto: string) => listYears(konto ?? 'haupt'))
+  ipcMain.handle('years:load', (_e, konto: string, year: number) => loadYear(konto ?? 'haupt', year))
+  ipcMain.handle('years:save', (_e, konto: string, year: number, data: unknown) =>
+    saveYear(konto ?? 'haupt', year, data),
+  )
+  ipcMain.handle('years:delete', (_e, konto: string, year: number) => deleteYear(konto ?? 'haupt', year))
 
   ipcMain.handle('settings:load', () => loadSettings())
   ipcMain.handle('settings:save', (_e, data: { logoDataUrl?: string | null }) => {

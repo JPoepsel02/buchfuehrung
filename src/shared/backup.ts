@@ -47,7 +47,8 @@ export function validateBackup(data: unknown): ValidationResult {
     return { ok: false, errors: ['Die Sicherung enthält keine Kassenjahre.'] }
   }
 
-  const seenYears = new Set<number>()
+  // Jahr darf je Konto nur einmal vorkommen (Haupt- und Zweitkonto getrennt)
+  const seenYears = new Set<string>()
   b.years.forEach((y, yi) => {
     const where = `Jahr ${yi + 1}`
     if (typeof y !== 'object' || y === null) return err(`${where}: kein Objekt.`)
@@ -55,11 +56,21 @@ export function validateBackup(data: unknown): ValidationResult {
     if (!Number.isInteger(f.year) || (f.year as number) < 2000 || (f.year as number) > 2100)
       return err(`${where}: ungültige Jahreszahl ${String(f.year)}.`)
     const yearNo = f.year as number
-    if (seenYears.has(yearNo)) err(`Kassenjahr ${yearNo} ist doppelt enthalten.`)
-    seenYears.add(yearNo)
+    const yearKey = `${typeof f.konto === 'string' ? f.konto : 'haupt'}:${yearNo}`
+    if (seenYears.has(yearKey)) err(`Kassenjahr ${yearNo} ist doppelt enthalten.`)
+    seenYears.add(yearKey)
     if (!Number.isInteger(f.openingBalance)) err(`Kassenjahr ${yearNo}: Anfangssaldo ist kein Cent-Betrag.`)
     if (typeof f.clubName !== 'string' || typeof f.treasurerName !== 'string')
       err(`Kassenjahr ${yearNo}: Vereins-/Kassenwart-Name fehlt.`)
+    if (f.konto !== undefined && f.konto !== 'haupt' && f.konto !== 'zweit')
+      err(`Kassenjahr ${yearNo}: ungültige Konto-Kennung.`)
+    if (f.kontoName !== undefined && typeof f.kontoName !== 'string')
+      err(`Kassenjahr ${yearNo}: Konto-Name ist kein Text.`)
+    if (
+      f.fiscalStartMonth !== undefined &&
+      (!Number.isInteger(f.fiscalStartMonth) || (f.fiscalStartMonth as number) < 1 || (f.fiscalStartMonth as number) > 12)
+    )
+      err(`Kassenjahr ${yearNo}: Wirtschaftsjahr-Startmonat muss 1–12 sein.`)
 
     if (!Array.isArray(f.categories) || f.categories.length === 0) {
       err(`Kassenjahr ${yearNo}: keine Kategorien.`)

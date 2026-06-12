@@ -1,5 +1,6 @@
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
+import { fiscalEndLabel, fiscalLabel, prevFiscalEndLabel } from '@shared/fiscal'
 import { chronological, yearTotals } from '@shared/ledger'
 import { formatDate, formatEur } from '@shared/money'
 
@@ -14,7 +15,7 @@ export function ChronoView() {
     <div className="view">
       <header className="view__header">
         <div>
-          <h1 className="view__title">Chronologisch {file.year}</h1>
+          <h1 className="view__title">Chronologisch {fiscalLabel(file)}</h1>
           <p className="view__subtitle">Alle Buchungen nach Datum sortiert mit laufendem Kassenstand.</p>
         </div>
       </header>
@@ -50,17 +51,17 @@ export function ChronoView() {
                 </tr>
               ))}
               <tr className="total-row">
-                <td colSpan={3}>Abschlusssaldo 31.12.{file.year - 1}</td>
+                <td colSpan={3}>Abschlusssaldo {prevFiscalEndLabel(file)}</td>
                 <td colSpan={4} className="num">{formatEur(file.openingBalance)}</td>
               </tr>
               <tr className="total-row">
-                <td colSpan={3}>+ Gesamtsaldo {file.year}</td>
+                <td colSpan={3}>+ Gesamtsaldo {fiscalLabel(file)}</td>
                 <td colSpan={4} className="num">
                   <Amount cents={totals.saldo} withSign currency />
                 </td>
               </tr>
               <tr className="total-row">
-                <td colSpan={3}>Abschlusssaldo 31.12.{file.year}</td>
+                <td colSpan={3}>Abschlusssaldo {fiscalEndLabel(file)}</td>
                 <td colSpan={4} className="num">{formatEur(totals.closingBalance)}</td>
               </tr>
             </tbody>

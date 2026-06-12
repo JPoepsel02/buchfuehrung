@@ -22,28 +22,34 @@ function backupDir(): string {
   return dir
 }
 
-function fileFor(year: number): string {
-  return join(dataDir(), `kassenbuch-${year}.json`)
+/** Dateiname je Buch: Hauptkonto "kassenbuch-…", Zweitkonto "kassenbuch-k2-…". */
+function prefixFor(konto: string): string {
+  return konto === 'zweit' ? 'kassenbuch-k2' : 'kassenbuch'
 }
 
-export function listYears(): number[] {
+function fileFor(konto: string, year: number): string {
+  return join(dataDir(), `${prefixFor(konto)}-${year}.json`)
+}
+
+export function listYears(konto: string): number[] {
+  const re = konto === 'zweit' ? /^kassenbuch-k2-(\d{4})\.json$/ : /^kassenbuch-(\d{4})\.json$/
   return readdirSync(dataDir())
-    .map((f) => /^kassenbuch-(\d{4})\.json$/.exec(f)?.[1])
+    .map((f) => re.exec(f)?.[1])
     .filter((y): y is string => Boolean(y))
     .map(Number)
     .sort((a, b) => b - a)
 }
 
-export function loadYear(year: number): unknown | null {
-  const file = fileFor(year)
+export function loadYear(konto: string, year: number): unknown | null {
+  const file = fileFor(konto, year)
   if (!existsSync(file)) return null
   return JSON.parse(readFileSync(file, 'utf-8'))
 }
 
-export function saveYear(year: number, data: unknown): void {
-  const file = fileFor(year)
+export function saveYear(konto: string, year: number, data: unknown): void {
+  const file = fileFor(konto, year)
   if (existsSync(file)) {
-    rotateBackup(year, file)
+    rotateBackup(konto, year, file)
   }
   const tmp = file + '.tmp'
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
@@ -51,11 +57,11 @@ export function saveYear(year: number, data: unknown): void {
   syncDataToCloud()
 }
 
-function rotateBackup(year: number, file: string): void {
+function rotateBackup(konto: string, year: number, file: string): void {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  copyFileSync(file, join(backupDir(), `kassenbuch-${year}-${stamp}.json`))
+  copyFileSync(file, join(backupDir(), `${prefixFor(konto)}-${year}-${stamp}.json`))
   const backups = readdirSync(backupDir())
-    .filter((f) => f.startsWith(`kassenbuch-${year}-`))
+    .filter((f) => f.startsWith(`${prefixFor(konto)}-${year}-`))
     .sort()
   for (const old of backups.slice(0, Math.max(0, backups.length - MAX_BACKUPS))) {
     try {
@@ -90,11 +96,11 @@ export function saveSettings(data: unknown): void {
  * Löscht ein Kassenjahr, indem die Datei in den Backup-Ordner verschoben
  * wird – versehentliches Löschen bleibt damit wiederherstellbar.
  */
-export function deleteYear(year: number): void {
-  const file = fileFor(year)
+export function deleteYear(konto: string, year: number): void {
+  const file = fileFor(konto, year)
   if (!existsSync(file)) return
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  renameSync(file, join(backupDir(), `kassenbuch-${year}-geloescht-${stamp}.json`))
+  renameSync(file, join(backupDir(), `${prefixFor(konto)}-${year}-geloescht-${stamp}.json`))
   syncDataToCloud()
 }
 
@@ -110,12 +116,12 @@ function syncDataToCloud(settings: unknown = loadSettings()): void {
     const sourceDir = dataDir()
     if (resolve(dir) === resolve(sourceDir)) return
     for (const file of readdirSync(dir)) {
-      if (/^(kassenbuch-\d{4}|einstellungen)\.json$/.test(file)) {
+      if (/^(kassenbuch(-k2)?-\d{4}|einstellungen)\.json$/.test(file)) {
         rmSync(join(dir, file), { force: true })
       }
     }
     for (const file of readdirSync(sourceDir)) {
-      if (/^(kassenbuch-\d{4}|einstellungen)\.json$/.test(file)) {
+      if (/^(kassenbuch(-k2)?-\d{4}|einstellungen)\.json$/.test(file)) {
         copyFileSync(join(sourceDir, file), join(dir, basename(file)))
       }
     }

@@ -1,5 +1,6 @@
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
+import { fiscalLabel } from '@shared/fiscal'
 import { byCategory, monthSummaries, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur } from '@shared/money'
 
@@ -15,7 +16,7 @@ export function UebersichtView() {
     <div className="view">
       <header className="view__header">
         <div>
-          <h1 className="view__title">Übersicht {file.year}</h1>
+          <h1 className="view__title">Übersicht {fiscalLabel(file)}</h1>
           <p className="view__subtitle">
             {totals.count} Buchungen · Anfangssaldo {formatEur(file.openingBalance)}
           </p>
@@ -64,8 +65,11 @@ export function UebersichtView() {
             </thead>
             <tbody>
               {activeMonths.map((m) => (
-                <tr key={m.month}>
-                  <td>{MONTH_NAMES[m.month - 1]}</td>
+                <tr key={`${m.year}-${m.month}`}>
+                  <td>
+                    {MONTH_NAMES[m.month - 1]}
+                    {(file.fiscalStartMonth ?? 1) !== 1 && <span className="hint"> {m.year}</span>}
+                  </td>
                   <td className="num"><Amount cents={m.einnahmen} /></td>
                   <td className="num"><Amount cents={-m.ausgaben} /></td>
                   <td className="num"><Amount cents={m.saldo} withSign /></td>

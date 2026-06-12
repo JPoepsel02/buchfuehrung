@@ -3,6 +3,7 @@ import { api, isElectron } from './api'
 import { LogoMark } from './components/LogoMark'
 import { useStore } from './store'
 import { SetupView } from './views/SetupView'
+import { ZweitkontoSetupView } from './views/ZweitkontoSetupView'
 import { UebersichtView } from './views/UebersichtView'
 import { BuchungenView } from './views/BuchungenView'
 import { ChronoView } from './views/ChronoView'
@@ -10,8 +11,10 @@ import { VeranstaltungenView } from './views/VeranstaltungenView'
 import { ImportView } from './views/ImportView'
 import { PruefberichtView } from './views/PruefberichtView'
 import { EinstellungenView } from './views/EinstellungenView'
+import { fiscalLabel } from '@shared/fiscal'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, formatEur } from '@shared/money'
+import type { KontoId } from '@shared/types'
 
 const VIEWS = [
   { id: 'uebersicht', label: 'Übersicht', icon: '◫' },
@@ -28,7 +31,7 @@ type ViewId = (typeof VIEWS)[number]['id']
 const isMac = navigator.userAgent.includes('Macintosh')
 
 export function App() {
-  const { loading, file, years, selectYear, settings } = useStore()
+  const { loading, file, years, selectYear, settings, konto, selectKonto, zweitExists, zweitName } = useStore()
   const [view, setView] = useState<ViewId>('uebersicht')
   const [updateHint, setUpdateHint] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -88,9 +91,18 @@ export function App() {
     return (
       <>
         {dragStrip}
-        <SetupView />
+        {konto === 'zweit' ? <ZweitkontoSetupView /> : <SetupView />}
       </>
     )
+
+  // Präsentation und Prüfbericht gibt es nur vom Hauptkonto aus –
+  // der Prüfbericht enthält dort beide Konten.
+  const navViews = VIEWS.filter((v) => konto === 'haupt' || v.id !== 'pruefbericht')
+
+  async function switchKonto(target: KontoId) {
+    await selectKonto(target)
+    if (target === 'zweit' && view === 'pruefbericht') setView('uebersicht')
+  }
 
   function jumpToBooking(term: string) {
     setBookingsFilter(term)
@@ -109,21 +121,32 @@ export function App() {
           Buchführung
         </div>
         <div className="sidebar__year">
-          <span>Kassenjahr</span>
+          <span>Konto</span>
+          <select
+            value={konto}
+            onChange={(e) => void switchKonto(e.target.value as KontoId)}
+            aria-label="Konto wählen"
+          >
+            <option value="haupt">Hauptkonto</option>
+            <option value="zweit">{zweitExists ? zweitName : '+ Zweitkonto anlegen …'}</option>
+          </select>
+        </div>
+        <div className="sidebar__year">
+          <span>{(file.fiscalStartMonth ?? 1) === 1 ? 'Kassenjahr' : 'Wirtschaftsjahr'}</span>
           <select
             value={file.year}
             onChange={(e) => void selectYear(Number(e.target.value))}
-            aria-label="Kassenjahr wählen"
+            aria-label="Jahr wählen"
           >
             {years.map((y) => (
               <option key={y} value={y}>
-                {y}
+                {fiscalLabel({ year: y, fiscalStartMonth: file.fiscalStartMonth })}
               </option>
             ))}
           </select>
         </div>
         <nav aria-label="Hauptnavigation">
-          {VIEWS.map((v) => (
+          {navViews.map((v) => (
             <button
               key={v.id}
               className={`navlink${view === v.id ? ' is-active' : ''}`}
@@ -136,7 +159,9 @@ export function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar__footer">{file.clubName || 'Verein'} · {file.year}</div>
+        <div className="sidebar__footer">
+          {konto === 'zweit' ? file.kontoName || 'Zweitkonto' : file.clubName || 'Verein'} · {fiscalLabel(file)}
+        </div>
       </aside>
       <main className="main">
         {view === 'uebersicht' && <UebersichtView />}

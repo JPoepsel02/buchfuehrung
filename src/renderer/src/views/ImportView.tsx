@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { CentsAmountInput } from '../components/AmountInput'
 import { parseBankCsv } from '@shared/csv'
+import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
 import { nextSeq } from '@shared/ledger'
 import { formatDate } from '@shared/money'
@@ -53,7 +54,7 @@ export function ImportView() {
       amount: r.amount,
       hash: r.hash,
       description: '',
-      selected: !existingHashes.has(r.hash) && r.date.startsWith(String(file!.year)),
+      selected: !existingHashes.has(r.hash) && inFiscalYear(file!, r.date),
       // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
       categoryId: '',
       isUmsatz: false,
@@ -144,7 +145,7 @@ export function ImportView() {
             importDraft: {
               ...f.importDraft,
               rows: f.importDraft.rows.map((r) =>
-                existingHashes.has(r.hash) || !r.date.startsWith(String(f.year)) ? r : { ...r, selected },
+                existingHashes.has(r.hash) || !inFiscalYear(f, r.date) ? r : { ...r, selected },
               ),
             },
           }
@@ -265,7 +266,7 @@ export function ImportView() {
             <tbody>
               {draft.rows.map((r, i) => {
                 const isDuplicate = existingHashes.has(r.hash)
-                const inYear = r.date.startsWith(String(file.year))
+                const inYear = inFiscalYear(file, r.date)
                 const splitTotal = sumSplits(r.splits)
                 const splitDiff = Math.abs(r.amount) - splitTotal
                 return (

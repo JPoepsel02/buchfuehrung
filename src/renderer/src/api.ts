@@ -13,10 +13,10 @@ export interface UpdateInfo {
 }
 
 export interface Api {
-  listYears(): Promise<number[]>
-  loadYear(year: number): Promise<unknown | null>
-  saveYear(year: number, data: unknown): Promise<void>
-  deleteYear(year: number): Promise<void>
+  listYears(konto: string): Promise<number[]>
+  loadYear(konto: string, year: number): Promise<unknown | null>
+  saveYear(konto: string, year: number, data: unknown): Promise<void>
+  deleteYear(konto: string, year: number): Promise<void>
   loadSettings(): Promise<unknown>
   saveSettings(data: unknown): Promise<void>
   openDataFolder(): Promise<void>
@@ -42,24 +42,25 @@ declare global {
   }
 }
 
-const PREFIX = 'kassenwart:jahr:'
+const keyFor = (konto: string) => (konto === 'zweit' ? 'kassenwart:k2:' : 'kassenwart:jahr:')
 
 const webFallback: Api = {
-  async listYears() {
+  async listYears(konto) {
+    const prefix = keyFor(konto)
     return Object.keys(localStorage)
-      .filter((k) => k.startsWith(PREFIX))
-      .map((k) => Number(k.slice(PREFIX.length)))
+      .filter((k) => k.startsWith(prefix))
+      .map((k) => Number(k.slice(prefix.length)))
       .sort((a, b) => b - a)
   },
-  async loadYear(year) {
-    const raw = localStorage.getItem(PREFIX + year)
+  async loadYear(konto, year) {
+    const raw = localStorage.getItem(keyFor(konto) + year)
     return raw ? JSON.parse(raw) : null
   },
-  async saveYear(year, data) {
-    localStorage.setItem(PREFIX + year, JSON.stringify(data))
+  async saveYear(konto, year, data) {
+    localStorage.setItem(keyFor(konto) + year, JSON.stringify(data))
   },
-  async deleteYear(year) {
-    localStorage.removeItem(PREFIX + year)
+  async deleteYear(konto, year) {
+    localStorage.removeItem(keyFor(konto) + year)
   },
   async loadSettings() {
     const raw = localStorage.getItem('kassenwart:einstellungen')

@@ -20,10 +20,11 @@ const api = {
     ipcRenderer.on('update:progress', listener)
     return () => ipcRenderer.removeListener('update:progress', listener)
   },
-  listYears: (): Promise<number[]> => ipcRenderer.invoke('years:list'),
-  loadYear: (year: number): Promise<unknown | null> => ipcRenderer.invoke('years:load', year),
-  saveYear: (year: number, data: unknown): Promise<void> => ipcRenderer.invoke('years:save', year, data),
-  deleteYear: (year: number): Promise<void> => ipcRenderer.invoke('years:delete', year),
+  listYears: (konto: string): Promise<number[]> => ipcRenderer.invoke('years:list', konto),
+  loadYear: (konto: string, year: number): Promise<unknown | null> => ipcRenderer.invoke('years:load', konto, year),
+  saveYear: (konto: string, year: number, data: unknown): Promise<void> =>
+    ipcRenderer.invoke('years:save', konto, year, data),
+  deleteYear: (konto: string, year: number): Promise<void> => ipcRenderer.invoke('years:delete', konto, year),
   loadSettings: (): Promise<unknown> => ipcRenderer.invoke('settings:load'),
   saveSettings: (data: unknown): Promise<void> => ipcRenderer.invoke('settings:save', data),
   openDataFolder: (): Promise<void> => ipcRenderer.invoke('data:openFolder'),

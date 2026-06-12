@@ -140,6 +140,21 @@ describe('Auswertung', () => {
     expect(t.count).toBe(2)
   })
 
+  test('monthSummaries folgt dem Wirtschaftsjahr (Nov–Okt) über den Jahreswechsel', () => {
+    const f = {
+      ...file([
+        booking({ seq: 1, date: '2025-11-15', categoryId: 'm', type: 'einnahme', amount: 10000 }),
+        booking({ seq: 2, date: '2026-02-10', categoryId: 'm', type: 'ausgabe', amount: 4000 }),
+      ]),
+      year: 2025,
+      fiscalStartMonth: 11,
+    }
+    const months = monthSummaries(f)
+    expect(months[0]).toMatchObject({ month: 11, year: 2025, einnahmen: 10000 })
+    expect(months[3]).toMatchObject({ month: 2, year: 2026, ausgaben: 4000 })
+    expect(months[11]).toMatchObject({ month: 10, year: 2026, balanceEnd: 740405 + 10000 - 4000 })
+  })
+
   test('monthSummaries führt den Kassenstand über die Monate fort', () => {
     const f = file([
       booking({ seq: 1, date: '2026-01-10', categoryId: 'b', type: 'einnahme', amount: 10000 }),
