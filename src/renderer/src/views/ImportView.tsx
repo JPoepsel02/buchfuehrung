@@ -178,6 +178,7 @@ export function ImportView() {
             date: r.date,
             categoryId: part.categoryId,
             description: part.description.trim(),
+            subcategory: r.splits?.length ? undefined : (r.subcategory ?? '').trim() || undefined,
             type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
             amount: part.amount,
             isUmsatz: part.isUmsatz,
@@ -251,6 +252,11 @@ export function ImportView() {
               {draft.skipped} Zeilen konnten nicht gelesen werden (z. B. Kopf- oder Saldozeilen).
             </p>
           )}
+          <datalist id="import-sub-suggestions">
+            {[...new Set(file.bookings.map((b) => (b.subcategory ?? '').trim()).filter(Boolean))].map((sName) => (
+              <option key={sName} value={sName} />
+            ))}
+          </datalist>
           <table className="ledger">
             <thead>
               <tr>
@@ -303,6 +309,17 @@ export function ImportView() {
                         aria-invalid={r.selected && !isDuplicate && !(r.splits?.length) && !r.description.trim()}
                         style={{ minWidth: 140, width: '100%' }}
                       />
+                      {!r.splits?.length && (
+                        <input
+                          value={r.subcategory ?? ''}
+                          onChange={(e) => setRow(i, { subcategory: e.target.value })}
+                          placeholder="Unterkategorie (optional)"
+                          disabled={!r.selected || isDuplicate}
+                          aria-label="Unterkategorie"
+                          list="import-sub-suggestions"
+                          style={{ minWidth: 140, width: '100%', marginTop: 4, fontSize: 'var(--text-xs)' }}
+                        />
+                      )}
                       {r.splits?.length ? (
                         <span className="pill" style={{ marginTop: 6 }}>
                           auf {r.splits.length} Buchungen aufgeteilt

@@ -1,7 +1,7 @@
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { fiscalLabel } from '@shared/fiscal'
-import { byCategory } from '@shared/ledger'
+import { byCategory, eventRows } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 
 /** Buchungen nach Veranstaltung gruppiert mit Zwischensummen – wie das Excel-Blatt. */
@@ -54,13 +54,18 @@ function GroupRows({ group }: { group: ReturnType<typeof byCategory>[number] }) 
       <tr className="group-head">
         <td colSpan={6}>{group.category.name}</td>
       </tr>
-      {group.rows.map((r) => (
-        <tr key={r.id}>
-          <td className="ref">{r.ref}</td>
-          <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
-          <td className="cell-desc">{r.description}</td>
-          <td className="num">{r.type === 'ausgabe' ? <Amount cents={-r.amount} /> : ''}</td>
-          <td className="num">{r.type === 'einnahme' ? <Amount cents={r.amount} /> : ''}</td>
+      {eventRows(group).map((r) => (
+        <tr key={`${r.refs}-${r.label}`}>
+          <td className="ref">{r.refs}</td>
+          <td style={{ whiteSpace: 'nowrap' }}>{r.kind === 'einzeln' ? formatDate(r.date) : ''}</td>
+          <td className="cell-desc">
+            {r.label}
+            {r.kind === 'unterkategorie' && (
+              <span className="pill" style={{ marginLeft: 6 }}>{r.count} Buchungen</span>
+            )}
+          </td>
+          <td className="num">{r.ausgaben > 0 ? <Amount cents={-r.ausgaben} /> : ''}</td>
+          <td className="num">{r.einnahmen > 0 ? <Amount cents={r.einnahmen} /> : ''}</td>
           <td></td>
         </tr>
       ))}

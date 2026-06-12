@@ -1,5 +1,5 @@
 import { fiscalEndLabel, fiscalLabel, prevFiscalEndLabel } from '@shared/fiscal'
-import { byCategory, chronological, yearTotals } from '@shared/ledger'
+import { byCategory, chronological, eventRows, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatAmount, formatDate, formatEur, monthOf } from '@shared/money'
 import type { AuditInfo, YearFile } from '@shared/types'
 
@@ -43,16 +43,16 @@ function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): s
     .map(
       (g) => `
       <tr class="group-head"><td colspan="6">${esc(g.category.name)}</td></tr>
-      ${g.rows
+      ${eventRows(g)
         .map(
           (r) => `
         <tr>
           <td class="check">☐</td>
-          <td class="ref">${esc(r.ref)}</td>
-          <td class="nowrap">${formatDate(r.date)}</td>
-          <td>${esc(r.description)}</td>
-          <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
-          <td class="num">${r.type === 'einnahme' ? formatAmount(r.amount) : ''}</td>
+          <td class="ref">${esc(r.refs)}</td>
+          <td class="nowrap">${r.kind === 'einzeln' ? formatDate(r.date) : `${r.count} Buchungen`}</td>
+          <td>${esc(r.label)}</td>
+          <td class="num">${r.ausgaben > 0 ? formatAmount(r.ausgaben) : ''}</td>
+          <td class="num">${r.einnahmen > 0 ? formatAmount(r.einnahmen) : ''}</td>
         </tr>`,
         )
         .join('')}

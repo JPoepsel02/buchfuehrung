@@ -125,6 +125,8 @@ export function validateBackup(data: unknown): ValidationResult {
       )
         err(`${bw}: "davon kein Umsatz" muss zwischen 0 und dem Betrag liegen.`)
       if (typeof bo.note !== 'string') err(`${bw}: Notiz-Feld fehlt.`)
+      if (bo.subcategory !== undefined && typeof bo.subcategory !== 'string')
+        err(`${bw}: Unterkategorie ist kein Text.`)
       if (!Number.isInteger(bo.seq)) err(`${bw}: laufende Nummer fehlt.`)
       if (bo.source !== 'manuell' && bo.source !== 'import') err(`${bw}: ungültige Herkunft.`)
     })
