@@ -9,6 +9,11 @@ function val(v: string | undefined, width = 180): string {
   return s ? esc(s) : `<span class="fill" style="min-width:${width}px"></span>`
 }
 
+function dateVal(v: string | undefined, fallbackYear: number, width = 110): string {
+  const formatted = formatAuditDate(v, fallbackYear)
+  return formatted ? esc(formatted) : `<span class="fill" style="min-width:${width}px"></span>`
+}
+
 /**
  * Erzeugt den druckfertigen Prüfbericht als eigenständiges HTML-Dokument
  * (A4). Enthält Abhak-Kästchen je Beleg sowie Unterschriftsfelder für die
@@ -27,10 +32,10 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
     .map(
       (r) => `
       <tr>
-        <td class="check">☐</td>
         <td class="nowrap">${formatDate(r.date)}</td>
         <td class="ref">${esc(r.ref)}</td>
-        <td>${esc(r.description)} <span class="receipt-state">${r.receiptAvailable === false ? '☐' : '☑'} Beleg im Ordner vorhanden</span></td>
+        <td>${receiptCell(r.receiptAvailable === false ? 0 : 1, 1)}</td>
+        <td>${esc(r.description)}</td>
         <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${r.type === 'einnahme' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${formatAmount(r.runningBalance)}</td>
@@ -46,9 +51,9 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
         .map(
           (r) => `
         <tr>
-          <td class="check">☐</td>
           <td class="ref">${esc(r.refs)}</td>
           <td class="nowrap">${r.kind === 'einzeln' ? formatDate(r.date) : `${r.count} Buchungen`}</td>
+          <td>${receiptCell(r.receiptAvailableCount, r.count)}</td>
           <td>${esc(r.label)}</td>
           <td class="num">${r.ausgaben > 0 ? formatAmount(r.ausgaben) : ''}</td>
           <td class="num">${r.einnahmen > 0 ? formatAmount(r.einnahmen) : ''}</td>
@@ -83,15 +88,15 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
     <tr><td>Summe Einnahmen</td><td class="num">${formatEur(totals.einnahmen)}</td></tr>
     <tr><td>Summe Ausgaben</td><td class="num">−${formatEur(totals.ausgaben)}</td></tr>
     <tr><td>Jahressaldo</td><td class="num">${formatEur(totals.saldo)}</td></tr>
-    <tr><td>Umsatz (ohne durchlaufende Posten)</td><td class="num">${formatEur(totals.umsatz)}</td></tr>
+    <tr><td>Umsatz</td><td class="num">${formatEur(totals.umsatz)}</td></tr>
     <tr><td>Anzahl Buchungen (${monthsWithBookings || 'keine'})</td><td class="num">${totals.count}</td></tr>
     <tr class="total"><td>Abschlusssaldo ${fiscalEndLabel(file)}</td><td class="num">${formatEur(totals.closingBalance)}</td></tr>
   </table>
 
-  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(☐ = Beleg geprüft)</span></h3>
+  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(▤ = Beleg im Ordner vorhanden; bei Gruppen z. B. 1/2)</span></h3>
   <table>
     <thead>
-      <tr><th></th><th>Datum</th><th>Nr.</th><th>Verwendungszweck</th>
+      <tr><th>Datum</th><th>Nr.</th><th>Beleg</th><th>Verwendungszweck</th>
       <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th><th class="num">Kassenstand (€)</th></tr>
     </thead>
     <tbody>${chronoRows}</tbody>
@@ -101,7 +106,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
   <h3>Buchungen nach Veranstaltung</h3>
   <table>
     <thead>
-      <tr><th></th><th>Nr.</th><th>Datum</th><th>Verwendungszweck</th>
+      <tr><th>Nr.</th><th>Datum</th><th>Beleg</th><th>Verwendungszweck</th>
       <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th></tr>
     </thead>
     <tbody>${groupSections}</tbody>
@@ -141,7 +146,7 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
   .meta { color: #555; margin-top: 4px; }
   .account-title { font-weight: 800; margin-top: 8px; }
   .account-meta { color: #555; margin: -2px 0 14px; font-size: 10pt; }
-  .receipt-state { display: inline-block; margin-left: 6px; color: #555; font-size: 8pt; white-space: nowrap; }
+  .receipt-state { color: #555; font-size: 8.5pt; white-space: nowrap; }
   table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
   th { text-align: left; border-bottom: 1.5px solid #1a1a18; padding: 4px 6px; font-size: 8.5pt;
        text-transform: uppercase; letter-spacing: 0.05em; }
@@ -149,7 +154,6 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
   .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .nowrap { white-space: nowrap; }
   .ref { font-weight: bold; white-space: nowrap; }
-  .check { font-size: 12pt; width: 24px; }
   .summary td { border-bottom: 0.5px solid #bbb; padding: 5px 6px; }
   .summary .total td { border-top: 1.5px solid #1a1a18; border-bottom: 3px double #1a1a18; font-weight: bold; }
   .group-head td { background: #f0ede6; font-weight: bold; border-top: 1.5px solid #1a1a18; }
@@ -230,17 +234,17 @@ function auditSection(file: YearFile, sectionNo: number): string {
     <div class="club">${esc(file.clubName || '')}</div>
     <h2>${sectionNo}. Kassenprüfbericht ${file.year}</h2>
     <p>
-      Am ${val(a.pruefDatum, 110)} haben die von der letzten Mitgliederversammlung am
-      ${val(a.wahlDatum, 110)} gewählten Kassenprüfer <strong>${val(a.pruefer1)}</strong> und
+      Am ${dateVal(a.pruefDatum, file.year)} haben die von der letzten Mitgliederversammlung am
+      ${dateVal(a.wahlDatum, file.year)} gewählten Kassenprüfer <strong>${val(a.pruefer1)}</strong> und
       <strong>${val(a.pruefer2)}</strong> im Beisein von ${val(file.treasurerName, 260)} die Kasse und das
       Konto der ${esc(file.clubName || 'Ortsgruppe')} entsprechend ihrem Auftrag aus der
-      Generalversammlung vom ${val(a.wahlDatum, 110)} geprüft.
+      Generalversammlung vom ${dateVal(a.wahlDatum, file.year)} geprüft.
     </p>
     ${kontoBlocks.join('\n')}
     <p style="margin-top:28px">
       Wir bitten auf der Grundlage unserer Prüfung um Entlastung des Kassierers
       <strong>${esc(file.treasurerName || '')}</strong> / des Vorstandes in der
-      Generalversammlung am ${val(a.gvDatum, 110)}.
+      Generalversammlung am ${dateVal(a.gvDatum, file.year)}.
     </p>
     <div class="sig-row">
       <div class="sig">Ort, Datum${a.ort ? `: ${esc(a.ort)}` : ''}</div>
@@ -258,6 +262,28 @@ function accountReportLabel(file: YearFile, accountReference?: string): string {
   const name = accountName(file)
   const ref = accountReference?.trim()
   return ref ? `${name} · ${ref}` : name
+}
+
+function receiptCell(available: number, total: number): string {
+  if (available === 0) return ''
+  const count = total > 1 ? ` ${available}/${total}` : ''
+  return `<span class="receipt-state">▤${count}</span>`
+}
+
+function formatAuditDate(value: string | undefined, fallbackYear: number): string | null {
+  const raw = (value ?? '').trim()
+  if (!raw) return null
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (iso) return `${iso[3]}.${iso[2]}.${iso[1]}`
+
+  const german = /^(\d{1,2})\.(\d{1,2})\.(?:(\d{2}|\d{4}))?$/.exec(raw)
+  if (!german) return raw
+  const day = german[1].padStart(2, '0')
+  const month = german[2].padStart(2, '0')
+  const yearRaw = german[3]
+  const year = yearRaw ? (yearRaw.length === 2 ? `20${yearRaw}` : yearRaw) : String(fallbackYear)
+  return `${day}.${month}.${year}`
 }
 
 function esc(s: string): string {

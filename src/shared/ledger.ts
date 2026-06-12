@@ -154,6 +154,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
       ausgaben: r.type === 'ausgabe' ? r.amount : 0,
       einnahmen: r.type === 'einnahme' ? r.amount : 0,
       count: 1,
+      receiptAvailableCount: r.receiptAvailable === false ? 0 : 1,
     }))
 
   const bySub = new Map<string, ComputedBooking[]>()
@@ -172,6 +173,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
     ausgaben: rows.filter((r) => r.type === 'ausgabe').reduce((a, r) => a + r.amount, 0),
     einnahmen: rows.filter((r) => r.type === 'einnahme').reduce((a, r) => a + r.amount, 0),
     count: rows.length,
+    receiptAvailableCount: rows.filter((r) => r.receiptAvailable !== false).length,
   }))
 
   return [...singles, ...aggregated].sort((a, b) => a.date.localeCompare(b.date))

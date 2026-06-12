@@ -40,7 +40,6 @@ export function UebersichtView() {
         <div className="stat">
           <div className="stat__label">Umsatz</div>
           <div className="stat__value">{formatEur(totals.umsatz)}</div>
-          <div className="stat__hint">ohne durchlaufende Posten</div>
         </div>
       </div>
 
