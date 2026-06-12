@@ -93,7 +93,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
     <tr class="total"><td>Abschlusssaldo ${fiscalEndLabel(file)}</td><td class="num">${formatEur(totals.closingBalance)}</td></tr>
   </table>
 
-  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(▤ = Beleg im Ordner vorhanden; bei Gruppen z. B. 1/2)</span></h3>
+  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(▤ = Beleg im Ordner vorhanden)</span></h3>
   <table>
     <thead>
       <tr><th>Datum</th><th>Nr.</th><th>Beleg</th><th>Verwendungszweck</th>
