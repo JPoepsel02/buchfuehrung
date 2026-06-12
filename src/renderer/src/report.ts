@@ -108,7 +108,7 @@ function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): s
 /**
  * Erzeugt den druckfertigen Prüfbericht als eigenständiges HTML-Dokument
  * (A4): Titel + Abschnitte des Hauptkontos, optional die Abschnitte des
- * Zweitkontos (eigenes Wirtschaftsjahr, strikt getrennt – keine Summen
+ * Zweitkontos (eigenes Kassenjahr, strikt getrennt – keine Summen
  * über beide Konten) und zum Schluss der Kassenprüfbericht nach Vorlage,
  * der beide Konten abdeckt.
  */

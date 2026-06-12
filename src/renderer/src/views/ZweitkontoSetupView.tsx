@@ -4,7 +4,7 @@ import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { MONTH_NAMES, parseAmountToCents } from '@shared/money'
 
-/** Erstes Wirtschaftsjahr des Zweitkontos anlegen (z. B. Karnevalskonto, Nov–Okt). */
+/** Erstes Kassenjahr des Zweitkontos anlegen (z. B. Karnevalskonto, Nov–Okt). */
 export function ZweitkontoSetupView() {
   const { createZweitkonto, selectKonto, settings } = useStore()
   const [name, setName] = useState('Karnevalskonto')
@@ -34,7 +34,7 @@ export function ZweitkontoSetupView() {
         <div className="setup__brand">Zweites Konto anlegen</div>
         <p className="setup__sub">
           Das Zweitkonto wird vollständig getrennt vom Hauptkonto geführt – eigene Kategorien,
-          eigene Beleg-Nummern, eigenes Wirtschaftsjahr. Die Summen beider Konten werden nie
+          eigene Beleg-Nummern, eigenes Kassenjahr. Die Summen beider Konten werden nie
           verrechnet.
         </p>
         <div className="form-grid">
@@ -43,7 +43,7 @@ export function ZweitkontoSetupView() {
             <input id="zk-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Karnevalskonto" />
           </div>
           <div className="field" style={{ gridColumn: 'span 6' }}>
-            <label htmlFor="zk-month">Wirtschaftsjahr beginnt im</label>
+            <label htmlFor="zk-month">Kassenjahr beginnt im</label>
             <select id="zk-month" value={startMonth} onChange={(e) => setStartMonth(Number(e.target.value))}>
               {MONTH_NAMES.map((m, i) => (
                 <option key={m} value={i + 1}>
@@ -53,7 +53,7 @@ export function ZweitkontoSetupView() {
             </select>
           </div>
           <div className="field" style={{ gridColumn: 'span 6' }}>
-            <label htmlFor="zk-year">Startjahr (Wirtschaftsjahr {label})</label>
+            <label htmlFor="zk-year">Startjahr (Kassenjahr {label})</label>
             <input id="zk-year" value={year} onChange={(e) => setYear(e.target.value)} inputMode="numeric" />
           </div>
           <div className="field" style={{ gridColumn: 'span 6' }}>

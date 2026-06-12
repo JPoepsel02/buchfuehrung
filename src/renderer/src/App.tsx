@@ -132,7 +132,7 @@ export function App() {
           </select>
         </div>
         <div className="sidebar__year">
-          <span>{(file.fiscalStartMonth ?? 1) === 1 ? 'Kassenjahr' : 'Wirtschaftsjahr'}</span>
+          <span>Kassenjahr</span>
           <select
             value={file.year}
             onChange={(e) => void selectYear(Number(e.target.value))}
