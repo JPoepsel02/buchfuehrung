@@ -30,7 +30,7 @@ function year(overrides: Partial<YearFile> = {}): YearFile {
 
 describe('buildReportHtml', () => {
   test('trennt Hauptkonto und Zweitkonto mit eigenen Konto-Berichtsüberschriften', () => {
-    const main = year()
+    const main = year({ audit: { konto1: 'IBAN Hauptkonto', konto2: 'IBAN Karneval' } })
     const second = year({
       year: 2025,
       konto: 'zweit',
@@ -51,10 +51,11 @@ describe('buildReportHtml', () => {
 
     const html = buildReportHtml(main, null, second)
 
-    expect(html).toContain('1. Bericht Konto Hauptkonto')
-    expect(html).toContain('2. Bericht Konto Karnevalskonto')
+    expect(html).toContain('1. Bericht Hauptkonto · IBAN Hauptkonto')
+    expect(html).toContain('2. Bericht Karnevalskonto · IBAN Karneval')
     expect(html).toContain('3. Kassenprüfbericht')
-    expect(html).toContain('kein Beleg im Ordner')
-    expect(html).not.toContain('4. Karnevalskonto')
+    expect(html).toContain('im Beisein von Jannik')
+    expect(html).toContain('☐ Beleg im Ordner vorhanden')
+    expect(html).not.toContain('Bericht Konto')
   })
 })
