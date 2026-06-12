@@ -23,6 +23,8 @@ export interface Api {
   openCloudFolder(): Promise<void>
   selectCloudFolder(): Promise<string | null>
   openCsv(): Promise<{ name: string; content: string } | null>
+  saveTextFile(suggestedName: string, content: string): Promise<{ ok: boolean; path?: string }>
+  openTextFile(): Promise<{ name: string; content: string } | null>
   exportPdf(
     html: string,
     suggestedName: string,
@@ -81,6 +83,31 @@ const webFallback: Api = {
       const input = document.createElement('input')
       input.type = 'file'
       input.accept = '.csv,.txt'
+      input.onchange = () => {
+        const file = input.files?.[0]
+        if (!file) return resolve(null)
+        const reader = new FileReader()
+        reader.onload = () => resolve({ name: file.name, content: String(reader.result ?? '') })
+        reader.readAsText(file)
+      }
+      input.oncancel = () => resolve(null)
+      input.click()
+    })
+  },
+  async saveTextFile(suggestedName, content) {
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = suggestedName
+    a.click()
+    URL.revokeObjectURL(url)
+    return { ok: true }
+  },
+  openTextFile() {
+    return new Promise((resolve) => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = '.json'
       input.onchange = () => {
         const file = input.files?.[0]
         if (!file) return resolve(null)

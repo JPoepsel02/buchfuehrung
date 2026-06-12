@@ -30,6 +30,9 @@ const api = {
   openCloudFolder: (): Promise<void> => ipcRenderer.invoke('data:openCloudFolder'),
   selectCloudFolder: (): Promise<string | null> => ipcRenderer.invoke('data:selectCloudFolder'),
   openCsv: (): Promise<{ name: string; content: string } | null> => ipcRenderer.invoke('csv:open'),
+  saveTextFile: (suggestedName: string, content: string): Promise<{ ok: boolean; path?: string }> =>
+    ipcRenderer.invoke('file:saveText', suggestedName, content),
+  openTextFile: (): Promise<{ name: string; content: string } | null> => ipcRenderer.invoke('file:openText'),
   exportPdf: (
     html: string,
     suggestedName: string,

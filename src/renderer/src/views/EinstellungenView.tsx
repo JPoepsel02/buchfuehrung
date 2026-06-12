@@ -5,9 +5,10 @@ import { AmountField } from '../components/AmountInput'
 import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { praesentationsModus } from '../presentation'
+import { buildBackup, validateBackup } from '@shared/backup'
 import { yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur, parseAmountToCents } from '@shared/money'
-import type { Category, ThemeSetting } from '@shared/types'
+import type { Category, ThemeSetting, YearFile } from '@shared/types'
 
 const LOGO_MAX_PX = 512
 
@@ -335,9 +336,54 @@ function AppearanceCard() {
 
 /** Lokale Speicherung plus optionale Spiegelung in einen Cloud-synchronisierten Ordner. */
 function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
-  const { settings, updateSettings } = useStore()
+  const { years, settings, updateSettings } = useStore()
   const cloudEnabled = settings.cloudBackupEnabled === true
   const cloudDir = settings.cloudBackupDir?.trim() ?? ''
+
+  /** Alle Kassenjahre plus Einstellungen als eine Sicherungsdatei exportieren. */
+  async function exportBackup() {
+    const files = (await Promise.all(years.map((y) => api.loadYear(y)))).filter(Boolean) as YearFile[]
+    if (files.length === 0) return notify('Keine Daten zum Exportieren gefunden.')
+    const backup = buildBackup(files, settings, new Date().toISOString())
+    const name = `Buchfuehrung-Sicherung-${new Date().toISOString().slice(0, 10)}.json`
+    const result = await api.saveTextFile(name, JSON.stringify(backup, null, 2))
+    if (result.ok) notify(result.path ? `Sicherung gespeichert: ${result.path}` : 'Sicherung exportiert.')
+  }
+
+  /** Sicherungsdatei einlesen, streng validieren und nach Bestätigung übernehmen. */
+  async function importBackup() {
+    const file = await api.openTextFile()
+    if (!file) return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(file.content)
+    } catch {
+      return alert(`„${file.name}“ ist keine lesbare JSON-Datei.`)
+    }
+    const result = validateBackup(parsed)
+    if (!result.ok) {
+      return alert(
+        `Die Datei wurde NICHT importiert – sie ist keine gültige Sicherung:\n\n• ${result.errors.join('\n• ')}`,
+      )
+    }
+    const summary = result.backup.years
+      .map((y) => `• Kassenjahr ${y.year}: ${y.bookings.length} Buchungen, ${y.categories.length} Kategorien`)
+      .join('\n')
+    const replaces = result.backup.years.filter((y) => years.includes(y.year)).map((y) => y.year)
+    if (
+      !confirm(
+        `Sicherung „${file.name}“ importieren?\n\n${summary}\n\n${
+          replaces.length > 0
+            ? `Achtung: Die vorhandenen Kassenjahre ${replaces.join(', ')} werden ersetzt (Sicherungskopien landen im Backup-Ordner).`
+            : 'Es werden keine vorhandenen Jahre überschrieben.'
+        }`,
+      )
+    )
+      return
+    for (const y of result.backup.years) await api.saveYear(y.year, y)
+    if (result.backup.settings) await api.saveSettings(result.backup.settings)
+    window.location.reload()
+  }
 
   async function chooseCloudFolder() {
     const dir = await api.selectCloudFolder()
@@ -403,6 +449,23 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
         <p className="hint" style={{ marginBottom: 0 }}>
           Die App speichert weiterhin lokal. Wenn die Cloud-Sicherung aktiv ist, werden Jahresdateien
           und Einstellungen zusätzlich in den gewählten Ordner kopiert.
+        </p>
+      </div>
+      <div className="storage-cloud">
+        <span className="storage-cloud__toggle">Sicherungsdatei (alle Kassenjahre + Einstellungen)</span>
+        <div className="toolbar">
+          <button className="btn btn--sm" onClick={() => void exportBackup()}>
+            Daten exportieren …
+          </button>
+          <button className="btn btn--sm" onClick={() => void importBackup()}>
+            Sicherung importieren …
+          </button>
+        </div>
+        <p className="hint" style={{ marginBottom: 0 }}>
+          Der Export erzeugt eine JSON-Datei mit allen Kassenjahren und Einstellungen. Beim Import
+          wird die Datei vollständig geprüft (Format, Beträge, Daten, Kategorie-Verweise) – ungültige
+          Dateien werden abgelehnt. Ersetzte Jahre wandern vorher als Sicherungskopie in den
+          Backup-Ordner.
         </p>
       </div>
     </section>
