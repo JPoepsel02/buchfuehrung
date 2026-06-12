@@ -54,7 +54,7 @@ describe('buildReportHtml', () => {
     expect(html).toContain('1. Bericht Konto Hauptkonto')
     expect(html).toContain('2. Bericht Konto Karnevalskonto')
     expect(html).toContain('3. Kassenprüfbericht')
-    expect(html).toContain('kein Beleg')
+    expect(html).toContain('kein Beleg im Ordner')
     expect(html).not.toContain('4. Karnevalskonto')
   })
 })

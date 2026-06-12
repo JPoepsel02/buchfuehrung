@@ -30,7 +30,7 @@ function ledgerSections(file: YearFile, accountNo: number): string {
         <td class="check">☐</td>
         <td class="nowrap">${formatDate(r.date)}</td>
         <td class="ref">${esc(r.ref)}</td>
-        <td>${esc(r.description)}${r.receiptAvailable === false ? ' <span class="missing-receipt">kein Beleg</span>' : ''}</td>
+        <td>${esc(r.description)}${r.receiptAvailable === false ? ' <span class="missing-receipt">kein Beleg im Ordner</span>' : ''}</td>
         <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${r.type === 'einnahme' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${formatAmount(r.runningBalance)}</td>

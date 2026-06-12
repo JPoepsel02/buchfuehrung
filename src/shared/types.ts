@@ -44,7 +44,7 @@ export interface Booking {
    * einzeln gelistet.
    */
   subcategory?: string
-  /** Gibt an, ob ein Fremdbeleg/Kontoauszug/Eigenbeleg zur Buchung vorliegt */
+  /** Gibt an, ob eine Rechnung/Quittung/ein Eigenbeleg im Belegordner liegt */
   receiptAvailable?: boolean
   note: string
   /** Laufende Nummer der Erfassung – bestimmt die Beleg-Nr.-Vergabe */
