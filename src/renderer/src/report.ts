@@ -18,7 +18,7 @@ function val(v: string | undefined, width = 180): string {
  * Erzeugt Zusammenfassung, Chronologie und Veranstaltungs-Tabelle für EIN
  * Buch – wird für Haupt- und Zweitkonto identisch verwendet.
  */
-function ledgerSections(file: YearFile, accountNo: number): string {
+function ledgerSections(file: YearFile, accountNo: number, accountLabel: string): string {
   const totals = yearTotals(file)
   const chrono = chronological(file)
   const groups = byCategory(file)
@@ -30,7 +30,7 @@ function ledgerSections(file: YearFile, accountNo: number): string {
         <td class="check">☐</td>
         <td class="nowrap">${formatDate(r.date)}</td>
         <td class="ref">${esc(r.ref)}</td>
-        <td>${esc(r.description)}${r.receiptAvailable === false ? ' <span class="missing-receipt">kein Beleg im Ordner</span>' : ''}</td>
+        <td>${esc(r.description)} <span class="receipt-state">${r.receiptAvailable === false ? '☐' : '☑'} Beleg im Ordner vorhanden</span></td>
         <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${r.type === 'einnahme' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${formatAmount(r.runningBalance)}</td>
@@ -74,7 +74,7 @@ function ledgerSections(file: YearFile, accountNo: number): string {
 
   return `
   <section class="account-report">
-  <h2 class="account-title">${accountNo}. Bericht Konto ${esc(accountName(file))}</h2>
+  <h2 class="account-title">${accountNo}. Bericht ${esc(accountLabel)}</h2>
   <div class="account-meta">Kassenjahr ${esc(fiscalLabel(file))}</div>
 
   <h3>Zusammenfassung</h3>
@@ -141,7 +141,7 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
   .meta { color: #555; margin-top: 4px; }
   .account-title { font-weight: 800; margin-top: 8px; }
   .account-meta { color: #555; margin: -2px 0 14px; font-size: 10pt; }
-  .missing-receipt { display: inline-block; margin-left: 6px; padding: 0 5px; border: 0.5px solid #a7332d; color: #a7332d; font-size: 8pt; font-weight: bold; }
+  .receipt-state { display: inline-block; margin-left: 6px; color: #555; font-size: 8pt; white-space: nowrap; }
   table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
   th { text-align: left; border-bottom: 1.5px solid #1a1a18; padding: 4px 6px; font-size: 8.5pt;
        text-transform: uppercase; letter-spacing: 0.05em; }
@@ -184,13 +184,13 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
     ${logoDataUrl ? `<img src="${logoDataUrl}" alt="">` : ''}
   </header>
 
-  ${ledgerSections(file, 1)}
+  ${ledgerSections(file, 1, accountReportLabel(file, file.audit?.konto1))}
 
   ${
     zweit
       ? `
   <div class="pagebreak"></div>
-  ${ledgerSections(zweit, 2)}
+  ${ledgerSections(zweit, 2, accountReportLabel(zweit, file.audit?.konto2))}
   `
       : ''
   }
@@ -232,7 +232,7 @@ function auditSection(file: YearFile, sectionNo: number): string {
     <p>
       Am ${val(a.pruefDatum, 110)} haben die von der letzten Mitgliederversammlung am
       ${val(a.wahlDatum, 110)} gewählten Kassenprüfer <strong>${val(a.pruefer1)}</strong> und
-      <strong>${val(a.pruefer2)}</strong> im Beisein von ${val(a.beisein, 260)} die Kasse und das
+      <strong>${val(a.pruefer2)}</strong> im Beisein von ${val(file.treasurerName, 260)} die Kasse und das
       Konto der ${esc(file.clubName || 'Ortsgruppe')} entsprechend ihrem Auftrag aus der
       Generalversammlung vom ${val(a.wahlDatum, 110)} geprüft.
     </p>
@@ -252,6 +252,12 @@ function auditSection(file: YearFile, sectionNo: number): string {
 
 function accountName(file: YearFile): string {
   return file.kontoName?.trim() || (file.konto === 'zweit' ? 'Zweitkonto' : 'Hauptkonto')
+}
+
+function accountReportLabel(file: YearFile, accountReference?: string): string {
+  const name = accountName(file)
+  const ref = accountReference?.trim()
+  return ref ? `${name} · ${ref}` : name
 }
 
 function esc(s: string): string {

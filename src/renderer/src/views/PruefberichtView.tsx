@@ -11,13 +11,12 @@ import type { AuditInfo, YearFile } from '@shared/types'
 const AUDIT_FIELDS: { key: keyof AuditInfo; label: string; span: number; placeholder?: string }[] = [
   { key: 'pruefer1', label: 'Kassenprüfer:in 1', span: 4 },
   { key: 'pruefer2', label: 'Kassenprüfer:in 2', span: 4 },
-  { key: 'beisein', label: 'Im Beisein von', span: 4 },
-  { key: 'konto1', label: 'Geprüftes Konto 1', span: 3, placeholder: 'z. B. 300 154 300' },
+  { key: 'konto1', label: 'Geprüftes Konto 1', span: 3, placeholder: 'z. B. 100 000 000' },
   { key: 'konto2', label: 'Geprüftes Konto 2 (optional)', span: 3 },
   { key: 'pruefDatum', label: 'Datum der Prüfung', span: 2, placeholder: 'TT.MM.JJJJ' },
   { key: 'wahlDatum', label: 'Mitgliederversammlung (Wahl)', span: 2, placeholder: 'TT.MM.JJJJ' },
   { key: 'gvDatum', label: 'Generalversammlung (Entlastung)', span: 2, placeholder: 'TT.MM.JJJJ' },
-  { key: 'ort', label: 'Ort', span: 3, placeholder: 'z. B. Lippetal' },
+  { key: 'ort', label: 'Ort', span: 3, placeholder: 'z. B. Münster' },
 ]
 
 export function PruefberichtView() {

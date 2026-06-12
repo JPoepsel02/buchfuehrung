@@ -312,11 +312,10 @@ export function BuchungenView({
                     <Amount cents={r.signedAmount} withSign />
                   </td>
                   <td>
-                    {r.receiptAvailable ?? true ? (
-                      <span className="pill pill--in">im Ordner</span>
-                    ) : (
-                      <span className="pill pill--out">fehlt im Ordner</span>
-                    )}
+                    <label className="checkrow">
+                      <input type="checkbox" checked={r.receiptAvailable ?? true} readOnly />
+                      Beleg im Ordner vorhanden
+                    </label>
                   </td>
                   <td>
                     {r.isUmsatz ? (
