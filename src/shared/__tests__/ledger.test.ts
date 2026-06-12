@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { bookingMatches, byCategory, chronological, computeBookings, monthSummaries, nextSeq, yearTotals } from '../ledger'
+import { bookingMatches, byCategory, chronological, computeBookings, eventRows, monthSummaries, nextSeq, yearTotals } from '../ledger'
 import type { Booking, YearFile } from '../types'
 
 function booking(partial: Partial<Booking> & Pick<Booking, 'seq' | 'date' | 'categoryId' | 'type' | 'amount'>): Booking {
@@ -118,6 +118,26 @@ describe('byCategory – Veranstaltungs-Gruppierung', () => {
     expect(m.einnahmen).toBe(218000)
     expect(m.ausgaben).toBe(50000)
     expect(m.saldo).toBe(168000)
+  })
+
+  test('eventRows fasst Unterkategorien zu Summenzeilen zusammen', () => {
+    const f = file([
+      booking({ seq: 1, date: '2026-01-05', categoryId: 'm', type: 'einnahme', amount: 10000, subcategory: 'Karnevalsbeiträge', description: 'Beitrag A' }),
+      booking({ seq: 2, date: '2026-01-08', categoryId: 'm', type: 'einnahme', amount: 5000, subcategory: 'Karnevalsbeiträge', description: 'Beitrag B' }),
+      booking({ seq: 3, date: '2026-01-06', categoryId: 'm', type: 'ausgabe', amount: 2000, description: 'Getränke' }),
+    ])
+    const rows = eventRows(byCategory(f)[0])
+    expect(rows).toHaveLength(2)
+    const sub = rows.find((r) => r.kind === 'unterkategorie')!
+    expect(sub.label).toBe('Karnevalsbeiträge')
+    expect(sub.einnahmen).toBe(15000)
+    expect(sub.count).toBe(2)
+    expect(sub.refs).toBe('M1–M3')
+    const single = rows.find((r) => r.kind === 'einzeln')!
+    expect(single.label).toBe('Getränke')
+    expect(single.ausgaben).toBe(2000)
+    // Chronologie bleibt unberührt: weiterhin 3 einzelne Buchungen
+    expect(chronological(f)).toHaveLength(3)
   })
 
   test('leere Kategorien erscheinen nicht', () => {

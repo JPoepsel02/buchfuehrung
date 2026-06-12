@@ -4,6 +4,7 @@ import type {
   CategoryGroup,
   ChronoRow,
   ComputedBooking,
+  EventRow,
   MonthSummary,
   YearFile,
   YearTotals,
@@ -137,6 +138,46 @@ export function yearTotals(file: YearFile): YearTotals {
 }
 
 /**
+ * Anzeigezeilen einer Veranstaltungs-Gruppe: Buchungen ohne Unterkategorie
+ * bleiben einzelne Zeilen, Buchungen mit gleicher Unterkategorie werden zu
+ * einer Summenzeile zusammengefasst (z. B. "Karnevalsbeiträge" = Summe
+ * aller Beitrags-Buchungen). Sortiert nach dem (ersten) Buchungsdatum.
+ */
+export function eventRows(group: CategoryGroup): EventRow[] {
+  const singles: EventRow[] = group.rows
+    .filter((r) => !(r.subcategory ?? '').trim())
+    .map((r) => ({
+      kind: 'einzeln',
+      date: r.date,
+      refs: r.ref,
+      label: r.description,
+      ausgaben: r.type === 'ausgabe' ? r.amount : 0,
+      einnahmen: r.type === 'einnahme' ? r.amount : 0,
+      count: 1,
+    }))
+
+  const bySub = new Map<string, ComputedBooking[]>()
+  for (const r of group.rows) {
+    const sub = (r.subcategory ?? '').trim()
+    if (!sub) continue
+    const list = bySub.get(sub) ?? []
+    list.push(r)
+    bySub.set(sub, list)
+  }
+  const aggregated: EventRow[] = [...bySub.entries()].map(([sub, rows]) => ({
+    kind: 'unterkategorie',
+    date: rows[0].date,
+    refs: rows.length === 1 ? rows[0].ref : `${rows[0].ref}–${rows[rows.length - 1].ref}`,
+    label: sub,
+    ausgaben: rows.filter((r) => r.type === 'ausgabe').reduce((a, r) => a + r.amount, 0),
+    einnahmen: rows.filter((r) => r.type === 'einnahme').reduce((a, r) => a + r.amount, 0),
+    count: rows.length,
+  }))
+
+  return [...singles, ...aggregated].sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/**
  * Treffer-Logik für die globale Suche UND den Filter der Buchungsliste –
  * beide müssen identisch suchen, sonst zeigt ein angeklickter Suchtreffer
  * (z. B. über den Betrag gefunden) in der Liste nichts an.
@@ -147,6 +188,7 @@ export function bookingMatches(b: ComputedBooking, query: string): boolean {
   return (
     b.description.toLowerCase().includes(q) ||
     b.note.toLowerCase().includes(q) ||
+    (b.subcategory ?? '').toLowerCase().includes(q) ||
     b.categoryName.toLowerCase().includes(q) ||
     b.ref.toLowerCase().includes(q) ||
     formatEur(b.signedAmount).includes(q)

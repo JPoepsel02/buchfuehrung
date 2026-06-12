@@ -25,8 +25,9 @@ export function PruefberichtView() {
   const [toast, setToast] = useState('')
   const [zweit, setZweit] = useState<YearFile | null>(null)
 
-  // Passendes Wirtschaftsjahr des Zweitkontos laden: das, dessen Ende im
-  // Kassenjahr des Hauptkontos liegt (Nov 2025–Okt 2026 gehört zu 2026).
+  // Wirtschaftsjahr des Zweitkontos laden: bevorzugt das Jahr, dessen Ende im
+  // Kassenjahr des Hauptkontos liegt (Nov 2025–Okt 2026 gehört zu 2026) –
+  // sonst einfach das neueste, damit das Zweitkonto immer im Bericht steht.
   useEffect(() => {
     if (!file || !zweitExists) {
       setZweit(null)
@@ -34,14 +35,18 @@ export function PruefberichtView() {
     }
     let cancelled = false
     ;(async () => {
-      for (const candidate of [file.year, file.year - 1]) {
+      const years = await api.listYears('zweit')
+      let fallback: YearFile | null = null
+      for (const candidate of years) {
         const data = (await api.loadYear('zweit', candidate)) as YearFile | null
-        if (data && Number(fiscalRange(data).end.slice(0, 4)) === file.year) {
+        if (!data) continue
+        fallback ??= data
+        if (Number(fiscalRange(data).end.slice(0, 4)) === file.year) {
           if (!cancelled) setZweit(data)
           return
         }
       }
-      if (!cancelled) setZweit(null)
+      if (!cancelled) setZweit(fallback)
     })()
     return () => {
       cancelled = true

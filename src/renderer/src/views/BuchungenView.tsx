@@ -11,6 +11,7 @@ interface FormState {
   date: string
   categoryId: string
   description: string
+  subcategory: string
   type: BookingType
   amount: string
   isUmsatz: boolean
@@ -25,6 +26,7 @@ const emptyForm = (categoryId: string, fiscal: { year: number; fiscalStartMonth?
     : fiscalRange(fiscal).start,
   categoryId,
   description: '',
+  subcategory: '',
   type: 'ausgabe',
   amount: '',
   isUmsatz: false,
@@ -50,6 +52,20 @@ export function BuchungenView({
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
 
+  // Vorschläge: bereits verwendete Unterkategorien der gewählten Kategorie
+  const subSuggestions = useMemo(
+    () =>
+      [
+        ...new Set(
+          (file?.bookings ?? [])
+            .filter((b) => b.categoryId === form.categoryId)
+            .map((b) => (b.subcategory ?? '').trim())
+            .filter(Boolean),
+        ),
+      ].sort(),
+    [file, form.categoryId],
+  )
+
   // Suchbegriff aus der globalen Strg+F-Suche übernehmen
   useEffect(() => {
     if (externalFilter) {
@@ -73,6 +89,7 @@ export function BuchungenView({
       date: b.date,
       categoryId: b.categoryId,
       description: b.description,
+      subcategory: b.subcategory ?? '',
       type: b.type,
       amount: (b.amount / 100).toFixed(2).replace('.', ','),
       isUmsatz: b.isUmsatz,
@@ -98,6 +115,7 @@ export function BuchungenView({
       date: form.date,
       categoryId: form.categoryId,
       description: form.description.trim(),
+      subcategory: form.subcategory.trim() || undefined,
       type: form.type,
       amount,
       isUmsatz: form.isUmsatz,
@@ -162,7 +180,7 @@ export function BuchungenView({
               placeholder="0,00"
             />
           </div>
-          <div className="field" style={{ gridColumn: 'span 8' }}>
+          <div className="field" style={{ gridColumn: 'span 6' }}>
             <label htmlFor="b-desc">Verwendungszweck</label>
             <input
               id="b-desc"
@@ -171,7 +189,22 @@ export function BuchungenView({
               placeholder="z. B. Erstattung Pizza Generalversammlung"
             />
           </div>
-          <div className="field" style={{ gridColumn: 'span 4' }}>
+          <div className="field" style={{ gridColumn: 'span 3' }}>
+            <label htmlFor="b-sub">Unterkategorie (optional)</label>
+            <input
+              id="b-sub"
+              value={form.subcategory}
+              onChange={(e) => set('subcategory', e.target.value)}
+              placeholder="z. B. Karnevalsbeiträge"
+              list="b-sub-suggestions"
+            />
+            <datalist id="b-sub-suggestions">
+              {subSuggestions.map((sName) => (
+                <option key={sName} value={sName} />
+              ))}
+            </datalist>
+          </div>
+          <div className="field" style={{ gridColumn: 'span 3' }}>
             <label htmlFor="b-note">Notiz (optional)</label>
             <input id="b-note" value={form.note} onChange={(e) => set('note', e.target.value)} />
           </div>
@@ -254,6 +287,7 @@ export function BuchungenView({
                   <td>{r.categoryName}</td>
                   <td className="cell-desc">
                     {r.description}
+                    {r.subcategory && <span className="pill pill--in" style={{ marginLeft: 6 }}>{r.subcategory}</span>}
                     {r.source === 'import' && <span className="pill" style={{ marginLeft: 6 }}>Import</span>}
                     {r.note && (
                       <div className="hint hint--clamp" title={r.note}>

@@ -37,6 +37,13 @@ export interface Booking {
   isUmsatz: boolean
   /** Anteil in Cent, der NICHT als Umsatz zählt (z. B. enthaltenes Wechselgeld) */
   nonUmsatzAmount: Cents
+  /**
+   * Optionale Unterkategorie (z. B. "Karnevalsbeiträge"): In der
+   * Veranstaltungs-Ansicht werden Buchungen mit gleicher Unterkategorie zu
+   * einer Summenzeile zusammengefasst – chronologisch bleibt jede Buchung
+   * einzeln gelistet.
+   */
+  subcategory?: string
   note: string
   /** Laufende Nummer der Erfassung – bestimmt die Beleg-Nr.-Vergabe */
   seq: number
@@ -83,6 +90,8 @@ export interface ImportDraftRow {
   selected: boolean
   categoryId: string
   isUmsatz: boolean
+  /** Optionale Unterkategorie für die Veranstaltungs-Zusammenfassung */
+  subcategory?: string
   splits?: ImportDraftSplit[]
 }
 
@@ -170,6 +179,24 @@ export interface CategoryGroup {
   ausgaben: Cents
   saldo: Cents
   umsatz: Cents
+}
+
+/**
+ * Anzeigezeile der Veranstaltungs-Ansicht: einzelne Buchung oder die
+ * Summenzeile einer Unterkategorie.
+ */
+export interface EventRow {
+  kind: 'einzeln' | 'unterkategorie'
+  /** Datum der (ersten) Buchung – bestimmt die Sortierung in der Gruppe */
+  date: string
+  /** Beleg-Nr. bzw. Bereich, z. B. "K5" oder "K5–K12" */
+  refs: string
+  /** Verwendungszweck bzw. Name der Unterkategorie */
+  label: string
+  ausgaben: Cents
+  einnahmen: Cents
+  /** Anzahl zusammengefasster Buchungen */
+  count: number
 }
 
 export interface MonthSummary {
