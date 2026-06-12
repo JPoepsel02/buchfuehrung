@@ -14,8 +14,7 @@ im Prüfbericht und als Dock-Symbol.
 - **Buchungen erfassen** mit Datum, Veranstaltung/Kategorie, Verwendungszweck,
   Einnahme/Ausgabe und Betrag. Beleg-Nummern (z. B. `M1`, `M2`, `B1` …) werden
   automatisch je Kategorie vergeben – genau wie im Excel-Template.
-- **Umsatz-Kennzeichnung** inkl. „davon kein Umsatz“ (z. B. Wechselgeld), damit
-  durchlaufende Posten den Umsatz nicht verfälschen.
+- **Umsatz-Kennzeichnung** inkl. „davon kein Umsatz“ (z. B. Wechselgeld).
 - **Chronologisch**: alle Buchungen nach Datum mit laufendem Kassenstand und
   Abschlussblock (Abschlusssaldo Vorjahr → Gesamtsaldo → Abschlusssaldo).
 - **Veranstaltungen**: Buchungen je Veranstaltung gruppiert mit Zwischensummen.

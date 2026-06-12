@@ -30,7 +30,15 @@ function year(overrides: Partial<YearFile> = {}): YearFile {
 
 describe('buildReportHtml', () => {
   test('trennt Hauptkonto und Zweitkonto mit eigenen Konto-Berichtsüberschriften', () => {
-    const main = year({ audit: { konto1: 'IBAN Hauptkonto', konto2: 'IBAN Karneval' } })
+    const main = year({
+      audit: {
+        konto1: 'IBAN Hauptkonto',
+        konto2: 'IBAN Karneval',
+        pruefDatum: '2026-12-31',
+        wahlDatum: '1.1.26',
+        gvDatum: '1.1.',
+      },
+    })
     const second = year({
       year: 2025,
       konto: 'zweit',
@@ -45,6 +53,17 @@ describe('buildReportHtml', () => {
           type: 'ausgabe',
           amount: 1000,
           receiptAvailable: false,
+          subcategory: 'Beiträge',
+        }),
+        booking({
+          id: 'b3',
+          seq: 2,
+          date: '2025-11-02',
+          categoryId: 'k',
+          type: 'einnahme',
+          amount: 2000,
+          receiptAvailable: true,
+          subcategory: 'Beiträge',
         }),
       ],
     })
@@ -55,7 +74,13 @@ describe('buildReportHtml', () => {
     expect(html).toContain('2. Bericht Karnevalskonto · IBAN Karneval')
     expect(html).toContain('3. Kassenprüfbericht')
     expect(html).toContain('im Beisein von Jannik')
-    expect(html).toContain('☐ Beleg im Ordner vorhanden')
+    expect(html).toContain('31.12.2026')
+    expect(html).toContain('01.01.2026')
+    expect(html).toContain('<th>Beleg</th>')
+    expect(html).toContain('▤ = Beleg im Ordner vorhanden')
+    expect(html).toContain('<span class="receipt-state">▤</span>')
+    expect(html).toContain('<span class="receipt-state">▤ 1/2</span>')
+    expect(html).not.toContain('Beleg geprüft')
     expect(html).not.toContain('Bericht Konto')
   })
 })

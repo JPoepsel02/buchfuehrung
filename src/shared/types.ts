@@ -199,6 +199,8 @@ export interface EventRow {
   einnahmen: Cents
   /** Anzahl zusammengefasster Buchungen */
   count: number
+  /** Anzahl Buchungen, bei denen ein Beleg im Ordner markiert ist */
+  receiptAvailableCount: number
 }
 
 export interface MonthSummary {

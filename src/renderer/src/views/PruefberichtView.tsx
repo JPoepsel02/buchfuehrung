@@ -19,6 +19,8 @@ const AUDIT_FIELDS: { key: keyof AuditInfo; label: string; span: number; placeho
   { key: 'ort', label: 'Ort', span: 3, placeholder: 'z. B. Münster' },
 ]
 
+const AUDIT_DATE_FIELDS = new Set<keyof AuditInfo>(['pruefDatum', 'wahlDatum', 'gvDatum'])
+
 export function PruefberichtView() {
   const { file, settings, update, zweitExists } = useStore()
   const [toast, setToast] = useState('')
@@ -129,7 +131,12 @@ export function PruefberichtView() {
               <label htmlFor={`audit-${f.key}`}>{f.label}</label>
               <input
                 id={`audit-${f.key}`}
-                value={(audit[f.key] as string | undefined) ?? ''}
+                type={AUDIT_DATE_FIELDS.has(f.key) ? 'date' : 'text'}
+                value={
+                  AUDIT_DATE_FIELDS.has(f.key)
+                    ? toDateInputValue(audit[f.key] as string | undefined, file.year)
+                    : ((audit[f.key] as string | undefined) ?? '')
+                }
                 onChange={(e) => setAudit(f.key, e.target.value)}
                 placeholder={f.placeholder}
               />
@@ -159,4 +166,24 @@ export function PruefberichtView() {
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
+}
+
+function toDateInputValue(value: string | undefined, fallbackYear: number): string {
+  const parsed = parseAuditDate(value, fallbackYear)
+  return parsed ?? ''
+}
+
+function parseAuditDate(value: string | undefined, fallbackYear: number): string | null {
+  const raw = (value ?? '').trim()
+  if (!raw) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+
+  const match = /^(\d{1,2})\.(\d{1,2})\.(?:(\d{2}|\d{4}))?$/.exec(raw)
+  if (!match) return null
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const yearRaw = match[3]
+  const year = yearRaw ? (yearRaw.length === 2 ? 2000 + Number(yearRaw) : Number(yearRaw)) : fallbackYear
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
