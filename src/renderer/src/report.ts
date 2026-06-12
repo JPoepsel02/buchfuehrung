@@ -16,10 +16,9 @@ function val(v: string | undefined, width = 180): string {
  */
 /**
  * Erzeugt Zusammenfassung, Chronologie und Veranstaltungs-Tabelle für EIN
- * Buch – wird für Haupt- und Zweitkonto identisch verwendet, nur mit
- * unterschiedlicher Abschnitts-Nummerierung und Wirtschaftsjahr-Labels.
+ * Buch – wird für Haupt- und Zweitkonto identisch verwendet.
  */
-function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): string {
+function ledgerSections(file: YearFile, accountNo: number): string {
   const totals = yearTotals(file)
   const chrono = chronological(file)
   const groups = byCategory(file)
@@ -31,7 +30,7 @@ function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): s
         <td class="check">☐</td>
         <td class="nowrap">${formatDate(r.date)}</td>
         <td class="ref">${esc(r.ref)}</td>
-        <td>${esc(r.description)}</td>
+        <td>${esc(r.description)}${r.receiptAvailable === false ? ' <span class="missing-receipt">kein Beleg</span>' : ''}</td>
         <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${r.type === 'einnahme' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${formatAmount(r.runningBalance)}</td>
@@ -74,7 +73,11 @@ function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): s
     .join(', ')
 
   return `
-  <h2>${startNo}. ${titlePrefix}Zusammenfassung</h2>
+  <section class="account-report">
+  <h2 class="account-title">${accountNo}. Bericht Konto ${esc(accountName(file))}</h2>
+  <div class="account-meta">Kassenjahr ${esc(fiscalLabel(file))}</div>
+
+  <h3>Zusammenfassung</h3>
   <table class="summary">
     <tr><td>Anfangssaldo (Abschlusssaldo ${prevFiscalEndLabel(file)})</td><td class="num">${formatEur(file.openingBalance)}</td></tr>
     <tr><td>Summe Einnahmen</td><td class="num">${formatEur(totals.einnahmen)}</td></tr>
@@ -85,7 +88,7 @@ function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): s
     <tr class="total"><td>Abschlusssaldo ${fiscalEndLabel(file)}</td><td class="num">${formatEur(totals.closingBalance)}</td></tr>
   </table>
 
-  <h2>${startNo + 1}. ${titlePrefix}Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(☐ = Beleg geprüft)</span></h2>
+  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(☐ = Beleg geprüft)</span></h3>
   <table>
     <thead>
       <tr><th></th><th>Datum</th><th>Nr.</th><th>Verwendungszweck</th>
@@ -95,14 +98,15 @@ function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): s
   </table>
 
   <div class="pagebreak"></div>
-  <h2>${startNo + 2}. ${titlePrefix}Buchungen nach Veranstaltung</h2>
+  <h3>Buchungen nach Veranstaltung</h3>
   <table>
     <thead>
       <tr><th></th><th>Nr.</th><th>Datum</th><th>Verwendungszweck</th>
       <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th></tr>
     </thead>
     <tbody>${groupSections}</tbody>
-  </table>`
+  </table>
+  </section>`
 }
 
 /**
@@ -113,8 +117,6 @@ function ledgerSections(file: YearFile, startNo: number, titlePrefix: string): s
  * der beide Konten abdeckt.
  */
 export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zweit?: YearFile | null): string {
-  const zweitTitle = zweit ? `${zweit.kontoName || 'Zweitkonto'} ${fiscalLabel(zweit)}: ` : ''
-
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -134,8 +136,12 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
            display: flex; justify-content: space-between; align-items: center; gap: 16px; }
   header img { width: 86px; height: auto; flex: none; }
   h1 { font-size: 20pt; margin: 0; }
-  h2 { font-size: 13pt; margin: 26px 0 8px; border-bottom: 1px solid #1a1a18; padding-bottom: 3px; }
+  h2 { font-size: 16pt; margin: 26px 0 8px; border-bottom: 2px solid #1a1a18; padding-bottom: 5px; }
+  h3 { font-size: 13pt; margin: 20px 0 8px; border-bottom: 1px solid #1a1a18; padding-bottom: 3px; }
   .meta { color: #555; margin-top: 4px; }
+  .account-title { font-weight: 800; margin-top: 8px; }
+  .account-meta { color: #555; margin: -2px 0 14px; font-size: 10pt; }
+  .missing-receipt { display: inline-block; margin-left: 6px; padding: 0 5px; border: 0.5px solid #a7332d; color: #a7332d; font-size: 8pt; font-weight: bold; }
   table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
   th { text-align: left; border-bottom: 1.5px solid #1a1a18; padding: 4px 6px; font-size: 8.5pt;
        text-transform: uppercase; letter-spacing: 0.05em; }
@@ -155,7 +161,7 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
   footer { margin-top: 30px; font-size: 8pt; color: #888; }
   /* Kassenprüfbericht nach Vereinsvorlage */
   .audit { font-size: 11pt; line-height: 1.7; }
-  .audit h2 { border-bottom: none; font-size: 16pt; margin-top: 18px; }
+  .audit h2 { font-size: 16pt; margin-top: 18px; }
   .audit .club { font-size: 12pt; font-weight: bold; }
   .audit .box { font-size: 13pt; margin: 0 4px 0 10px; }
   .audit .konto { margin: 22px 0 0; }
@@ -178,26 +184,26 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
     ${logoDataUrl ? `<img src="${logoDataUrl}" alt="">` : ''}
   </header>
 
-  ${ledgerSections(file, 1, '')}
+  ${ledgerSections(file, 1)}
 
   ${
     zweit
       ? `
   <div class="pagebreak"></div>
-  ${ledgerSections(zweit, 4, zweitTitle)}
+  ${ledgerSections(zweit, 2)}
   `
       : ''
   }
 
   <div class="pagebreak"></div>
-  ${auditSection(file)}
+  ${auditSection(file, zweit ? 3 : 2)}
   <footer>Erstellt mit Buchführung · Kassenbericht ${file.year}</footer>
 </body>
 </html>`
 }
 
 /** Kassenprüfbericht – Aufbau und Formulierungen folgen der Vereinsvorlage. */
-function auditSection(file: YearFile): string {
+function auditSection(file: YearFile, sectionNo: number): string {
   const a: Partial<AuditInfo> = file.audit ?? {}
   const konten = [a.konto1, a.konto2].filter((k) => (k ?? '').trim() !== '')
   const kontoBlocks = (konten.length > 0 ? konten : [undefined]).map(
@@ -222,7 +228,7 @@ function auditSection(file: YearFile): string {
   return `
   <section class="audit">
     <div class="club">${esc(file.clubName || '')}</div>
-    <h2>Kassenprüfbericht ${file.year}</h2>
+    <h2>${sectionNo}. Kassenprüfbericht ${file.year}</h2>
     <p>
       Am ${val(a.pruefDatum, 110)} haben die von der letzten Mitgliederversammlung am
       ${val(a.wahlDatum, 110)} gewählten Kassenprüfer <strong>${val(a.pruefer1)}</strong> und
@@ -242,6 +248,10 @@ function auditSection(file: YearFile): string {
       <div class="sig">${esc(a.pruefer2 || 'Kassenprüfer:in 2')}</div>
     </div>
   </section>`
+}
+
+function accountName(file: YearFile): string {
+  return file.kontoName?.trim() || (file.konto === 'zweit' ? 'Zweitkonto' : 'Hauptkonto')
 }
 
 function esc(s: string): string {
