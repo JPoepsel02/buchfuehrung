@@ -227,7 +227,7 @@ export function BuchungenView({
                 checked={form.receiptAvailable}
                 onChange={(e) => set('receiptAvailable', e.target.checked)}
               />
-              Beleg vorhanden
+              Beleg im Ordner vorhanden
             </label>
             {form.isUmsatz && (
               <div className="field" style={{ minWidth: 180 }}>
@@ -313,9 +313,9 @@ export function BuchungenView({
                   </td>
                   <td>
                     {r.receiptAvailable ?? true ? (
-                      <span className="pill pill--in">vorhanden</span>
+                      <span className="pill pill--in">im Ordner</span>
                     ) : (
-                      <span className="pill pill--out">fehlt</span>
+                      <span className="pill pill--out">fehlt im Ordner</span>
                     )}
                   </td>
                   <td>

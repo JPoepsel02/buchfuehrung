@@ -182,7 +182,7 @@ export function ImportView() {
             type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
             amount: part.amount,
             isUmsatz: part.isUmsatz,
-            receiptAvailable: true,
+            receiptAvailable: false,
             nonUmsatzAmount: 0,
             note: r.bankText,
             source: 'import' as const,
