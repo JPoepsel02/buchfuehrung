@@ -168,7 +168,9 @@ textarea {
 }
 
 .view {
-  max-width: 1060px;
+  /* Auf großen Monitoren mehr Platz für die Tabellen – Spalten wie der
+     lange Verwendungszweck brauchen sonst horizontales Scrollen */
+  max-width: 1560px;
   margin: 0 auto;
   animation: view-in var(--duration-normal) var(--ease-out);
 }
