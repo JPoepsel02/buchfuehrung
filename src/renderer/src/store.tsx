@@ -8,7 +8,7 @@ import type { AppSettings, Booking, Category, KontoId, YearFile } from '@shared/
 /**
  * Die App führt zwei strikt getrennte Bücher: das Hauptkonto und ein
  * optionales Zweitkonto (eigene Dateien, eigene Kategorien, eigenes
- * Wirtschaftsjahr). Es gibt bewusst keine Stelle, an der die Summen
+ * Kassenjahr). Es gibt bewusst keine Stelle, an der die Summen
  * beider Konten verrechnet werden.
  */
 interface Store {
@@ -30,7 +30,7 @@ interface Store {
   selectYear(year: number): Promise<void>
   /** Neues Jahr im aktiven Buch anlegen (Jahresabschluss / Erststart) */
   createYear(year: number, openingBalance: number, clubName: string, treasurerName: string): Promise<void>
-  /** Zweitkonto mit erstem Wirtschaftsjahr anlegen */
+  /** Zweitkonto mit erstem Kassenjahr anlegen */
   createZweitkonto(name: string, fiscalStartMonth: number, year: number, openingBalance: number): Promise<void>
   /** Jahr im aktiven Buch löschen (Datei wandert in den Backup-Ordner) */
   deleteYear(year: number): Promise<void>

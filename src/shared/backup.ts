@@ -70,7 +70,7 @@ export function validateBackup(data: unknown): ValidationResult {
       f.fiscalStartMonth !== undefined &&
       (!Number.isInteger(f.fiscalStartMonth) || (f.fiscalStartMonth as number) < 1 || (f.fiscalStartMonth as number) > 12)
     )
-      err(`Kassenjahr ${yearNo}: Wirtschaftsjahr-Startmonat muss 1–12 sein.`)
+      err(`Kassenjahr ${yearNo}: Startmonat des Kassenjahres muss 1–12 sein.`)
 
     if (!Array.isArray(f.categories) || f.categories.length === 0) {
       err(`Kassenjahr ${yearNo}: keine Kategorien.`)

@@ -64,7 +64,7 @@ export function EinstellungenView() {
   }, [file?.konto, file?.year])
 
   if (!file) return null
-  const jahrWort = (file.fiscalStartMonth ?? 1) === 1 ? 'Kassenjahr' : 'Wirtschaftsjahr'
+  const jahrWort = 'Kassenjahr'
   const totals = yearTotals(file)
   const cats = [...file.categories].sort((a, b) => a.sortOrder - b.sortOrder)
 
@@ -190,7 +190,7 @@ export function EinstellungenView() {
         <h2 className="card__title">Konten</h2>
         <p className="hint" style={{ marginTop: 0 }}>
           Hauptkonto und Zweitkonto werden vollständig getrennt geführt – eigene Kategorien,
-          eigene Beleg-Nummern, eigenes Wirtschaftsjahr. Summen werden nie verrechnet.
+          eigene Beleg-Nummern, eigenes Kassenjahr. Summen werden nie verrechnet.
         </p>
         {zweitExists ? (
           <p className="hint">
