@@ -9,7 +9,7 @@ import { fiscalLabel } from '@shared/fiscal'
 import { buildBackup, validateBackup } from '@shared/backup'
 import { yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur, parseAmountToCents } from '@shared/money'
-import type { Category, ThemeSetting, YearFile } from '@shared/types'
+import type { Category, YearFile } from '@shared/types'
 
 const LOGO_MAX_PX = 512
 
@@ -177,8 +177,6 @@ export function EinstellungenView() {
           )}
         </div>
       </section>
-
-      <AppearanceCard />
 
       <DataStorageCard notify={notify} />
 
@@ -363,28 +361,6 @@ export function EinstellungenView() {
       </section>
       {toast && <div className="toast">{toast}</div>}
     </div>
-  )
-}
-
-/** Farbschema: hell, dunkel oder dem System folgen. */
-function AppearanceCard() {
-  const { settings, updateSettings } = useStore()
-  return (
-    <section className="card">
-      <h2 className="card__title">Darstellung</h2>
-      <div className="field" style={{ maxWidth: 280 }}>
-        <label htmlFor="s-theme">Farbschema</label>
-        <select
-          id="s-theme"
-          value={settings.theme ?? 'system'}
-          onChange={(e) => void updateSettings({ theme: e.target.value as ThemeSetting })}
-        >
-          <option value="system">Wie das System</option>
-          <option value="hell">Hell</option>
-          <option value="dunkel">Dunkel</option>
-        </select>
-      </div>
-    </section>
   )
 }
 
