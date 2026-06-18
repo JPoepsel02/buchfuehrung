@@ -55,6 +55,8 @@ export interface Booking {
   source: 'manuell' | 'import'
   /** Duplikat-Erkennung beim Kontoauszug-Import */
   importHash?: string
+  /** Version des Import-Hashes; 2 = Datum, Betrag und Bank-Beschreibung */
+  importHashVersion?: 2
 }
 
 export type ThemeSetting = 'hell' | 'dunkel' | 'system'
