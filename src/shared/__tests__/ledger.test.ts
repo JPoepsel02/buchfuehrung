@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest'
 import {
-  backfillImportedBookingNames,
   bookingMatches,
   byCategory,
   chronological,
@@ -8,6 +7,7 @@ import {
   eventRows,
   monthSummaries,
   nextSeq,
+  reconcileImportedBookings,
   yearTotals,
 } from '../ledger'
 import type { Booking, YearFile } from '../types'
@@ -220,30 +220,42 @@ describe('Auswertung', () => {
     expect(bookingMatches(row, '999,99')).toBe(false)
   })
 
-  test('ergänzt nur fehlende Namen bereits importierter Buchungen', () => {
+  test('migriert alte Import-Hashes und ergänzt nur fehlende Namen', () => {
     const bookings = [
-      booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'einnahme', amount: 1000, source: 'import', importHash: 'hash-1' }),
-      booking({ seq: 2, date: '2026-01-11', categoryId: 'm', type: 'ausgabe', amount: 2000, source: 'import', importHash: 'hash-2', name: 'Schon vorhanden' }),
-      booking({ seq: 3, date: '2026-01-12', categoryId: 'm', type: 'ausgabe', amount: 3000, source: 'manuell', importHash: 'hash-3' }),
+      booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'einnahme', amount: 1000, source: 'manuell', importHash: 'legacy-1' }),
+      booking({ seq: 2, date: '2026-01-11', categoryId: 'm', type: 'ausgabe', amount: 2000, source: 'import', importHash: 'new-2', name: 'Schon vorhanden' }),
+      booking({ seq: 3, date: '2026-01-12', categoryId: 'm', type: 'ausgabe', amount: 1000, source: 'manuell', importHash: 'legacy-split' }),
+      booking({ seq: 4, date: '2026-01-12', categoryId: 'b', type: 'ausgabe', amount: 2000, source: 'manuell', importHash: 'legacy-split' }),
       booking({ seq: 4, date: '2026-01-13', categoryId: 'm', type: 'ausgabe', amount: 4000, source: 'manuell' }),
     ]
 
-    const result = backfillImportedBookingNames(
+    const result = reconcileImportedBookings(
       bookings,
-      new Map([
-        ['hash-1', 'Neuer Name'],
-        ['hash-2', 'Nicht überschreiben'],
-        ['hash-3', 'Historischer Import'],
-      ]),
+      [
+        { hash: 'new-1', legacyHashes: ['legacy-1'], name: 'Neuer Name' },
+        { hash: 'new-2', legacyHashes: ['legacy-2'], name: 'Nicht überschreiben' },
+        { hash: 'new-split', legacyHashes: ['legacy-split'], name: 'Split Name' },
+      ],
     )
 
-    expect(result.updatedCount).toBe(2)
+    expect(result.updatedNameCount).toBe(3)
+    expect(result.migratedHashCount).toBe(3)
     expect(result.bookings.map((b) => b.name)).toEqual([
       'Neuer Name',
       'Schon vorhanden',
-      'Historischer Import',
+      'Split Name',
+      'Split Name',
       undefined,
     ])
+    expect(result.bookings.map((b) => b.importHash)).toEqual([
+      'new-1',
+      'new-2',
+      'new-split',
+      'new-split',
+      undefined,
+    ])
+    expect(result.bookings.slice(0, 4).every((b) => b.source === 'import')).toBe(true)
     expect(bookings[0].name).toBeUndefined()
+    expect(bookings[0].importHash).toBe('legacy-1')
   })
 })
