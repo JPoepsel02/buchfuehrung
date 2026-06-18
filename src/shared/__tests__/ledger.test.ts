@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'vitest'
-import { bookingMatches, byCategory, chronological, computeBookings, eventRows, monthSummaries, nextSeq, yearTotals } from '../ledger'
+import {
+  backfillImportedBookingNames,
+  bookingMatches,
+  byCategory,
+  chronological,
+  computeBookings,
+  eventRows,
+  monthSummaries,
+  nextSeq,
+  yearTotals,
+} from '../ledger'
 import type { Booking, YearFile } from '../types'
 
 function booking(partial: Partial<Booking> & Pick<Booking, 'seq' | 'date' | 'categoryId' | 'type' | 'amount'>): Booking {
@@ -208,5 +218,26 @@ describe('Auswertung', () => {
     expect(bookingMatches(row, 'M1')).toBe(true)
     expect(bookingMatches(row, 'maskenball')).toBe(true)
     expect(bookingMatches(row, '999,99')).toBe(false)
+  })
+
+  test('ergänzt nur fehlende Namen bereits importierter Buchungen', () => {
+    const bookings = [
+      booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'einnahme', amount: 1000, source: 'import', importHash: 'hash-1' }),
+      booking({ seq: 2, date: '2026-01-11', categoryId: 'm', type: 'ausgabe', amount: 2000, source: 'import', importHash: 'hash-2', name: 'Schon vorhanden' }),
+      booking({ seq: 3, date: '2026-01-12', categoryId: 'm', type: 'ausgabe', amount: 3000, source: 'manuell', importHash: 'hash-3' }),
+    ]
+
+    const result = backfillImportedBookingNames(
+      bookings,
+      new Map([
+        ['hash-1', 'Neuer Name'],
+        ['hash-2', 'Nicht überschreiben'],
+        ['hash-3', 'Manuell nicht ändern'],
+      ]),
+    )
+
+    expect(result.updatedCount).toBe(1)
+    expect(result.bookings.map((b) => b.name)).toEqual(['Neuer Name', 'Schon vorhanden', undefined])
+    expect(bookings[0].name).toBeUndefined()
   })
 })
