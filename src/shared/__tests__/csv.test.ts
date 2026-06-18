@@ -75,6 +75,45 @@ describe('parseBankCsv', () => {
     })
   })
 
+  test('nimmt bei Einnahmen den Auftraggeber und bei Ausgaben den Empfänger', () => {
+    const csv = [
+      'Buchungstag;Auftraggeber;Empfänger;Verwendungszweck;Betrag',
+      '05.05.2026;Anna Einzahlerin;Unser Verein;Ausflug;20,00',
+      '06.05.2026;Unser Verein;Busreisen Meier;Busfahrt;-450,00',
+    ].join('\n')
+
+    const { rows } = parseBankCsv(csv)
+
+    expect(rows[0]).toMatchObject({ amount: 2000, name: 'Anna Einzahlerin' })
+    expect(rows[1]).toMatchObject({ amount: -45000, name: 'Busreisen Meier' })
+  })
+
+  test('erkennt alternative Sender- und Empfänger-Spalten', () => {
+    const csv = [
+      'Datum;Zahlungspflichtiger;Begünstigter;Beschreibung;Umsatz',
+      '07.05.2026;Max Teilnehmer;Unser Verein;Teilnahmebeitrag;25,00',
+      '08.05.2026;Unser Verein;Restaurant Beispiel;Abendessen;-120,00',
+    ].join('\n')
+
+    const { rows } = parseBankCsv(csv)
+
+    expect(rows[0].name).toBe('Max Teilnehmer')
+    expect(rows[1].name).toBe('Restaurant Beispiel')
+  })
+
+  test('verwendet bei Barbewegungen den Buchungstext als Name', () => {
+    const csv = [
+      'Buchungstag;Name Zahlungsbeteiligter;Buchungstext;Verwendungszweck;Betrag',
+      '09.05.2026;;Bareinzahlung;Einnahmen Veranstaltung;300,00',
+      '10.05.2026;;Barauszahlung;Wechselgeld;-100,00',
+    ].join('\n')
+
+    const { rows } = parseBankCsv(csv)
+
+    expect(rows[0].name).toBe('Bareinzahlung')
+    expect(rows[1].name).toBe('Barauszahlung')
+  })
+
   test('gleiche Umsätze bekommen gleiche Hashes (Duplikat-Erkennung)', () => {
     const csv = [
       'Buchungstag;Verwendungszweck;Betrag',
