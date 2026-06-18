@@ -31,10 +31,17 @@ const AMOUNT_HEADERS = ['betrag', 'umsatz', 'betrag (eur)', 'umsatz (eur)', 'bet
 const DESCRIPTION_HEADERS = [
   'verwendungszweck', 'buchungstext', 'vorgang/verwendungszweck', 'beschreibung',
 ]
-const NAME_HEADERS = [
+const BOOKING_TEXT_HEADERS = ['buchungstext', 'vorgang', 'buchungsart']
+const SENDER_HEADERS = [
+  'auftraggeber', 'zahlungspflichtiger', 'absender', 'sender',
+]
+const RECIPIENT_HEADERS = [
+  'empfänger', 'empfaenger', 'begünstigter', 'beguenstigter',
+  'zahlungsempfänger', 'zahlungsempfaenger',
+]
+const GENERIC_NAME_HEADERS = [
   'beguenstigter/zahlungspflichtiger', 'begünstigter/zahlungspflichtiger',
   'name zahlungsbeteiligter', 'auftraggeber/empfänger', 'auftraggeber/empfaenger',
-  'empfänger', 'empfaenger', 'zahlungspflichtiger',
 ]
 
 export function detectDelimiter(headerLine: string): string {
@@ -134,7 +141,10 @@ export function parseBankCsv(content: string): ParseResult {
 
   const dateCol = findColumn(headers, DATE_HEADERS)
   const amountCol = findColumn(headers, AMOUNT_HEADERS)
-  const nameCol = findColumn(headers, NAME_HEADERS)
+  const senderCol = findColumn(headers, SENDER_HEADERS)
+  const recipientCol = findColumn(headers, RECIPIENT_HEADERS)
+  const genericNameCol = findColumn(headers, GENERIC_NAME_HEADERS)
+  const bookingTextCol = findColumn(headers, BOOKING_TEXT_HEADERS)
   const textCols = DESCRIPTION_HEADERS
     .map((h) => findColumn(headers, [h]))
     .filter((i) => i >= 0)
@@ -150,14 +160,25 @@ export function parseBankCsv(content: string): ParseResult {
       skipped++
       continue
     }
-    const name = nameCol >= 0 ? (fields[nameCol] ?? '').replace(/\s+/g, ' ').trim() : ''
+    const preferredNameCols =
+      amount >= 0
+        ? [senderCol, genericNameCol, recipientCol]
+        : [recipientCol, genericNameCol, senderCol]
+    const explicitName =
+      preferredNameCols
+        .filter((col, index, cols) => col >= 0 && cols.indexOf(col) === index)
+        .map((col) => (fields[col] ?? '').replace(/\s+/g, ' ').trim())
+        .find(Boolean) ?? ''
+    const bookingText =
+      bookingTextCol >= 0 ? (fields[bookingTextCol] ?? '').replace(/\s+/g, ' ').trim() : ''
+    const name = explicitName || bookingText
     const description = uniqueTextCols
       .map((i) => fields[i] ?? '')
       .filter(Boolean)
       .join(' – ')
       .replace(/\s+/g, ' ')
       .trim()
-    const hashText = [description, name].filter(Boolean).join(' – ')
+    const hashText = [description, explicitName].filter(Boolean).join(' – ')
     rows.push({ date, name, description, amount, hash: rowHash(date, amount, hashText) })
   }
   return {
@@ -165,7 +186,9 @@ export function parseBankCsv(content: string): ParseResult {
     skipped,
     mapping: {
       date: headers[dateCol],
-      name: nameCol >= 0 ? headers[nameCol] : '',
+      name: [...new Set([senderCol, recipientCol, genericNameCol].filter((col) => col >= 0))]
+        .map((col) => headers[col])
+        .join(' / '),
       description: uniqueTextCols.map((i) => headers[i]),
       amount: headers[amountCol],
     },
