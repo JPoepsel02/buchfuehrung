@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseBankCsv, parseGermanDate, splitCsvLine } from '../csv'
+import { parseBankCsv, parseGermanDate, rowHash, splitCsvLine } from '../csv'
 import { parseAmountToCents } from '../money'
 
 describe('parseAmountToCents', () => {
@@ -86,6 +86,22 @@ describe('parseBankCsv', () => {
 
     expect(rows[0]).toMatchObject({ amount: 2000, name: 'Anna Einzahlerin' })
     expect(rows[1]).toMatchObject({ amount: -45000, name: 'Busreisen Meier' })
+  })
+
+  test('bildet den Import-Hash nur aus Datum, Betrag und Beschreibung', () => {
+    const csv = [
+      'Buchungstag;Auftraggeber;Empfänger;Verwendungszweck;Betrag',
+      '05.05.2026;Anna Einzahlerin;Unser Verein;Ausflug;20,00',
+      '05.05.2026;Bernd Einzahler;Unser Verein;Ausflug;20,00',
+    ].join('\n')
+
+    const { rows } = parseBankCsv(csv)
+
+    expect(rows[0].hash).toBe(rowHash('2026-05-05', 2000, 'Ausflug'))
+    expect(rows[1].hash).toBe(rows[0].hash)
+    expect(rows[0].legacyHashes).toContain(
+      rowHash('2026-05-05', 2000, 'Ausflug – Anna Einzahlerin'),
+    )
   })
 
   test('erkennt alternative Sender- und Empfänger-Spalten', () => {
