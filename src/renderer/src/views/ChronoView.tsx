@@ -31,6 +31,7 @@ export function ChronoView() {
               <tr>
                 <th>Datum</th>
                 <th>Nr.</th>
+                <th>Name</th>
                 <th>Verwendungszweck</th>
                 <th className="num">Ausgaben (€)</th>
                 <th className="num">Einnahmen (€)</th>
@@ -43,6 +44,7 @@ export function ChronoView() {
                 <tr key={r.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
                   <td className="ref">{r.ref}</td>
+                  <td>{r.name?.trim() || '–'}</td>
                   <td className="cell-desc">{r.description}</td>
                   <td className="num">{r.type === 'ausgabe' ? <Amount cents={-r.amount} /> : ''}</td>
                   <td className="num">{r.type === 'einnahme' ? <Amount cents={r.amount} /> : ''}</td>
@@ -51,17 +53,17 @@ export function ChronoView() {
                 </tr>
               ))}
               <tr className="total-row">
-                <td colSpan={3}>Abschlusssaldo {prevFiscalEndLabel(file)}</td>
+                <td colSpan={4}>Abschlusssaldo {prevFiscalEndLabel(file)}</td>
                 <td colSpan={4} className="num">{formatEur(file.openingBalance)}</td>
               </tr>
               <tr className="total-row">
-                <td colSpan={3}>+ Gesamtsaldo {fiscalLabel(file)}</td>
+                <td colSpan={4}>+ Gesamtsaldo {fiscalLabel(file)}</td>
                 <td colSpan={4} className="num">
                   <Amount cents={totals.saldo} withSign currency />
                 </td>
               </tr>
               <tr className="total-row">
-                <td colSpan={3}>Abschlusssaldo {fiscalEndLabel(file)}</td>
+                <td colSpan={4}>Abschlusssaldo {fiscalEndLabel(file)}</td>
                 <td colSpan={4} className="num">{formatEur(totals.closingBalance)}</td>
               </tr>
             </tbody>

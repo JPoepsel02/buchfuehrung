@@ -35,6 +35,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
         <td class="nowrap">${formatDate(r.date)}</td>
         <td class="ref">${esc(r.ref)}</td>
         <td>${receiptCell(r.receiptAvailable === false ? 0 : 1, 1)}</td>
+        <td>${esc((r.name ?? '').trim() || '–')}</td>
         <td>${esc(r.description)}</td>
         <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${r.type === 'einnahme' ? formatAmount(r.amount) : ''}</td>
@@ -46,7 +47,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
   const groupSections = groups
     .map(
       (g) => `
-      <tr class="group-head"><td colspan="6">${esc(g.category.name)}</td></tr>
+      <tr class="group-head"><td colspan="7">${esc(g.category.name)}</td></tr>
       ${eventRows(g)
         .map(
           (r) => `
@@ -54,6 +55,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
           <td class="ref">${esc(r.refs)}</td>
           <td class="nowrap">${r.kind === 'einzeln' ? formatDate(r.date) : `${r.count} Buchungen`}</td>
           <td>${receiptCell(r.receiptAvailableCount, r.count)}</td>
+          <td>${esc(r.name || '–')}</td>
           <td>${esc(r.label)}</td>
           <td class="num">${r.ausgaben > 0 ? formatAmount(r.ausgaben) : ''}</td>
           <td class="num">${r.einnahmen > 0 ? formatAmount(r.einnahmen) : ''}</td>
@@ -61,12 +63,12 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
         )
         .join('')}
       <tr class="group-sum">
-        <td colspan="4">Saldo ${esc(g.category.name)}</td>
+        <td colspan="5">Saldo ${esc(g.category.name)}</td>
         <td class="num">${formatAmount(g.ausgaben)}</td>
         <td class="num">${formatAmount(g.einnahmen)}</td>
       </tr>
       <tr class="group-sum2">
-        <td colspan="4"></td>
+        <td colspan="5"></td>
         <td colspan="2" class="num"><strong>${formatEur(g.saldo)}</strong></td>
       </tr>`,
     )
@@ -96,7 +98,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
   <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(▤ = Beleg im Ordner vorhanden)</span></h3>
   <table>
     <thead>
-      <tr><th>Datum</th><th>Nr.</th><th>Beleg</th><th>Verwendungszweck</th>
+      <tr><th>Datum</th><th>Nr.</th><th>Beleg</th><th>Name</th><th>Verwendungszweck</th>
       <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th><th class="num">Kassenstand (€)</th></tr>
     </thead>
     <tbody>${chronoRows}</tbody>
@@ -106,7 +108,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
   <h3>Buchungen nach Veranstaltung</h3>
   <table>
     <thead>
-      <tr><th>Nr.</th><th>Datum</th><th>Beleg</th><th>Verwendungszweck</th>
+      <tr><th>Nr.</th><th>Datum</th><th>Beleg</th><th>Name</th><th>Verwendungszweck</th>
       <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th></tr>
     </thead>
     <tbody>${groupSections}</tbody>

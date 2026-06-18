@@ -122,9 +122,9 @@ describe('byCategory – Veranstaltungs-Gruppierung', () => {
 
   test('eventRows fasst Unterkategorien zu Summenzeilen zusammen', () => {
     const f = file([
-      booking({ seq: 1, date: '2026-01-05', categoryId: 'm', type: 'einnahme', amount: 10000, subcategory: 'Karnevalsbeiträge', description: 'Beitrag A' }),
-      booking({ seq: 2, date: '2026-01-08', categoryId: 'm', type: 'einnahme', amount: 5000, subcategory: 'Karnevalsbeiträge', description: 'Beitrag B' }),
-      booking({ seq: 3, date: '2026-01-06', categoryId: 'm', type: 'ausgabe', amount: 2000, description: 'Getränke' }),
+      booking({ seq: 1, date: '2026-01-05', categoryId: 'm', type: 'einnahme', amount: 10000, subcategory: 'Karnevalsbeiträge', description: 'Beitrag A', name: 'Anna' }),
+      booking({ seq: 2, date: '2026-01-08', categoryId: 'm', type: 'einnahme', amount: 5000, subcategory: 'Karnevalsbeiträge', description: 'Beitrag B', name: 'Bernd' }),
+      booking({ seq: 3, date: '2026-01-06', categoryId: 'm', type: 'ausgabe', amount: 2000, description: 'Getränke', name: 'Getränke Meier' }),
     ])
     const rows = eventRows(byCategory(f)[0])
     expect(rows).toHaveLength(2)
@@ -133,8 +133,10 @@ describe('byCategory – Veranstaltungs-Gruppierung', () => {
     expect(sub.einnahmen).toBe(15000)
     expect(sub.count).toBe(2)
     expect(sub.refs).toBe('')
+    expect(sub.name).toBe('Anna, Bernd')
     const single = rows.find((r) => r.kind === 'einzeln')!
     expect(single.label).toBe('Getränke')
+    expect(single.name).toBe('Getränke Meier')
     expect(single.ausgaben).toBe(2000)
     // Chronologie bleibt unberührt: weiterhin 3 einzelne Buchungen
     expect(chronological(f)).toHaveLength(3)
@@ -194,13 +196,14 @@ describe('Auswertung', () => {
 
   test('bookingMatches findet Beträge, Notizen, Beleg-Nr. und Kategorie', () => {
     const f = file([
-      booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'ausgabe', amount: 10080, description: 'Getränke', note: 'VR BANK Lastschrift' }),
+      booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'ausgabe', amount: 10080, description: 'Getränke', name: 'Getränke Meier', note: 'VR BANK Lastschrift' }),
     ])
     const row = computeBookings(f)[0]
     // Über den Betrag gefunden (wie in der globalen Suche) → muss auch im Listenfilter treffen
     expect(bookingMatches(row, '100')).toBe(true)
     expect(bookingMatches(row, '100,80')).toBe(true)
     expect(bookingMatches(row, 'getränke')).toBe(true)
+    expect(bookingMatches(row, 'meier')).toBe(true)
     expect(bookingMatches(row, 'vr bank')).toBe(true)
     expect(bookingMatches(row, 'M1')).toBe(true)
     expect(bookingMatches(row, 'maskenball')).toBe(true)

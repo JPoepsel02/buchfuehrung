@@ -46,9 +46,14 @@ describe('parseBankCsv', () => {
     ].join('\n')
     const result = parseBankCsv(csv)
     expect(result.rows).toHaveLength(2)
-    expect(result.rows[0]).toMatchObject({ date: '2026-01-05', amount: 2900 })
+    expect(result.rows[0]).toMatchObject({
+      date: '2026-01-05',
+      amount: 2900,
+      name: 'Max Mustermann',
+      description: 'Beitrag 2026 – GUTSCHR. UEBERWEISUNG',
+    })
     expect(result.rows[0].description).toContain('Beitrag 2026')
-    expect(result.rows[0].description).toContain('Max Mustermann')
+    expect(result.rows[0].description).not.toContain('Max Mustermann')
     expect(result.rows[1].amount).toBe(-50000)
     expect(result.skipped).toBe(0)
   })
@@ -62,7 +67,12 @@ describe('parseBankCsv', () => {
     ].join('\n')
     const result = parseBankCsv(csv)
     expect(result.rows).toHaveLength(1)
-    expect(result.rows[0]).toMatchObject({ date: '2026-04-03', amount: -58480 })
+    expect(result.rows[0]).toMatchObject({
+      date: '2026-04-03',
+      amount: -58480,
+      name: 'Getränke Meier',
+      description: 'RE 4711',
+    })
   })
 
   test('gleiche Umsätze bekommen gleiche Hashes (Duplikat-Erkennung)', () => {

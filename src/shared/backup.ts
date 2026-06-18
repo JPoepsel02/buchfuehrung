@@ -113,6 +113,7 @@ export function validateBackup(data: unknown): ValidationResult {
         err(`${bw}: ungültiges Datum "${String(bo.date)}".`)
       if (typeof bo.categoryId !== 'string' || !catIds.has(bo.categoryId))
         err(`${bw}: verweist auf unbekannte Kategorie.`)
+      if (bo.name !== undefined && typeof bo.name !== 'string') err(`${bw}: Name ist kein Text.`)
       if (typeof bo.description !== 'string') err(`${bw}: Verwendungszweck fehlt.`)
       if (bo.type !== 'einnahme' && bo.type !== 'ausgabe') err(`${bw}: Art muss Einnahme oder Ausgabe sein.`)
       if (!Number.isInteger(bo.amount) || (bo.amount as number) < 0)

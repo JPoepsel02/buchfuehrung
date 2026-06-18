@@ -8,7 +8,9 @@ import { parseAmountToCents } from './money'
 export interface StatementRow {
   /** ISO-Datum YYYY-MM-DD */
   date: string
-  /** Verwendungszweck inkl. Name des Auftraggebers/Empfängers */
+  /** Zahlungspflichtige:r bzw. Empfänger:in */
+  name: string
+  /** Buchungstext und Verwendungszweck */
   description: string
   /** Vorzeichenbetrag in Cent (negativ = Ausgabe) */
   amount: number
@@ -21,13 +23,15 @@ export interface ParseResult {
   /** Zeilen, die nicht interpretiert werden konnten */
   skipped: number
   /** Erkannte Spaltennamen, für die Anzeige im Import-Dialog */
-  mapping: { date: string; description: string[]; amount: string }
+  mapping: { date: string; name: string; description: string[]; amount: string }
 }
 
 const DATE_HEADERS = ['buchungstag', 'buchungsdatum', 'buchung', 'valutadatum', 'wertstellung', 'datum']
 const AMOUNT_HEADERS = ['betrag', 'umsatz', 'betrag (eur)', 'umsatz (eur)', 'betrag in eur']
-const TEXT_HEADERS = [
+const DESCRIPTION_HEADERS = [
   'verwendungszweck', 'buchungstext', 'vorgang/verwendungszweck', 'beschreibung',
+]
+const NAME_HEADERS = [
   'beguenstigter/zahlungspflichtiger', 'begünstigter/zahlungspflichtiger',
   'name zahlungsbeteiligter', 'auftraggeber/empfänger', 'auftraggeber/empfaenger',
   'empfänger', 'empfaenger', 'zahlungspflichtiger',
@@ -106,7 +110,9 @@ export function rowHash(date: string, amount: number, description: string): stri
 
 export function parseBankCsv(content: string): ParseResult {
   const lines = content.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim() !== '')
-  if (lines.length === 0) return { rows: [], skipped: 0, mapping: { date: '', description: [], amount: '' } }
+  if (lines.length === 0) {
+    return { rows: [], skipped: 0, mapping: { date: '', name: '', description: [], amount: '' } }
+  }
 
   // Kopfzeile suchen: erste Zeile, die eine Datums- UND eine Betragsspalte nennt
   let headerIdx = -1
@@ -123,12 +129,13 @@ export function parseBankCsv(content: string): ParseResult {
     }
   }
   if (headerIdx === -1) {
-    return { rows: [], skipped: lines.length, mapping: { date: '', description: [], amount: '' } }
+    return { rows: [], skipped: lines.length, mapping: { date: '', name: '', description: [], amount: '' } }
   }
 
   const dateCol = findColumn(headers, DATE_HEADERS)
   const amountCol = findColumn(headers, AMOUNT_HEADERS)
-  const textCols = TEXT_HEADERS
+  const nameCol = findColumn(headers, NAME_HEADERS)
+  const textCols = DESCRIPTION_HEADERS
     .map((h) => findColumn(headers, [h]))
     .filter((i) => i >= 0)
   const uniqueTextCols = [...new Set(textCols)]
@@ -143,19 +150,22 @@ export function parseBankCsv(content: string): ParseResult {
       skipped++
       continue
     }
+    const name = nameCol >= 0 ? (fields[nameCol] ?? '').replace(/\s+/g, ' ').trim() : ''
     const description = uniqueTextCols
       .map((i) => fields[i] ?? '')
       .filter(Boolean)
       .join(' – ')
       .replace(/\s+/g, ' ')
       .trim()
-    rows.push({ date, description, amount, hash: rowHash(date, amount, description) })
+    const hashText = [description, name].filter(Boolean).join(' – ')
+    rows.push({ date, name, description, amount, hash: rowHash(date, amount, hashText) })
   }
   return {
     rows,
     skipped,
     mapping: {
       date: headers[dateCol],
+      name: nameCol >= 0 ? headers[nameCol] : '',
       description: uniqueTextCols.map((i) => headers[i]),
       amount: headers[amountCol],
     },

@@ -30,6 +30,7 @@ export function VeranstaltungenView() {
               <tr>
                 <th>Nr.</th>
                 <th>Datum</th>
+                <th>Name</th>
                 <th>Verwendungszweck</th>
                 <th className="num">Ausgaben (€)</th>
                 <th className="num">Einnahmen (€)</th>
@@ -52,12 +53,13 @@ function GroupRows({ group }: { group: ReturnType<typeof byCategory>[number] }) 
   return (
     <>
       <tr className="group-head">
-        <td colSpan={6}>{group.category.name}</td>
+        <td colSpan={7}>{group.category.name}</td>
       </tr>
       {eventRows(group).map((r) => (
         <tr key={`${r.refs}-${r.label}`}>
           <td className="ref">{r.refs}</td>
           <td style={{ whiteSpace: 'nowrap' }}>{r.kind === 'einzeln' ? formatDate(r.date) : ''}</td>
+          <td>{r.name || '–'}</td>
           <td className="cell-desc">
             {r.label}
             {r.kind === 'unterkategorie' && (
@@ -70,7 +72,7 @@ function GroupRows({ group }: { group: ReturnType<typeof byCategory>[number] }) 
         </tr>
       ))}
       <tr className="group-sum">
-        <td colSpan={3}>Saldo {group.category.name}</td>
+        <td colSpan={4}>Saldo {group.category.name}</td>
         <td className="num"><Amount cents={-group.ausgaben} /></td>
         <td className="num"><Amount cents={group.einnahmen} /></td>
         <td className="num"><Amount cents={group.saldo} withSign /></td>

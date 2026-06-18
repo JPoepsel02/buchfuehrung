@@ -53,6 +53,7 @@ export function ImportView() {
       bankText: r.description,
       amount: r.amount,
       hash: r.hash,
+      name: r.name,
       description: '',
       selected: !existingHashes.has(r.hash) && inFiscalYear(file!, r.date),
       // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
@@ -177,6 +178,7 @@ export function ImportView() {
             seq: seq++,
             date: r.date,
             categoryId: part.categoryId,
+            name: r.name.trim(),
             description: part.description.trim(),
             subcategory: r.splits?.length ? undefined : (r.subcategory ?? '').trim() || undefined,
             type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
@@ -264,6 +266,7 @@ export function ImportView() {
                 <th></th>
                 <th>Datum</th>
                 <th>Kontoauszug (Original)</th>
+                <th>Name</th>
                 <th>Eigener Verwendungszweck</th>
                 <th className="num">Betrag</th>
                 <th>Kategorie</th>
@@ -299,6 +302,17 @@ export function ImportView() {
                       <span className="bank-clamp" title={r.bankText}>
                         {r.bankText}
                       </span>
+                    </td>
+                    <td>
+                      <input
+                        value={r.name ?? ''}
+                        onChange={(e) => setRow(i, { name: e.target.value })}
+                        placeholder="Zahlungspflichtige:r / Empfänger:in"
+                        disabled={!r.selected || isDuplicate}
+                        aria-label="Name"
+                        aria-invalid={r.selected && !isDuplicate && !(r.name ?? '').trim()}
+                        style={{ minWidth: 150, width: '100%' }}
+                      />
                     </td>
                     <td>
                       <input
@@ -371,7 +385,7 @@ export function ImportView() {
                   {r.splits?.length ? (
                     <tr key={`${r.hash}-${i}-splits`} className="split-row">
                       <td></td>
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div className="split-editor">
                           {r.splits.map((split) => (
                             <div className="split-editor__line" key={split.id}>
@@ -488,6 +502,7 @@ function bookingParts(row: ImportDraftRow): ImportDraftSplit[] {
 
 function rowIsImportable(row: ImportDraftRow): boolean {
   const parts = bookingParts(row)
+  if (!(row.name ?? '').trim()) return false
   if (parts.some((p) => !p.description.trim() || !p.categoryId || p.amount <= 0)) return false
   if (!row.splits?.length) return true
   return sumSplits(row.splits) === Math.abs(row.amount)

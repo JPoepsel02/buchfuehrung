@@ -151,6 +151,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
       date: r.date,
       refs: r.ref,
       label: r.description,
+      name: (r.name ?? '').trim(),
       ausgaben: r.type === 'ausgabe' ? r.amount : 0,
       einnahmen: r.type === 'einnahme' ? r.amount : 0,
       count: 1,
@@ -170,6 +171,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
     date: rows[0].date,
     refs: '',
     label: sub,
+    name: [...new Set(rows.map((r) => (r.name ?? '').trim()).filter(Boolean))].join(', '),
     ausgaben: rows.filter((r) => r.type === 'ausgabe').reduce((a, r) => a + r.amount, 0),
     einnahmen: rows.filter((r) => r.type === 'einnahme').reduce((a, r) => a + r.amount, 0),
     count: rows.length,
@@ -189,6 +191,7 @@ export function bookingMatches(b: ComputedBooking, query: string): boolean {
   if (!q) return true
   return (
     b.description.toLowerCase().includes(q) ||
+    (b.name ?? '').toLowerCase().includes(q) ||
     b.note.toLowerCase().includes(q) ||
     (b.subcategory ?? '').toLowerCase().includes(q) ||
     b.categoryName.toLowerCase().includes(q) ||

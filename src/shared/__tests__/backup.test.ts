@@ -83,6 +83,14 @@ describe('validateBackup', () => {
     if (!r.ok) expect(r.errors.join(' ')).toContain('Beleg')
   })
 
+  test('lehnt einen ungültigen Namen ab', () => {
+    const b = backup()
+    b.years[0].bookings[0].name = 123
+    const r = validateBackup(b)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors.join(' ')).toContain('Name')
+  })
+
   test('meldet doppelte Kassenjahre', () => {
     const r = validateBackup(backup([year(), year()]))
     expect(r.ok).toBe(false)
