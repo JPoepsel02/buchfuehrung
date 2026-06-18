@@ -225,6 +225,7 @@ describe('Auswertung', () => {
       booking({ seq: 1, date: '2026-01-10', categoryId: 'm', type: 'einnahme', amount: 1000, source: 'import', importHash: 'hash-1' }),
       booking({ seq: 2, date: '2026-01-11', categoryId: 'm', type: 'ausgabe', amount: 2000, source: 'import', importHash: 'hash-2', name: 'Schon vorhanden' }),
       booking({ seq: 3, date: '2026-01-12', categoryId: 'm', type: 'ausgabe', amount: 3000, source: 'manuell', importHash: 'hash-3' }),
+      booking({ seq: 4, date: '2026-01-13', categoryId: 'm', type: 'ausgabe', amount: 4000, source: 'manuell' }),
     ]
 
     const result = backfillImportedBookingNames(
@@ -232,12 +233,17 @@ describe('Auswertung', () => {
       new Map([
         ['hash-1', 'Neuer Name'],
         ['hash-2', 'Nicht überschreiben'],
-        ['hash-3', 'Manuell nicht ändern'],
+        ['hash-3', 'Historischer Import'],
       ]),
     )
 
-    expect(result.updatedCount).toBe(1)
-    expect(result.bookings.map((b) => b.name)).toEqual(['Neuer Name', 'Schon vorhanden', undefined])
+    expect(result.updatedCount).toBe(2)
+    expect(result.bookings.map((b) => b.name)).toEqual([
+      'Neuer Name',
+      'Schon vorhanden',
+      'Historischer Import',
+      undefined,
+    ])
     expect(bookings[0].name).toBeUndefined()
   })
 })
