@@ -5,6 +5,7 @@ import {
   chronological,
   computeBookings,
   eventRows,
+  migrateExistingImportHashes,
   monthSummaries,
   nextSeq,
   reconcileImportedBookings,
@@ -257,5 +258,48 @@ describe('Auswertung', () => {
     expect(result.bookings.slice(0, 4).every((b) => b.source === 'import')).toBe(true)
     expect(bookings[0].name).toBeUndefined()
     expect(bookings[0].importHash).toBe('legacy-1')
+  })
+
+  test('berechnet bestehende Import-Hashes aus Datum, Gesamtbetrag und Banktext neu', () => {
+    const bookings = [
+      booking({
+        seq: 1,
+        date: '2026-03-30',
+        categoryId: 'm',
+        type: 'ausgabe',
+        amount: 73699,
+        source: 'manuell',
+        importHash: 'alter-hash',
+        note: 'Auftrags Nr: 2184 – Echtzeitüberweisung',
+      }),
+      booking({
+        seq: 2,
+        date: '2026-03-30',
+        categoryId: 'b',
+        type: 'ausgabe',
+        amount: 26717,
+        source: 'manuell',
+        importHash: 'alter-hash',
+        note: 'Auftrags Nr: 2184 – Echtzeitüberweisung',
+      }),
+      booking({
+        seq: 3,
+        date: '2026-04-01',
+        categoryId: 'm',
+        type: 'einnahme',
+        amount: 2000,
+        source: 'manuell',
+        note: 'Echte manuelle Buchung',
+      }),
+    ]
+
+    const result = migrateExistingImportHashes(bookings)
+
+    expect(result.migratedCount).toBe(2)
+    expect(result.bookings[0].importHash).toBe(result.bookings[1].importHash)
+    expect(result.bookings[0].importHash).not.toBe('alter-hash')
+    expect(result.bookings.slice(0, 2).every((booking) => booking.source === 'import')).toBe(true)
+    expect(result.bookings[2]).toBe(bookings[2])
+    expect(bookings[0].importHash).toBe('alter-hash')
   })
 })
