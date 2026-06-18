@@ -6,7 +6,7 @@ import { CentsAmountInput } from '../components/AmountInput'
 import { parseBankCsv } from '@shared/csv'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
-import { backfillImportedBookingNames, nextSeq } from '@shared/ledger'
+import { nextSeq, reconcileImportedBookings } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 import type { ImportDraftRow, ImportDraftSplit } from '@shared/types'
 
@@ -48,6 +48,10 @@ export function ImportView() {
         (a, b) =>
           a.r.date.localeCompare(b.r.date) || (newestFirst ? b.idx - a.idx : a.idx - b.idx),
       )
+    const preview = reconcileImportedBookings(file!.bookings, parsed.rows)
+    const reconciledHashes = new Set(
+      preview.bookings.map((booking) => booking.importHash).filter(Boolean),
+    )
     const rows: ImportDraftRow[] = sorted.map(({ r }) => ({
       date: r.date,
       bankText: r.description,
@@ -55,31 +59,28 @@ export function ImportView() {
       hash: r.hash,
       name: r.name,
       description: '',
-      selected: !existingHashes.has(r.hash) && inFiscalYear(file!, r.date),
+      selected: !reconciledHashes.has(r.hash) && inFiscalYear(file!, r.date),
       // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
       categoryId: '',
       isUmsatz: false,
     }))
-    const namesByHash = new Map(
-      parsed.rows
-        .filter((row) => row.name.trim())
-        .map((row) => [row.hash, row.name.trim()] as const),
-    )
-    const preview = backfillImportedBookingNames(file!.bookings, namesByHash)
     update((f) => {
-      const backfilled = backfillImportedBookingNames(f.bookings, namesByHash)
+      const reconciled = reconcileImportedBookings(f.bookings, parsed.rows)
       return {
         ...f,
-        bookings: backfilled.bookings,
+        bookings: reconciled.bookings,
         importDraft: { fileName: result.name, skipped: parsed.skipped, rows },
       }
     })
-    if (preview.updatedCount > 0) {
-      setToast(
-        `${preview.updatedCount} bereits importierte ${
-          preview.updatedCount === 1 ? 'Buchung wurde' : 'Buchungen wurden'
-        } um einen fehlenden Namen ergänzt.`,
-      )
+    const messages: string[] = []
+    if (preview.migratedHashCount > 0) {
+      messages.push(`${preview.migratedHashCount} bestehende Import-Zuordnungen aktualisiert`)
+    }
+    if (preview.updatedNameCount > 0) {
+      messages.push(`${preview.updatedNameCount} fehlende Namen ergänzt`)
+    }
+    if (messages.length > 0) {
+      setToast(`${messages.join(', ')}.`)
       setTimeout(() => setToast(''), 5000)
     }
   }

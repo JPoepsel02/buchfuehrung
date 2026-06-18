@@ -204,23 +204,51 @@ export function nextSeq(file: YearFile): number {
   return file.bookings.reduce((max, b) => Math.max(max, b.seq), 0) + 1
 }
 
+interface ImportedStatementIdentity {
+  hash: string
+  legacyHashes?: readonly string[]
+  name: string
+}
+
 /**
- * Ergänzt Namen aus einem erneut eingelesenen Kontoauszug bei bereits
- * importierten Buchungen. Bestehende Namen werden niemals überschrieben.
+ * Gleicht bestehende Bankbuchungen mit einem erneut eingelesenen Auszug ab.
+ * Alte Hash-Varianten werden dauerhaft ersetzt; vorhandene Namen bleiben
+ * unverändert. Ein importHash ist das verlässliche Merkmal historischer
+ * Importe, da ältere App-Versionen die Herkunft teils als "manuell" speicherten.
  */
-export function backfillImportedBookingNames(
+export function reconcileImportedBookings(
   bookings: Booking[],
-  namesByHash: ReadonlyMap<string, string>,
-): { bookings: Booking[]; updatedCount: number } {
-  let updatedCount = 0
+  statementRows: readonly ImportedStatementIdentity[],
+): { bookings: Booking[]; updatedNameCount: number; migratedHashCount: number } {
+  const rowsByHash = new Map<string, ImportedStatementIdentity>()
+  for (const row of statementRows) {
+    rowsByHash.set(row.hash, row)
+    for (const legacyHash of row.legacyHashes ?? []) rowsByHash.set(legacyHash, row)
+  }
+
+  let updatedNameCount = 0
+  let migratedHashCount = 0
   const next = bookings.map((booking) => {
-    if (booking.source !== 'import' || !booking.importHash || (booking.name ?? '').trim()) return booking
-    const name = namesByHash.get(booking.importHash)?.trim()
-    if (!name) return booking
-    updatedCount++
-    return { ...booking, name }
+    if (!booking.importHash) return booking
+    const row = rowsByHash.get(booking.importHash)
+    if (!row) return booking
+
+    const name = row.name.trim()
+    const shouldUpdateName = !(booking.name ?? '').trim() && Boolean(name)
+    const shouldMigrateHash = booking.importHash !== row.hash
+    const shouldCorrectSource = booking.source !== 'import'
+    if (!shouldUpdateName && !shouldMigrateHash && !shouldCorrectSource) return booking
+
+    if (shouldUpdateName) updatedNameCount++
+    if (shouldMigrateHash) migratedHashCount++
+    return {
+      ...booking,
+      source: 'import' as const,
+      importHash: row.hash,
+      ...(shouldUpdateName ? { name } : {}),
+    }
   })
-  return { bookings: next, updatedCount }
+  return { bookings: next, updatedNameCount, migratedHashCount }
 }
 
 function sum(values: number[]): number {
