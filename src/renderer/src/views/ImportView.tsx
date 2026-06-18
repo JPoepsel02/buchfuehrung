@@ -6,7 +6,7 @@ import { CentsAmountInput } from '../components/AmountInput'
 import { parseBankCsv } from '@shared/csv'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
-import { nextSeq } from '@shared/ledger'
+import { backfillImportedBookingNames, nextSeq } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 import type { ImportDraftRow, ImportDraftSplit } from '@shared/types'
 
@@ -60,10 +60,28 @@ export function ImportView() {
       categoryId: '',
       isUmsatz: false,
     }))
-    update((f) => ({
-      ...f,
-      importDraft: { fileName: result.name, skipped: parsed.skipped, rows },
-    }))
+    const namesByHash = new Map(
+      parsed.rows
+        .filter((row) => row.name.trim())
+        .map((row) => [row.hash, row.name.trim()] as const),
+    )
+    const preview = backfillImportedBookingNames(file!.bookings, namesByHash)
+    update((f) => {
+      const backfilled = backfillImportedBookingNames(f.bookings, namesByHash)
+      return {
+        ...f,
+        bookings: backfilled.bookings,
+        importDraft: { fileName: result.name, skipped: parsed.skipped, rows },
+      }
+    })
+    if (preview.updatedCount > 0) {
+      setToast(
+        `${preview.updatedCount} bereits importierte ${
+          preview.updatedCount === 1 ? 'Buchung wurde' : 'Buchungen wurden'
+        } um einen fehlenden Namen ergänzt.`,
+      )
+      setTimeout(() => setToast(''), 5000)
+    }
   }
 
   function setRow(index: number, patch: Partial<ImportDraftRow>) {

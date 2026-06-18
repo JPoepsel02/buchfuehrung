@@ -204,6 +204,25 @@ export function nextSeq(file: YearFile): number {
   return file.bookings.reduce((max, b) => Math.max(max, b.seq), 0) + 1
 }
 
+/**
+ * Ergänzt Namen aus einem erneut eingelesenen Kontoauszug bei bereits
+ * importierten Buchungen. Bestehende Namen werden niemals überschrieben.
+ */
+export function backfillImportedBookingNames(
+  bookings: Booking[],
+  namesByHash: ReadonlyMap<string, string>,
+): { bookings: Booking[]; updatedCount: number } {
+  let updatedCount = 0
+  const next = bookings.map((booking) => {
+    if (booking.source !== 'import' || !booking.importHash || (booking.name ?? '').trim()) return booking
+    const name = namesByHash.get(booking.importHash)?.trim()
+    if (!name) return booking
+    updatedCount++
+    return { ...booking, name }
+  })
+  return { bookings: next, updatedCount }
+}
+
 function sum(values: number[]): number {
   return values.reduce((a, b) => a + b, 0)
 }
