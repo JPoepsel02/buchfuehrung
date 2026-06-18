@@ -16,6 +16,8 @@ export interface StatementRow {
   amount: number
   /** Duplikat-Erkennung */
   hash: string
+  /** Frühere Hash-Varianten zur Migration bereits importierter Buchungen */
+  legacyHashes: string[]
 }
 
 export interface ParseResult {
@@ -178,8 +180,20 @@ export function parseBankCsv(content: string): ParseResult {
       .join(' – ')
       .replace(/\s+/g, ' ')
       .trim()
-    const hashText = [description, explicitName].filter(Boolean).join(' – ')
-    rows.push({ date, name, description, amount, hash: rowHash(date, amount, hashText) })
+    const hash = rowHash(date, amount, description)
+    const legacyHash = rowHash(
+      date,
+      amount,
+      [description, explicitName].filter(Boolean).join(' – '),
+    )
+    rows.push({
+      date,
+      name,
+      description,
+      amount,
+      hash,
+      legacyHashes: legacyHash === hash ? [] : [legacyHash],
+    })
   }
   return {
     rows,
