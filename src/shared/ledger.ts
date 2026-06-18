@@ -1,4 +1,5 @@
 import { formatEur } from './money'
+import { rowHash } from './csv'
 import type {
   Booking,
   CategoryGroup,
@@ -202,6 +203,41 @@ export function bookingMatches(b: ComputedBooking, query: string): boolean {
 
 export function nextSeq(file: YearFile): number {
   return file.bookings.reduce((max, b) => Math.max(max, b.seq), 0) + 1
+}
+
+/**
+ * Migriert alle bereits gespeicherten Bankimporte auf den stabilen Hash aus
+ * Datum, signiertem Originalbetrag und Banktext. Split-Buchungen teilen sich
+ * einen alten importHash und werden deshalb vor der Berechnung summiert.
+ */
+export function migrateExistingImportHashes(
+  bookings: Booking[],
+): { bookings: Booking[]; migratedCount: number } {
+  const groups = new Map<string, Booking[]>()
+  for (const booking of bookings) {
+    if (!booking.importHash) continue
+    const group = groups.get(booking.importHash) ?? []
+    groups.set(booking.importHash, [...group, booking])
+  }
+
+  const migrationByHash = new Map<string, string>()
+  for (const [oldHash, group] of groups) {
+    const dates = new Set(group.map((booking) => booking.date))
+    const notes = new Set(group.map((booking) => booking.note.trim()).filter(Boolean))
+    if (dates.size !== 1 || notes.size !== 1) continue
+    const amount = group.reduce((total, booking) => total + signedAmount(booking), 0)
+    migrationByHash.set(oldHash, rowHash(group[0].date, amount, [...notes][0]))
+  }
+
+  let migratedCount = 0
+  const next = bookings.map((booking) => {
+    if (!booking.importHash) return booking
+    const hash = migrationByHash.get(booking.importHash)
+    if (!hash || (hash === booking.importHash && booking.source === 'import')) return booking
+    migratedCount++
+    return { ...booking, source: 'import' as const, importHash: hash }
+  })
+  return { bookings: next, migratedCount }
 }
 
 interface ImportedStatementIdentity {

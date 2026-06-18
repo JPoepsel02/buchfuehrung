@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import { api } from './api'
 import { emptyYearFile, makeId } from '@shared/defaults'
-import { nextSeq } from '@shared/ledger'
+import { migrateExistingImportHashes, nextSeq } from '@shared/ledger'
 import type { AppSettings, Booking, Category, KontoId, YearFile } from '@shared/types'
 
 /**
@@ -46,6 +46,16 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null)
 
+async function loadMigratedYear(konto: KontoId, year: number): Promise<YearFile | null> {
+  const data = (await api.loadYear(konto, year)) as YearFile | null
+  if (!data) return null
+  const migrated = migrateExistingImportHashes(data.bookings)
+  if (migrated.migratedCount === 0) return data
+  const next = { ...data, bookings: migrated.bookings }
+  await api.saveYear(konto, year, next)
+  return next
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [konto, setKonto] = useState<KontoId>('haupt')
@@ -64,14 +74,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ])
       setYearsByKonto({ haupt, zweit })
       setSettings((loadedSettings as AppSettings) ?? {})
-      if (zweit.length > 0) {
-        const z = (await api.loadYear('zweit', zweit[0])) as YearFile | null
-        if (z?.kontoName) setZweitName(z.kontoName)
-      }
-      if (haupt.length > 0) {
-        const data = (await api.loadYear('haupt', haupt[0])) as YearFile | null
-        if (data) setFile(data)
-      }
+      const [hauptFiles, zweitFiles] = await Promise.all([
+        Promise.all(haupt.map((year) => loadMigratedYear('haupt', year))),
+        Promise.all(zweit.map((year) => loadMigratedYear('zweit', year))),
+      ])
+      const latestZweit = zweitFiles[0]
+      if (latestZweit?.kontoName) setZweitName(latestZweit.kontoName)
+      if (hauptFiles[0]) setFile(hauptFiles[0])
       setLoading(false)
     })()
   }, [])
@@ -119,7 +128,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setKonto(target)
         const list = yearsByKonto[target]
         if (list.length > 0) {
-          const data = (await api.loadYear(target, list[0])) as YearFile | null
+          const data = await loadMigratedYear(target, list[0])
           setFile(data ?? null)
         } else {
           setFile(null)
@@ -127,11 +136,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       async selectYear(year) {
         flushPendingSave(file)
-        const data = (await api.loadYear(konto, year)) as YearFile | null
+        const data = await loadMigratedYear(konto, year)
         if (data) setFile(data)
       },
       async createYear(year, openingBalance, clubName, treasurerName) {
-        const existing = (await api.loadYear(konto, year)) as YearFile | null
+        const existing = await loadMigratedYear(konto, year)
         const base = existing ?? {
           ...emptyYearFile(year),
           // Kategorien und Konto-Eigenschaften des aktuellen Jahres übernehmen
@@ -175,12 +184,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setYearsByKonto((y) => ({ ...y, [konto]: remaining }))
         if (konto === 'zweit' && remaining.length === 0) {
           setKonto('haupt')
-          const data = (await api.loadYear('haupt', yearsByKonto.haupt[0])) as YearFile | null
+          const data = await loadMigratedYear('haupt', yearsByKonto.haupt[0])
           setFile(data ?? null)
           return
         }
         if (file?.year === year) {
-          const data = (await api.loadYear(konto, remaining[0])) as YearFile | null
+          const data = await loadMigratedYear(konto, remaining[0])
           if (data) setFile(data)
         }
       },
