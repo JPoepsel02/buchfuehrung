@@ -215,7 +215,7 @@ export function migrateExistingImportHashes(
 ): { bookings: Booking[]; migratedCount: number } {
   const groups = new Map<string, Booking[]>()
   for (const booking of bookings) {
-    if (!booking.importHash) continue
+    if (!booking.importHash || booking.importHashVersion === 2) continue
     const group = groups.get(booking.importHash) ?? []
     groups.set(booking.importHash, [...group, booking])
   }
@@ -232,10 +232,15 @@ export function migrateExistingImportHashes(
   let migratedCount = 0
   const next = bookings.map((booking) => {
     if (!booking.importHash) return booking
+    if (booking.importHashVersion === 2) {
+      if (booking.source === 'import') return booking
+      migratedCount++
+      return { ...booking, source: 'import' as const }
+    }
     const hash = migrationByHash.get(booking.importHash)
-    if (!hash || (hash === booking.importHash && booking.source === 'import')) return booking
+    if (!hash) return booking
     migratedCount++
-    return { ...booking, source: 'import' as const, importHash: hash }
+    return { ...booking, source: 'import' as const, importHash: hash, importHashVersion: 2 as const }
   })
   return { bookings: next, migratedCount }
 }
@@ -273,7 +278,10 @@ export function reconcileImportedBookings(
     const shouldUpdateName = !(booking.name ?? '').trim() && Boolean(name)
     const shouldMigrateHash = booking.importHash !== row.hash
     const shouldCorrectSource = booking.source !== 'import'
-    if (!shouldUpdateName && !shouldMigrateHash && !shouldCorrectSource) return booking
+    const shouldSetVersion = booking.importHashVersion !== 2
+    if (!shouldUpdateName && !shouldMigrateHash && !shouldCorrectSource && !shouldSetVersion) {
+      return booking
+    }
 
     if (shouldUpdateName) updatedNameCount++
     if (shouldMigrateHash) migratedHashCount++
@@ -281,6 +289,7 @@ export function reconcileImportedBookings(
       ...booking,
       source: 'import' as const,
       importHash: row.hash,
+      importHashVersion: 2 as const,
       ...(shouldUpdateName ? { name } : {}),
     }
   })

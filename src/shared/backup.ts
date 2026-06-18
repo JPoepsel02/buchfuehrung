@@ -132,6 +132,9 @@ export function validateBackup(data: unknown): ValidationResult {
         err(`${bw}: Beleg-Kennzeichen ist kein Wahr/Falsch-Wert.`)
       if (!Number.isInteger(bo.seq)) err(`${bw}: laufende Nummer fehlt.`)
       if (bo.source !== 'manuell' && bo.source !== 'import') err(`${bw}: ungültige Herkunft.`)
+      if (bo.importHashVersion !== undefined && bo.importHashVersion !== 2) {
+        err(`${bw}: ungültige Import-Hash-Version.`)
+      }
     })
   })
 

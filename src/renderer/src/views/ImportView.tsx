@@ -208,6 +208,7 @@ export function ImportView() {
             note: r.bankText,
             source: 'import' as const,
             importHash: r.hash,
+            importHashVersion: 2 as const,
           })),
         )
       const remaining = f.importDraft.rows.filter((_, i) => !selectedIdx.has(i))
