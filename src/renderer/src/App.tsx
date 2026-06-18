@@ -202,6 +202,7 @@ function SearchOverlay({ onClose, onJump }: { onClose: () => void; onJump: (term
               <button key={r.id} className="search-hit" onClick={() => onJump(query.trim())}>
                 <span className="ref">{r.ref}</span>
                 <span className="search-hit__text">
+                  {r.name?.trim() ? `${r.name} · ` : ''}
                   {r.description}
                   <span className="hint"> · {r.categoryName} · {formatDate(r.date)}</span>
                 </span>

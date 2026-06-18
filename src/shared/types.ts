@@ -28,6 +28,8 @@ export interface Booking {
   /** ISO-Datum YYYY-MM-DD */
   date: string
   categoryId: string
+  /** Zahlungspflichtige:r bei Einnahmen bzw. Empfänger:in bei Ausgaben */
+  name?: string
   /** Verwendungszweck */
   description: string
   type: BookingType
@@ -89,6 +91,8 @@ export interface ImportDraftRow {
   hash: string
   /** Eigener, kurzer Verwendungszweck – Pflicht vor der Übernahme */
   description: string
+  /** Zahlungspflichtige:r bzw. Empfänger:in */
+  name: string
   selected: boolean
   categoryId: string
   isUmsatz: boolean
@@ -195,6 +199,8 @@ export interface EventRow {
   refs: string
   /** Verwendungszweck bzw. Name der Unterkategorie */
   label: string
+  /** Zahlungspflichtige:r bzw. Empfänger:in; bei Gruppen zusammengefasst */
+  name: string
   ausgaben: Cents
   einnahmen: Cents
   /** Anzahl zusammengefasster Buchungen */

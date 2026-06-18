@@ -10,6 +10,7 @@ import type { Booking, BookingType } from '@shared/types'
 interface FormState {
   date: string
   categoryId: string
+  name: string
   description: string
   subcategory: string
   type: BookingType
@@ -26,6 +27,7 @@ const emptyForm = (categoryId: string, fiscal: { year: number; fiscalStartMonth?
     ? new Date().toISOString().slice(0, 10)
     : fiscalRange(fiscal).start,
   categoryId,
+  name: '',
   description: '',
   subcategory: '',
   type: 'ausgabe',
@@ -90,6 +92,7 @@ export function BuchungenView({
     setForm({
       date: b.date,
       categoryId: b.categoryId,
+      name: b.name ?? '',
       description: b.description,
       subcategory: b.subcategory ?? '',
       type: b.type,
@@ -109,6 +112,7 @@ export function BuchungenView({
     const nonUmsatz = form.nonUmsatz.trim() ? parseAmountToCents(form.nonUmsatz) : 0
     if (!form.date || !/^\d{4}-\d{2}-\d{2}$/.test(form.date)) return setError('Bitte ein Datum wählen.')
     if (!form.categoryId) return setError('Bitte eine Kategorie wählen.')
+    if (!form.name.trim()) return setError('Bitte einen Namen angeben.')
     if (!form.description.trim()) return setError('Bitte einen Verwendungszweck angeben.')
     if (amount === null || amount <= 0) return setError('Bitte einen gültigen Betrag größer 0 angeben.')
     if (nonUmsatz === null || nonUmsatz < 0) return setError('„Davon kein Umsatz“ ist kein gültiger Betrag.')
@@ -117,6 +121,7 @@ export function BuchungenView({
     const data = {
       date: form.date,
       categoryId: form.categoryId,
+      name: form.name.trim(),
       description: form.description.trim(),
       subcategory: form.subcategory.trim() || undefined,
       type: form.type,
@@ -184,7 +189,16 @@ export function BuchungenView({
               placeholder="0,00"
             />
           </div>
-          <div className="field" style={{ gridColumn: 'span 6' }}>
+          <div className="field" style={{ gridColumn: 'span 4' }}>
+            <label htmlFor="b-name">Name</label>
+            <input
+              id="b-name"
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder={form.type === 'einnahme' ? 'Zahlungspflichtige:r' : 'Empfänger:in'}
+            />
+          </div>
+          <div className="field" style={{ gridColumn: 'span 5' }}>
             <label htmlFor="b-desc">Verwendungszweck</label>
             <input
               id="b-desc"
@@ -208,7 +222,7 @@ export function BuchungenView({
               ))}
             </datalist>
           </div>
-          <div className="field" style={{ gridColumn: 'span 3' }}>
+          <div className="field" style={{ gridColumn: 'span 12' }}>
             <label htmlFor="b-note">Notiz (optional)</label>
             <input id="b-note" value={form.note} onChange={(e) => set('note', e.target.value)} />
           </div>
@@ -285,6 +299,7 @@ export function BuchungenView({
                 <th>Nr.</th>
                 <th>Datum</th>
                 <th>Kategorie</th>
+                <th>Name</th>
                 <th>Verwendungszweck</th>
                 <th className="num">Betrag</th>
                 <th>Beleg</th>
@@ -298,6 +313,7 @@ export function BuchungenView({
                   <td className="ref">{r.ref}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
                   <td>{r.categoryName}</td>
+                  <td>{r.name?.trim() || '–'}</td>
                   <td className="cell-desc">
                     {r.description}
                     {r.subcategory && <span className="pill pill--in" style={{ marginLeft: 6 }}>{r.subcategory}</span>}

@@ -5,6 +5,7 @@ import type { Booking, YearFile } from '@shared/types'
 function booking(partial: Partial<Booking> & Pick<Booking, 'id' | 'seq' | 'date' | 'categoryId' | 'type' | 'amount'>): Booking {
   return {
     description: 'Testbuchung',
+    name: 'Max Mustermann',
     isUmsatz: false,
     nonUmsatzAmount: 0,
     note: '',
@@ -77,6 +78,8 @@ describe('buildReportHtml', () => {
     expect(html).toContain('31.12.2026')
     expect(html).toContain('01.01.2026')
     expect(html).toContain('<th>Beleg</th>')
+    expect(html).toContain('<th>Name</th>')
+    expect(html).toContain('Max Mustermann')
     expect(html).toContain('▤ = Beleg im Ordner vorhanden')
     expect(html).toContain('<span class="receipt-state">▤</span>')
     expect(html).toContain('<span class="receipt-state">▤ 1/2</span>')
