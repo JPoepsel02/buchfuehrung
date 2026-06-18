@@ -301,5 +301,12 @@ describe('Auswertung', () => {
     expect(result.bookings.slice(0, 2).every((booking) => booking.source === 'import')).toBe(true)
     expect(result.bookings[2]).toBe(bookings[2])
     expect(bookings[0].importHash).toBe('alter-hash')
+
+    const edited = result.bookings.map((booking, index) =>
+      index < 2 ? { ...booking, note: 'Später bearbeitete Notiz' } : booking,
+    )
+    const repeated = migrateExistingImportHashes(edited)
+    expect(repeated.migratedCount).toBe(0)
+    expect(repeated.bookings[0].importHash).toBe(result.bookings[0].importHash)
   })
 })
