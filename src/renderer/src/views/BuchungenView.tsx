@@ -330,11 +330,19 @@ export function BuchungenView({
                   >
                     <td className="ref">{r.ref}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
-                    <td>{r.categoryName}</td>
+                    <td>
+                      {r.categoryName}
+                      {r.subcategory && (
+                        <div>
+                          <span className="pill pill--in" style={{ marginTop: 4 }}>
+                            {r.subcategory}
+                          </span>
+                        </div>
+                      )}
+                    </td>
                     <td>{r.name?.trim() || '–'}</td>
                     <td className="cell-desc">
                       {r.description}
-                      {r.subcategory && <span className="pill pill--in" style={{ marginLeft: 6 }}>{r.subcategory}</span>}
                       {r.source === 'import' && <span className="pill" style={{ marginLeft: 6 }}>Import</span>}
                       {r.note && (
                         <div className="hint hint--clamp" title={r.note}>

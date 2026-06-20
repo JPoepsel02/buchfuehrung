@@ -6,6 +6,7 @@ import { CentsAmountInput } from '../components/AmountInput'
 import { parseBankCsv } from '@shared/csv'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
+import { receiptAvailableForImport } from '@shared/importDraft'
 import { classifyDraftDuplicates, nextSeq, reconcileImportedBookings } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 import type { Booking, ImportDraftRow, ImportDraftSplit } from '@shared/types'
@@ -79,6 +80,7 @@ export function ImportView() {
       // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
       categoryId: '',
       isUmsatz: false,
+      receiptAvailable: false,
     }))
     update((f) => {
       const reconciled = reconcileImportedBookings(f.bookings, parsed.rows)
@@ -219,7 +221,7 @@ export function ImportView() {
             type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
             amount: part.amount,
             isUmsatz: part.isUmsatz,
-            receiptAvailable: false,
+            receiptAvailable: receiptAvailableForImport(r),
             nonUmsatzAmount: 0,
             note: r.bankText,
             source: 'import' as const,
@@ -317,6 +319,7 @@ export function ImportView() {
                 <th>Eigener Verwendungszweck</th>
                 <th className="num">Betrag</th>
                 <th>Kategorie</th>
+                <th>Beleg</th>
                 <th>Umsatz</th>
               </tr>
             </thead>
@@ -384,17 +387,6 @@ export function ImportView() {
                         aria-invalid={r.selected && !isDuplicate && !(r.splits?.length) && !r.description.trim()}
                         style={{ minWidth: 140, width: '100%' }}
                       />
-                      {!r.splits?.length && (
-                        <input
-                          value={r.subcategory ?? ''}
-                          onChange={(e) => setRow(i, { subcategory: e.target.value })}
-                          placeholder="Unterkategorie (optional)"
-                          disabled={!r.selected || isDuplicate}
-                          aria-label="Unterkategorie"
-                          list="import-sub-suggestions"
-                          style={{ minWidth: 140, width: '100%', marginTop: 4, fontSize: 'var(--text-xs)' }}
-                        />
-                      )}
                       {r.splits?.length ? (
                         <span className="pill" style={{ marginTop: 6 }}>
                           auf {r.splits.length} Buchungen aufgeteilt
@@ -431,6 +423,29 @@ export function ImportView() {
                           </option>
                         ))}
                       </select>
+                      {!r.splits?.length && (
+                        <input
+                          value={r.subcategory ?? ''}
+                          onChange={(e) => setRow(i, { subcategory: e.target.value })}
+                          placeholder="Unterkategorie (optional)"
+                          disabled={!r.selected || isDuplicate}
+                          aria-label="Unterkategorie"
+                          list="import-sub-suggestions"
+                          style={{ minWidth: 140, width: '100%', marginTop: 4, fontSize: 'var(--text-xs)' }}
+                        />
+                      )}
+                    </td>
+                    <td>
+                      <label className="checkrow" style={{ whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          checked={receiptAvailableForImport(r)}
+                          disabled={!r.selected || isDuplicate}
+                          onChange={(e) => setRow(i, { receiptAvailable: e.target.checked })}
+                          aria-label="Beleg im Ordner vorhanden"
+                        />
+                        vorhanden
+                      </label>
                     </td>
                     <td>
                       <input
@@ -445,7 +460,7 @@ export function ImportView() {
                   {r.splits?.length ? (
                     <tr key={`${r.hash}-${i}-splits`} className="split-row">
                       <td></td>
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <div className="split-editor">
                           {r.splits.map((split) => (
                             <div className="split-editor__line" key={split.id}>
