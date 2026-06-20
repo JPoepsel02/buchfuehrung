@@ -245,6 +245,67 @@ export function migrateExistingImportHashes(
   return { bookings: next, migratedCount }
 }
 
+export interface DraftDuplicateInput {
+  /** Stabiler Import-Hash der Auszugszeile */
+  hash: string
+  /** ISO-Datum YYYY-MM-DD */
+  date: string
+  /** Vorzeichenbehafteter Betrag in Cent wie im Auszug (negativ = Ausgabe) */
+  amount: number
+}
+
+/**
+ * Markiert Auszugszeilen, die bereits als Buchung existieren – und zwar
+ * sowohl frühere Importe als auch von Hand erfasste Buchungen:
+ *
+ * - "hard": exakt derselbe Import (Auszug-Hash steckt schon als importHash
+ *   an einer Buchung) – sicheres Duplikat, kann nicht erneut importiert werden.
+ * - "soft": gleiche Kombination aus Datum und vorzeichenbehaftetem Betrag wie
+ *   eine bestehende MANUELLE Buchung (ohne importHash). Wahrscheinliches
+ *   Duplikat, das aber überschreibbar bleibt (Datum + Betrag können sich
+ *   selten auch bei verschiedenen Vorgängen decken).
+ *
+ * Mehrere bestehende Buchungen mit demselben Datum/Betrag werden eins-zu-eins
+ * verbraucht, damit zwei gleich aussehende Auszugszeilen nicht beide auf
+ * dieselbe einzelne Buchung verweisen.
+ */
+export function classifyDraftDuplicates(
+  bookings: Booking[],
+  rows: readonly DraftDuplicateInput[],
+): { hard: boolean[]; soft: boolean[] } {
+  const importHashes = new Set(bookings.map((b) => b.importHash).filter(Boolean))
+
+  // Fingerabdruck-Vorrat nur aus MANUELLEN Buchungen – Importe deckt der
+  // Hash-Abgleich bereits exakt ab.
+  const pool = new Map<string, number>()
+  for (const b of bookings) {
+    if (b.importHash) continue
+    const fp = `${b.date}|${signedAmount(b)}`
+    pool.set(fp, (pool.get(fp) ?? 0) + 1)
+  }
+
+  const hard: boolean[] = []
+  const soft: boolean[] = []
+  for (const r of rows) {
+    if (importHashes.has(r.hash)) {
+      hard.push(true)
+      soft.push(false)
+      continue
+    }
+    const fp = `${r.date}|${r.amount}`
+    const left = pool.get(fp) ?? 0
+    if (left > 0) {
+      pool.set(fp, left - 1)
+      hard.push(false)
+      soft.push(true)
+    } else {
+      hard.push(false)
+      soft.push(false)
+    }
+  }
+  return { hard, soft }
+}
+
 interface ImportedStatementIdentity {
   hash: string
   legacyHashes?: readonly string[]

@@ -3,6 +3,7 @@ import {
   bookingMatches,
   byCategory,
   chronological,
+  classifyDraftDuplicates,
   computeBookings,
   eventRows,
   migrateExistingImportHashes,
@@ -308,5 +309,64 @@ describe('Auswertung', () => {
     const repeated = migrateExistingImportHashes(edited)
     expect(repeated.migratedCount).toBe(0)
     expect(repeated.bookings[0].importHash).toBe(result.bookings[0].importHash)
+  })
+})
+
+describe('classifyDraftDuplicates – Auszugszeilen gegen bestehende Buchungen', () => {
+  const draft = (hash: string, date: string, amount: number) => ({ hash, date, amount })
+
+  test('erkennt frühere Importe über den importHash (hard)', () => {
+    const bookings = [
+      booking({ seq: 1, date: '2026-02-14', categoryId: 'm', type: 'einnahme', amount: 10000, source: 'import', importHash: 'h1', importHashVersion: 2 }),
+    ]
+    const { hard, soft } = classifyDraftDuplicates(bookings, [draft('h1', '2026-02-14', 10000)])
+    expect(hard).toEqual([true])
+    expect(soft).toEqual([false])
+  })
+
+  test('erkennt von Hand erfasste Buchungen über Datum + Betrag (soft)', () => {
+    // Ausgabe 136,50 € am 02.01., manuell erfasst (kein importHash)
+    const bookings = [
+      booking({ seq: 1, date: '2026-01-02', categoryId: 'm', type: 'ausgabe', amount: 13650, source: 'manuell' }),
+    ]
+    const { hard, soft } = classifyDraftDuplicates(bookings, [draft('neu', '2026-01-02', -13650)])
+    expect(hard).toEqual([false])
+    expect(soft).toEqual([true])
+  })
+
+  test('unterscheidet Vorzeichen: Einnahme matcht keine gleich hohe Ausgabe', () => {
+    const bookings = [
+      booking({ seq: 1, date: '2026-01-02', categoryId: 'm', type: 'ausgabe', amount: 10000, source: 'manuell' }),
+    ]
+    const { soft } = classifyDraftDuplicates(bookings, [draft('neu', '2026-01-02', 10000)])
+    expect(soft).toEqual([false])
+  })
+
+  test('verbraucht je bestehende Buchung nur eine Zeile', () => {
+    const bookings = [
+      booking({ seq: 1, date: '2026-01-02', categoryId: 'm', type: 'ausgabe', amount: 10000, source: 'manuell' }),
+    ]
+    const { soft } = classifyDraftDuplicates(bookings, [
+      draft('a', '2026-01-02', -10000),
+      draft('b', '2026-01-02', -10000),
+    ])
+    expect(soft).toEqual([true, false])
+  })
+
+  test('keine Übereinstimmung → beide Flags false', () => {
+    const bookings = [booking({ seq: 1, date: '2026-01-02', categoryId: 'm', type: 'ausgabe', amount: 10000, source: 'manuell' })]
+    const { hard, soft } = classifyDraftDuplicates(bookings, [draft('x', '2026-03-09', -500)])
+    expect(hard).toEqual([false])
+    expect(soft).toEqual([false])
+  })
+
+  test('importierte Buchung zählt nicht in den Soft-Vorrat (kein doppeltes Flag)', () => {
+    const bookings = [
+      booking({ seq: 1, date: '2026-02-14', categoryId: 'm', type: 'einnahme', amount: 10000, source: 'import', importHash: 'h1', importHashVersion: 2 }),
+    ]
+    // andere Auszugszeile, gleiches Datum/Betrag, aber anderer Hash
+    const { hard, soft } = classifyDraftDuplicates(bookings, [draft('h2', '2026-02-14', 10000)])
+    expect(hard).toEqual([false])
+    expect(soft).toEqual([false])
   })
 })

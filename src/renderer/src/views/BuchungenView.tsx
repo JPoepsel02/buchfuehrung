@@ -204,7 +204,7 @@ export function BuchungenView({
               id="b-desc"
               value={form.description}
               onChange={(e) => set('description', e.target.value)}
-              placeholder="z. B. Erstattung Pizza Generalversammlung"
+              placeholder="Verwendungszweck"
             />
           </div>
           <div className="field" style={{ gridColumn: 'span 3' }}>
