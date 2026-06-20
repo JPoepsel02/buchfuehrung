@@ -30,6 +30,7 @@ function classifyRows(bookings: Booking[], rows: readonly ImportDraftRow[]) {
 export function ImportView() {
   const { file, update } = useStore()
   const [toast, setToast] = useState('')
+  const [onlyNew, setOnlyNew] = useState(false)
 
   const activeCats = useMemo(
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
@@ -243,6 +244,8 @@ export function ImportView() {
   const invalidRows = selected.filter((r) => !rowIsImportable(r)).length
   const readyRows = selected.filter(rowIsImportable)
   const readyBookings = readyRows.reduce((count, r) => count + bookingParts(r).length, 0)
+  // Bereits vorhandene Zeilen (Import oder manuell) – für Zähler und Filter
+  const dupCount = dupes.hard.filter(Boolean).length + dupes.soft.filter(Boolean).length
 
   return (
     <div className="view">
@@ -275,8 +278,15 @@ export function ImportView() {
           <div className="toolbar" style={{ marginBottom: 'var(--space-4)' }}>
             <h2 className="card__title" style={{ marginBottom: 0 }}>
               {draft.fileName} · {draft.rows.length} offene Umsätze
+              {dupCount > 0 && <span className="hint"> · {dupCount} bereits vorhanden</span>}
             </h2>
             <div className="toolbar__spacer" />
+            {dupCount > 0 && (
+              <label className="checkrow" style={{ marginRight: 'var(--space-2)' }}>
+                <input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} />
+                Nur neue anzeigen
+              </label>
+            )}
             <button className="btn btn--sm" onClick={() => setAllSelected(true)}>
               Alle auswählen
             </button>
@@ -311,7 +321,10 @@ export function ImportView() {
               </tr>
             </thead>
             <tbody>
-              {draft.rows.map((r, i) => {
+              {draft.rows
+                .map((r, i) => ({ r, i }))
+                .filter(({ i }) => !onlyNew || (!dupes.hard[i] && !dupes.soft[i]))
+                .map(({ r, i }) => {
                 // hart = bereits importiert (gesperrt), weich = deckt sich mit
                 // einer manuellen Buchung (vorab abgewählt, aber überschreibbar)
                 const isDuplicate = dupes.hard[i]

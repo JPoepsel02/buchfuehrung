@@ -18,7 +18,7 @@ export interface Category {
    * nach den Monaten. Ohne Wert wird automatisch entschieden (Sonstiges,
    * Beiträge, Zuschüsse und Spenden landen auf der Sammel-Folie).
    */
-  praesentation?: 'monat' | 'sammel'
+  praesentation?: 'monat' | 'sammel' | 'aus'
   /** Monat (1–12) für den Jahresverlauf; ohne Wert: Monat der ersten Buchung */
   praesentationMonat?: number
 }
