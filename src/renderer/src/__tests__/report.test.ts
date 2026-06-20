@@ -83,6 +83,7 @@ describe('buildReportHtml', () => {
     expect(html).toContain('▤ = Beleg im Ordner vorhanden')
     expect(html).toContain('<span class="receipt-state">▤</span>')
     expect(html).toContain('<span class="receipt-state">▤ 1/2</span>')
+    expect(html).toContain('<td></td>\n          <td>Beiträge</td>')
     expect(html).not.toContain('Beleg geprüft')
     expect(html).not.toContain('Bericht Konto')
   })

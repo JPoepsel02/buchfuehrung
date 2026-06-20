@@ -172,7 +172,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
     date: rows[0].date,
     refs: '',
     label: sub,
-    name: [...new Set(rows.map((r) => (r.name ?? '').trim()).filter(Boolean))].join(', '),
+    name: '',
     ausgaben: rows.filter((r) => r.type === 'ausgabe').reduce((a, r) => a + r.amount, 0),
     einnahmen: rows.filter((r) => r.type === 'einnahme').reduce((a, r) => a + r.amount, 0),
     count: rows.length,

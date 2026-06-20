@@ -55,7 +55,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
           <td class="ref">${esc(r.refs)}</td>
           <td class="nowrap">${r.kind === 'einzeln' ? formatDate(r.date) : `${r.count} Buchungen`}</td>
           <td>${receiptCell(r.receiptAvailableCount, r.count)}</td>
-          <td>${esc(r.name || '–')}</td>
+          <td>${r.kind === 'unterkategorie' ? '' : esc(r.name || '–')}</td>
           <td>${esc(r.label)}</td>
           <td class="num">${r.ausgaben > 0 ? formatAmount(r.ausgaben) : ''}</td>
           <td class="num">${r.einnahmen > 0 ? formatAmount(r.einnahmen) : ''}</td>

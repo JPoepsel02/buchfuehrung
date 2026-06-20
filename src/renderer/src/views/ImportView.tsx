@@ -6,7 +6,7 @@ import { CentsAmountInput } from '../components/AmountInput'
 import { parseBankCsv } from '@shared/csv'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
-import { receiptAvailableForImport } from '@shared/importDraft'
+import { receiptAvailableForImport, subcategorySuggestions } from '@shared/importDraft'
 import { classifyDraftDuplicates, nextSeq, reconcileImportedBookings } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 import type { Booking, ImportDraftRow, ImportDraftSplit } from '@shared/types'
@@ -304,11 +304,13 @@ export function ImportView() {
               {draft.skipped} Zeilen konnten nicht gelesen werden (z. B. Kopf- oder Saldozeilen).
             </p>
           )}
-          <datalist id="import-sub-suggestions">
-            {[...new Set(file.bookings.map((b) => (b.subcategory ?? '').trim()).filter(Boolean))].map((sName) => (
-              <option key={sName} value={sName} />
-            ))}
-          </datalist>
+          {activeCats.map((category) => (
+            <datalist key={category.id} id={`import-sub-suggestions-${category.id}`}>
+              {subcategorySuggestions(file.bookings, category.id).map((sName) => (
+                <option key={sName} value={sName} />
+              ))}
+            </datalist>
+          ))}
           <table className="ledger">
             <thead>
               <tr>
@@ -430,7 +432,7 @@ export function ImportView() {
                           placeholder="Unterkategorie (optional)"
                           disabled={!r.selected || isDuplicate}
                           aria-label="Unterkategorie"
-                          list="import-sub-suggestions"
+                          list={r.categoryId ? `import-sub-suggestions-${r.categoryId}` : undefined}
                           style={{ minWidth: 140, width: '100%', marginTop: 4, fontSize: 'var(--text-xs)' }}
                         />
                       )}
