@@ -199,12 +199,88 @@ textarea {
   padding: var(--space-6) var(--space-7);
 }
 
+.main--bookings {
+  overflow: hidden;
+  padding-block: var(--space-3);
+}
+
 .view {
   /* Auf großen Monitoren mehr Platz für die Tabellen – Spalten wie der
      lange Verwendungszweck brauchen sonst horizontales Scrollen */
   max-width: 1560px;
   margin: 0 auto;
   animation: view-in var(--duration-normal) var(--ease-out);
+}
+
+.bookings-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.bookings-view > .view__header,
+.bookings-view > form {
+  flex: none;
+}
+
+.bookings-view > .view__header {
+  margin-bottom: var(--space-3);
+}
+
+.bookings-view > form {
+  padding: var(--space-4);
+}
+
+.bookings-view > form .card__title {
+  margin-bottom: var(--space-2);
+}
+
+.bookings-view > form .form-grid {
+  gap: var(--space-2) var(--space-3);
+}
+
+.bookings-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-4);
+}
+
+.bookings-view > .bookings-list {
+  margin-top: var(--space-3);
+}
+
+.bookings-list__toolbar {
+  margin-bottom: var(--space-2);
+}
+
+.bookings-list__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.bookings-list__scroll .ledger thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-field);
+}
+
+.bookings-list .ledger tbody tr {
+  cursor: pointer;
+}
+
+.bookings-list .ledger tbody tr.is-selected {
+  background: color-mix(in srgb, var(--color-focus) 13%, transparent);
+}
+
+.bookings-list .ledger tbody tr:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }
 
 @keyframes view-in {
