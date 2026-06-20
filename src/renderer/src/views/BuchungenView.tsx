@@ -4,6 +4,7 @@ import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
 import { shouldStartBookingEdit } from '../bookingRow'
 import { fiscalRange, inFiscalYear } from '@shared/fiscal'
+import { subcategorySuggestions } from '@shared/importDraft'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, parseAmountToCents } from '@shared/money'
 import type { Booking, BookingType } from '@shared/types'
@@ -59,15 +60,7 @@ export function BuchungenView({
 
   // Vorschläge: bereits verwendete Unterkategorien der gewählten Kategorie
   const subSuggestions = useMemo(
-    () =>
-      [
-        ...new Set(
-          (file?.bookings ?? [])
-            .filter((b) => b.categoryId === form.categoryId)
-            .map((b) => (b.subcategory ?? '').trim())
-            .filter(Boolean),
-        ),
-      ].sort(),
+    () => subcategorySuggestions(file?.bookings ?? [], form.categoryId),
     [file, form.categoryId],
   )
 

@@ -59,7 +59,7 @@ function GroupRows({ group }: { group: ReturnType<typeof byCategory>[number] }) 
         <tr key={`${r.refs}-${r.label}`}>
           <td className="ref">{r.refs}</td>
           <td style={{ whiteSpace: 'nowrap' }}>{r.kind === 'einzeln' ? formatDate(r.date) : ''}</td>
-          <td>{r.name || '–'}</td>
+          <td>{r.kind === 'unterkategorie' ? '' : r.name || '–'}</td>
           <td className="cell-desc">
             {r.label}
             {r.kind === 'unterkategorie' && (
