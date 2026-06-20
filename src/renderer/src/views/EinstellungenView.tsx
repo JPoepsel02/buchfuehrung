@@ -271,17 +271,17 @@ export function EinstellungenView() {
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <select
-                    value={c.praesentation ?? ''}
+                    value={praesentationsModus(c)}
                     onChange={(e) =>
                       updateCategory(c.id, {
-                        praesentation: (e.target.value || undefined) as Category['praesentation'],
+                        praesentation: e.target.value as Category['praesentation'],
                       })
                     }
                     aria-label="Darstellung in der Jahres-Präsentation"
                   >
-                    <option value="">Automatisch ({praesentationsModus(c) === 'sammel' ? 'Sammel-Folie' : 'Jahresverlauf'})</option>
                     <option value="monat">Im Jahresverlauf</option>
                     <option value="sammel">Sammel-Folie</option>
+                    <option value="aus">Nicht in Präsentation</option>
                   </select>
                   {praesentationsModus(c) === 'monat' && (
                     <select
@@ -356,7 +356,8 @@ export function EinstellungenView() {
           Das Kürzel bestimmt die Beleg-Nummern (z. B. „M“ → M1, M2 …). Die Reihenfolge steuert die
           Sortierung im Veranstaltungs-Blatt und im Prüfbericht. „Präsentation“ legt fest, ob eine
           Kategorie im Jahresverlauf der Präsentation erscheint (einmalig, im Monat der ersten
-          Buchung oder im gewählten Monat) oder auf der Sammel-Folie nach den Monaten.
+          Buchung oder im gewählten Monat), auf der Sammel-Folie nach den Monaten gesammelt wird
+          oder gar nicht in der Präsentation auftaucht.
         </p>
       </section>
       {toast && <div className="toast">{toast}</div>}

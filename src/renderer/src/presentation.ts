@@ -33,8 +33,9 @@ interface Station {
  * typische Sammelposten (Sonstiges, Beiträge, Zuschüsse, Spenden) auf
  * der eigenen Folie nach den Monaten – wie in der Vereins-Vorlage.
  */
-export function praesentationsModus(c: Category): 'monat' | 'sammel' {
+export function praesentationsModus(c: Category): 'monat' | 'sammel' | 'aus' {
   if (c.praesentation) return c.praesentation
+  // Default: Jahresverlauf; typische Sammelposten automatisch auf die Sammel-Folie.
   return /sonstig|beitr[aä]g|zusch[uü]ss|spende/i.test(c.name) ? 'sammel' : 'monat'
 }
 
