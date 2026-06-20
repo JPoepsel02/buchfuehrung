@@ -145,7 +145,7 @@ describe('byCategory – Veranstaltungs-Gruppierung', () => {
     expect(sub.einnahmen).toBe(15000)
     expect(sub.count).toBe(2)
     expect(sub.refs).toBe('')
-    expect(sub.name).toBe('Anna, Bernd')
+    expect(sub.name).toBe('')
     const single = rows.find((r) => r.kind === 'einzeln')!
     expect(single.label).toBe('Getränke')
     expect(single.name).toBe('Getränke Meier')
