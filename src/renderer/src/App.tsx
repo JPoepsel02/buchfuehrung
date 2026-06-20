@@ -150,7 +150,7 @@ export function App() {
           {konto === 'zweit' ? file.kontoName || 'Zweitkonto' : file.clubName || 'Verein'} · {fiscalLabel(file)}
         </div>
       </aside>
-      <main className="main">
+      <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>
         {view === 'uebersicht' && <UebersichtView />}
         {view === 'buchungen' && (
           <BuchungenView externalFilter={bookingsFilter} onFilterConsumed={() => setBookingsFilter('')} />

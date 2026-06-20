@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
+import { shouldStartBookingEdit } from '../bookingRow'
 import { fiscalRange, inFiscalYear } from '@shared/fiscal'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, parseAmountToCents } from '@shared/money'
@@ -102,7 +103,6 @@ export function BuchungenView({
       nonUmsatz: b.nonUmsatzAmount ? (b.nonUmsatzAmount / 100).toFixed(2).replace('.', ',') : '',
       note: b.note,
     })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function submit(e: React.FormEvent) {
@@ -148,7 +148,7 @@ export function BuchungenView({
   }
 
   return (
-    <div className="view">
+    <div className="view bookings-view">
       <header className="view__header">
         <div>
           <h1 className="view__title">Buchungen</h1>
@@ -273,8 +273,8 @@ export function BuchungenView({
         </div>
       </form>
 
-      <section className="card">
-        <div className="toolbar" style={{ marginBottom: 'var(--space-4)' }}>
+      <section className="card bookings-list">
+        <div className="toolbar bookings-list__toolbar">
           <h2 className="card__title" style={{ marginBottom: 0 }}>
             Alle Buchungen ({rows.length})
           </h2>
@@ -288,78 +288,97 @@ export function BuchungenView({
             />
           </div>
         </div>
-        {rows.length === 0 ? (
-          <div className="empty">
-            <h3>Keine Buchungen gefunden</h3>
-          </div>
-        ) : (
-          <table className="ledger">
-            <thead>
-              <tr>
-                <th>Nr.</th>
-                <th>Datum</th>
-                <th>Kategorie</th>
-                <th>Name</th>
-                <th>Verwendungszweck</th>
-                <th className="num">Betrag</th>
-                <th>Beleg</th>
-                <th>Umsatz</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="ref">{r.ref}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
-                  <td>{r.categoryName}</td>
-                  <td>{r.name?.trim() || '–'}</td>
-                  <td className="cell-desc">
-                    {r.description}
-                    {r.subcategory && <span className="pill pill--in" style={{ marginLeft: 6 }}>{r.subcategory}</span>}
-                    {r.source === 'import' && <span className="pill" style={{ marginLeft: 6 }}>Import</span>}
-                    {r.note && (
-                      <div className="hint hint--clamp" title={r.note}>
-                        {r.note}
-                      </div>
-                    )}
-                  </td>
-                  <td className="num">
-                    <Amount cents={r.signedAmount} withSign />
-                  </td>
-                  <td>
-                    <label className="checkrow">
-                      <input type="checkbox" checked={r.receiptAvailable ?? true} readOnly />
-                      Beleg im Ordner vorhanden
-                    </label>
-                  </td>
-                  <td>
-                    {r.isUmsatz ? (
-                      <span className="pill pill--in">
-                        <Amount cents={r.umsatzAmount} />
-                      </span>
-                    ) : (
-                      <span className="hint">—</span>
-                    )}
-                  </td>
-                  <td className="num" style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn--ghost btn--sm" onClick={() => startEdit(r)}>
-                      Bearbeiten
-                    </button>
-                    <button
-                      className="btn btn--ghost btn--sm btn--danger"
-                      onClick={() => {
-                        if (confirm(`Buchung ${r.ref} („${r.description}“) wirklich löschen?`)) deleteBooking(r.id)
-                      }}
-                    >
-                      Löschen
-                    </button>
-                  </td>
+        <div className="bookings-list__scroll">
+          {rows.length === 0 ? (
+            <div className="empty">
+              <h3>Keine Buchungen gefunden</h3>
+            </div>
+          ) : (
+            <table className="ledger">
+              <thead>
+                <tr>
+                  <th>Nr.</th>
+                  <th>Datum</th>
+                  <th>Kategorie</th>
+                  <th>Name</th>
+                  <th>Verwendungszweck</th>
+                  <th className="num">Betrag</th>
+                  <th>Beleg</th>
+                  <th>Umsatz</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr
+                    key={r.id}
+                    className={editingId === r.id ? 'is-selected' : undefined}
+                    aria-selected={editingId === r.id}
+                    tabIndex={0}
+                    onClick={(event) => {
+                      if (shouldStartBookingEdit(event.target as HTMLElement)) startEdit(r)
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        shouldStartBookingEdit(event.target as HTMLElement) &&
+                        (event.key === 'Enter' || event.key === ' ')
+                      ) {
+                        event.preventDefault()
+                        startEdit(r)
+                      }
+                    }}
+                  >
+                    <td className="ref">{r.ref}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
+                    <td>{r.categoryName}</td>
+                    <td>{r.name?.trim() || '–'}</td>
+                    <td className="cell-desc">
+                      {r.description}
+                      {r.subcategory && <span className="pill pill--in" style={{ marginLeft: 6 }}>{r.subcategory}</span>}
+                      {r.source === 'import' && <span className="pill" style={{ marginLeft: 6 }}>Import</span>}
+                      {r.note && (
+                        <div className="hint hint--clamp" title={r.note}>
+                          {r.note}
+                        </div>
+                      )}
+                    </td>
+                    <td className="num">
+                      <Amount cents={r.signedAmount} withSign />
+                    </td>
+                    <td>
+                      <label className="checkrow">
+                        <input type="checkbox" checked={r.receiptAvailable ?? true} readOnly />
+                        Beleg im Ordner vorhanden
+                      </label>
+                    </td>
+                    <td>
+                      {r.isUmsatz ? (
+                        <span className="pill pill--in">
+                          <Amount cents={r.umsatzAmount} />
+                        </span>
+                      ) : (
+                        <span className="hint">—</span>
+                      )}
+                    </td>
+                    <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn--ghost btn--sm" onClick={() => startEdit(r)}>
+                        Bearbeiten
+                      </button>
+                      <button
+                        className="btn btn--ghost btn--sm btn--danger"
+                        onClick={() => {
+                          if (confirm(`Buchung ${r.ref} („${r.description}“) wirklich löschen?`)) deleteBooking(r.id)
+                        }}
+                      >
+                        Löschen
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </section>
     </div>
   )
