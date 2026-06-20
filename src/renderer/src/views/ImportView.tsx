@@ -6,9 +6,20 @@ import { CentsAmountInput } from '../components/AmountInput'
 import { parseBankCsv } from '@shared/csv'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
-import { nextSeq, reconcileImportedBookings } from '@shared/ledger'
+import { classifyDraftDuplicates, nextSeq, reconcileImportedBookings } from '@shared/ledger'
 import { formatDate } from '@shared/money'
-import type { ImportDraftRow, ImportDraftSplit } from '@shared/types'
+import type { Booking, ImportDraftRow, ImportDraftSplit } from '@shared/types'
+
+/** Reduziert eine Entwurfszeile auf die Felder der Duplikat-Erkennung. */
+const toDupInput = (r: { hash: string; date: string; amount: number }) => ({
+  hash: r.hash,
+  date: r.date,
+  amount: r.amount,
+})
+
+function classifyRows(bookings: Booking[], rows: readonly ImportDraftRow[]) {
+  return classifyDraftDuplicates(bookings, rows.map(toDupInput))
+}
 
 /**
  * Kontoauszug-Import: Der eingelesene Auszug wird als Entwurf in der
@@ -24,9 +35,11 @@ export function ImportView() {
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
     [file],
   )
-  const existingHashes = useMemo(
-    () => new Set(file?.bookings.map((b) => b.importHash).filter(Boolean) ?? []),
-    [file?.bookings],
+  // Duplikat-Erkennung für die offenen Entwurfszeilen: hard = bereits
+  // importiert (Hash), soft = deckt sich mit einer manuellen Buchung.
+  const dupes = useMemo(
+    () => classifyRows(file?.bookings ?? [], file?.importDraft?.rows ?? []),
+    [file?.bookings, file?.importDraft?.rows],
   )
 
   if (!file) return null
@@ -49,17 +62,19 @@ export function ImportView() {
           a.r.date.localeCompare(b.r.date) || (newestFirst ? b.idx - a.idx : a.idx - b.idx),
       )
     const preview = reconcileImportedBookings(file!.bookings, parsed.rows)
-    const reconciledHashes = new Set(
-      preview.bookings.map((booking) => booking.importHash).filter(Boolean),
+    // Bereits vorhandene Zeilen (Import ODER manuell erfasst) vorab abwählen.
+    const sortedDupes = classifyDraftDuplicates(
+      preview.bookings,
+      sorted.map(({ r }) => toDupInput(r)),
     )
-    const rows: ImportDraftRow[] = sorted.map(({ r }) => ({
+    const rows: ImportDraftRow[] = sorted.map(({ r }, i) => ({
       date: r.date,
       bankText: r.description,
       amount: r.amount,
       hash: r.hash,
       name: r.name,
       description: '',
-      selected: !reconciledHashes.has(r.hash) && inFiscalYear(file!, r.date),
+      selected: !sortedDupes.hard[i] && !sortedDupes.soft[i] && inFiscalYear(file!, r.date),
       // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
       categoryId: '',
       isUmsatz: false,
@@ -158,19 +173,19 @@ export function ImportView() {
   }
 
   function setAllSelected(selected: boolean) {
-    update((f) =>
-      f.importDraft
-        ? {
-            ...f,
-            importDraft: {
-              ...f.importDraft,
-              rows: f.importDraft.rows.map((r) =>
-                existingHashes.has(r.hash) || !inFiscalYear(f, r.date) ? r : { ...r, selected },
-              ),
-            },
-          }
-        : f,
-    )
+    update((f) => {
+      if (!f.importDraft) return f
+      const cls = classifyRows(f.bookings, f.importDraft.rows)
+      return {
+        ...f,
+        importDraft: {
+          ...f.importDraft,
+          rows: f.importDraft.rows.map((r, i) =>
+            cls.hard[i] || cls.soft[i] || !inFiscalYear(f, r.date) ? r : { ...r, selected },
+          ),
+        },
+      }
+    })
   }
 
   function discardDraft() {
@@ -182,7 +197,7 @@ export function ImportView() {
   function doImport() {
     const selectedRows = draft!.rows
       .map((r, i) => ({ row: r, index: i }))
-      .filter(({ row }) => row.selected && rowIsImportable(row) && !existingHashes.has(row.hash))
+      .filter(({ row, index }) => row.selected && rowIsImportable(row) && !dupes.hard[index])
     const selectedIdx = new Set(selectedRows.map(({ index }) => index))
     if (selectedIdx.size === 0) return
     const importedBookingsCount = selectedRows.reduce((count, { row }) => count + bookingParts(row).length, 0)
@@ -222,7 +237,9 @@ export function ImportView() {
     setTimeout(() => setToast(''), 4000)
   }
 
-  const selected = draft ? draft.rows.filter((r) => r.selected && !existingHashes.has(r.hash)) : []
+  const selected = draft
+    ? draft.rows.filter((r, i) => r.selected && !dupes.hard[i])
+    : []
   const invalidRows = selected.filter((r) => !rowIsImportable(r)).length
   const readyRows = selected.filter(rowIsImportable)
   const readyBookings = readyRows.reduce((count, r) => count + bookingParts(r).length, 0)
@@ -295,13 +312,16 @@ export function ImportView() {
             </thead>
             <tbody>
               {draft.rows.map((r, i) => {
-                const isDuplicate = existingHashes.has(r.hash)
+                // hart = bereits importiert (gesperrt), weich = deckt sich mit
+                // einer manuellen Buchung (vorab abgewählt, aber überschreibbar)
+                const isDuplicate = dupes.hard[i]
+                const isSoftDup = dupes.soft[i]
                 const inYear = inFiscalYear(file, r.date)
                 const splitTotal = sumSplits(r.splits)
                 const splitDiff = Math.abs(r.amount) - splitTotal
                 return (
                   <Fragment key={`${r.hash}-${i}`}>
-                  <tr style={isDuplicate || !inYear ? { opacity: 0.5 } : undefined}>
+                  <tr style={isDuplicate || isSoftDup || !inYear ? { opacity: 0.5 } : undefined}>
                     <td>
                       <input
                         type="checkbox"
@@ -314,7 +334,14 @@ export function ImportView() {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {formatDate(r.date)}
                       {isDuplicate && <div><span className="pill pill--out">importiert</span></div>}
-                      {!inYear && !isDuplicate && (
+                      {isSoftDup && (
+                        <div>
+                          <span className="pill pill--out" title="Datum und Betrag decken sich mit einer vorhandenen Buchung">
+                            bereits vorhanden
+                          </span>
+                        </div>
+                      )}
+                      {!inYear && !isDuplicate && !isSoftDup && (
                         <div><span className="pill">anderes Jahr</span></div>
                       )}
                     </td>
@@ -338,7 +365,7 @@ export function ImportView() {
                       <input
                         value={r.description}
                         onChange={(e) => setRow(i, { description: e.target.value })}
-                        placeholder="z. B. Erstattung Pizza"
+                        placeholder="Verwendungszweck"
                         disabled={!r.selected || isDuplicate || Boolean(r.splits?.length)}
                         aria-label="Eigener Verwendungszweck"
                         aria-invalid={r.selected && !isDuplicate && !(r.splits?.length) && !r.description.trim()}
