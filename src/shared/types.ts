@@ -98,6 +98,8 @@ export interface ImportDraftRow {
   selected: boolean
   categoryId: string
   isUmsatz: boolean
+  /** Liegt ein Beleg im Ordner vor? (Standard beim Import: nein) */
+  receiptAvailable?: boolean
   /** Optionale Unterkategorie für die Veranstaltungs-Zusammenfassung */
   subcategory?: string
   splits?: ImportDraftSplit[]
