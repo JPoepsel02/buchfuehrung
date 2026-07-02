@@ -51,6 +51,13 @@ export interface Booking {
   note: string
   /** Laufende Nummer der Erfassung – bestimmt die Beleg-Nr.-Vergabe */
   seq: number
+  /**
+   * Fest vergebene Beleg-Nummer innerhalb der Kategorie (z. B. 2 für "O2").
+   * Wird einmalig bei der Anlage vergeben und ändert sich nie mehr – auch
+   * nicht, wenn andere Buchungen gelöscht werden. Gelöschte Nummern werden
+   * nicht wiederverwendet (nächste Nummer = bisheriges Maximum + 1).
+   */
+  refNo?: number
   /** Herkunft der Buchung */
   source: 'manuell' | 'import'
   /** Duplikat-Erkennung beim Kontoauszug-Import */
@@ -170,6 +177,8 @@ export interface YearFile {
 export interface ComputedBooking extends Booking {
   /** Beleg-Nr., z. B. "M3" */
   ref: string
+  /** Beleg-Nummer als Zahl (gespeichert oder für Altdaten hergeleitet) */
+  refNo: number
   categoryName: string
   /** Vorzeichenbetrag in Cent: Ausgaben negativ */
   signedAmount: Cents

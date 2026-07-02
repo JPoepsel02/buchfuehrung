@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  assignMissingRefNos,
   bookingMatches,
   byCategory,
   chronological,
@@ -8,6 +9,7 @@ import {
   eventRows,
   migrateExistingImportHashes,
   monthSummaries,
+  nextRefNo,
   nextSeq,
   reconcileImportedBookings,
   yearTotals,
@@ -368,5 +370,65 @@ describe('classifyDraftDuplicates – Auszugszeilen gegen bestehende Buchungen',
     const { hard, soft } = classifyDraftDuplicates(bookings, [draft('h2', '2026-02-14', 10000)])
     expect(hard).toEqual([false])
     expect(soft).toEqual([false])
+  })
+})
+
+describe('Feste Beleg-Nummern (refNo)', () => {
+  test('gespeicherte Nummern gewinnen: O2 bleibt O2, wenn O1 gelöscht wird', () => {
+    const f = file([
+      // O1 wurde gelöscht – nur O2 ist noch da
+      booking({ seq: 2, date: '2026-04-10', categoryId: 'm', type: 'einnahme', amount: 200, refNo: 2 }),
+    ])
+    const rows = computeBookings(f)
+    expect(rows[0].ref).toBe('M2')
+    expect(rows[0].refNo).toBe(2)
+  })
+
+  test('nextRefNo vergibt Maximum + 1 und verwendet gelöschte Nummern nicht wieder', () => {
+    const f = file([
+      booking({ seq: 2, date: '2026-04-10', categoryId: 'm', type: 'einnahme', amount: 200, refNo: 2 }),
+    ])
+    // O1 ist frei, trotzdem bekommt die nächste Buchung O3
+    expect(nextRefNo(f, 'm')).toBe(3)
+    // andere Kategorie startet bei 1
+    expect(nextRefNo(f, 'b')).toBe(1)
+  })
+
+  test('Altdaten ohne refNo: chronologische Herleitung überspringt feste Nummern', () => {
+    const f = file([
+      booking({ seq: 1, date: '2026-01-05', categoryId: 'm', type: 'einnahme', amount: 100 }), // alt, ohne refNo
+      booking({ seq: 2, date: '2026-02-01', categoryId: 'm', type: 'einnahme', amount: 200, refNo: 1 }), // fest: M1
+    ])
+    const byId = new Map(computeBookings(f).map((b) => [b.id, b.ref]))
+    // die feste 1 ist belegt → Altbuchung bekommt die 2 (trotz früherem Datum)
+    expect(byId.get('b2')).toBe('M1')
+    expect(byId.get('b1')).toBe('M2')
+  })
+
+  test('assignMissingRefNos schreibt Nummern einmalig fest und ist idempotent', () => {
+    const f = file([
+      booking({ seq: 1, date: '2026-03-20', categoryId: 'm', type: 'ausgabe', amount: 300 }),
+      booking({ seq: 2, date: '2026-01-02', categoryId: 'm', type: 'einnahme', amount: 100 }),
+    ])
+    const first = assignMissingRefNos(f)
+    expect(first.migratedCount).toBe(2)
+    const byId = new Map(first.bookings.map((b) => [b.id, b.refNo]))
+    // chronologisch: 02.01. → 1, 20.03. → 2
+    expect(byId.get('b2')).toBe(1)
+    expect(byId.get('b1')).toBe(2)
+    const again = assignMissingRefNos({ ...f, bookings: first.bookings })
+    expect(again.migratedCount).toBe(0)
+    expect(again.bookings).toBe(first.bookings)
+  })
+
+  test('Löschen einer mittleren Nummer verändert die übrigen nicht', () => {
+    const all = [
+      booking({ seq: 1, date: '2026-04-01', categoryId: 'm', type: 'einnahme', amount: 100, refNo: 1 }),
+      booking({ seq: 2, date: '2026-04-05', categoryId: 'm', type: 'einnahme', amount: 200, refNo: 2 }),
+      booking({ seq: 3, date: '2026-04-09', categoryId: 'm', type: 'einnahme', amount: 300, refNo: 3 }),
+    ]
+    const afterDelete = file(all.filter((b) => b.refNo !== 1))
+    const refs = computeBookings(afterDelete).map((b) => b.ref)
+    expect(refs).toEqual(['M2', 'M3'])
   })
 })
