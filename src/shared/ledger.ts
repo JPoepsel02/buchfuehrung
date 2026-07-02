@@ -29,28 +29,80 @@ function umsatzAmount(b: Booking): number {
 }
 
 /**
- * Berechnet Beleg-Nr. und alle abgeleiteten Beträge. Die Nummern werden je
- * Kategorie chronologisch vergeben (erster Umsatz des Jahres = kleinste
- * Nummer) – unabhängig davon, in welcher Reihenfolge erfasst oder
- * importiert wurde. Bei gleichem Datum zählt die Erfassungsreihenfolge.
+ * Berechnet Beleg-Nr. und alle abgeleiteten Beträge.
+ *
+ * Die Beleg-Nummer ist FEST: Sie wird bei der Anlage vergeben, in der
+ * Buchung gespeichert (refNo) und ändert sich nie mehr – auch nicht, wenn
+ * andere Buchungen gelöscht werden (O2 bleibt O2, wenn O1 verschwindet).
+ *
+ * Nur Altdaten ohne gespeicherte Nummer bekommen hier eine hergeleitete:
+ * chronologisch je Kategorie, wobei bereits fest vergebene Nummern
+ * übersprungen werden. Die Migration beim Laden schreibt diese Herleitung
+ * einmalig fest (assignMissingRefNos).
  */
 export function computeBookings(file: YearFile): ComputedBooking[] {
   const byId = new Map(file.categories.map((c) => [c.id, c]))
-  const counters = new Map<string, number>()
+
+  // Fest vergebene Nummern je Kategorie – dürfen nie doppelt auftauchen
+  const used = new Map<string, Set<number>>()
+  for (const b of file.bookings) {
+    if (!b.refNo) continue
+    const set = used.get(b.categoryId) ?? new Set<number>()
+    set.add(b.refNo)
+    used.set(b.categoryId, set)
+  }
+
+  const cursor = new Map<string, number>()
   return [...file.bookings]
     .sort((a, b) => a.date.localeCompare(b.date) || a.seq - b.seq)
     .map((b) => {
       const cat = byId.get(b.categoryId)
-      const count = (counters.get(b.categoryId) ?? 0) + 1
-      counters.set(b.categoryId, count)
+      let refNo = b.refNo
+      if (!refNo) {
+        let n = (cursor.get(b.categoryId) ?? 0) + 1
+        while (used.get(b.categoryId)?.has(n)) n++
+        cursor.set(b.categoryId, n)
+        refNo = n
+      }
       return {
         ...b,
-        ref: `${cat?.code ?? '?'}${count}`,
+        refNo,
+        ref: `${cat?.code ?? '?'}${refNo}`,
         categoryName: cat?.name ?? 'Unbekannt',
         signedAmount: signedAmount(b),
         umsatzAmount: umsatzAmount(b),
       }
     })
+}
+
+/**
+ * Nächste freie Beleg-Nummer einer Kategorie: bisheriges Maximum + 1.
+ * Nummern gelöschter Buchungen werden bewusst NICHT wiederverwendet, damit
+ * einmal beschriftete Papier-Belege eindeutig bleiben.
+ */
+export function nextRefNo(file: YearFile, categoryId: string): number {
+  let max = 0
+  for (const b of computeBookings(file)) {
+    if (b.categoryId === categoryId && b.refNo > max) max = b.refNo
+  }
+  return max + 1
+}
+
+/**
+ * Schreibt die hergeleiteten Beleg-Nummern von Altdaten einmalig fest.
+ * Läuft beim Laden einer Jahresdatei (analog zur Hash-Migration) und ist
+ * idempotent – Buchungen mit gespeicherter Nummer bleiben unangetastet.
+ */
+export function assignMissingRefNos(file: YearFile): { bookings: Booking[]; migratedCount: number } {
+  if (file.bookings.every((b) => b.refNo)) return { bookings: file.bookings, migratedCount: 0 }
+  const refNoById = new Map(computeBookings(file).map((b) => [b.id, b.refNo]))
+  let migratedCount = 0
+  const bookings = file.bookings.map((b) => {
+    if (b.refNo) return b
+    migratedCount++
+    return { ...b, refNo: refNoById.get(b.id) }
+  })
+  return { bookings, migratedCount }
 }
 
 /** Chronologisch: nach Datum, bei gleichem Datum nach Erfassungsreihenfolge. */

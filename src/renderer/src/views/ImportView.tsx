@@ -7,7 +7,7 @@ import { parseBankCsv } from '@shared/csv'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
 import { receiptAvailableForImport, subcategorySuggestions } from '@shared/importDraft'
-import { classifyDraftDuplicates, nextSeq, reconcileImportedBookings } from '@shared/ledger'
+import { classifyDraftDuplicates, nextRefNo, nextSeq, reconcileImportedBookings } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 import type { Booking, ImportDraftRow, ImportDraftSplit } from '@shared/types'
 
@@ -207,12 +207,20 @@ export function ImportView() {
     update((f) => {
       if (!f.importDraft) return f
       let seq = nextSeq(f)
+      // Feste Beleg-Nummern je Kategorie fortlaufend ab Maximum + 1 vergeben
+      const refCounters = new Map<string, number>()
+      const takeRefNo = (categoryId: string) => {
+        const n = refCounters.get(categoryId) ?? nextRefNo(f, categoryId)
+        refCounters.set(categoryId, n + 1)
+        return n
+      }
       const added = f.importDraft.rows
         .filter((_, i) => selectedIdx.has(i))
         .flatMap((r) =>
           bookingParts(r).map((part) => ({
             id: makeId(),
             seq: seq++,
+            refNo: takeRefNo(part.categoryId),
             date: r.date,
             categoryId: part.categoryId,
             name: r.name.trim(),

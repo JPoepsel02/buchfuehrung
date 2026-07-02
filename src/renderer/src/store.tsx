@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import { api } from './api'
 import { emptyYearFile, makeId } from '@shared/defaults'
-import { migrateExistingImportHashes, nextSeq } from '@shared/ledger'
+import { assignMissingRefNos, migrateExistingImportHashes, nextRefNo, nextSeq } from '@shared/ledger'
 import type { AppSettings, Booking, Category, KontoId, YearFile } from '@shared/types'
 
 /**
@@ -49,9 +49,12 @@ const StoreContext = createContext<Store | null>(null)
 async function loadMigratedYear(konto: KontoId, year: number): Promise<YearFile | null> {
   const data = (await api.loadYear(konto, year)) as YearFile | null
   if (!data) return null
-  const migrated = migrateExistingImportHashes(data.bookings)
-  if (migrated.migratedCount === 0) return data
-  const next = { ...data, bookings: migrated.bookings }
+  const hashes = migrateExistingImportHashes(data.bookings)
+  const withHashes = { ...data, bookings: hashes.bookings }
+  // Beleg-Nummern von Altdaten einmalig festschreiben – danach sind sie fix
+  const refs = assignMissingRefNos(withHashes)
+  if (hashes.migratedCount === 0 && refs.migratedCount === 0) return data
+  const next = { ...withHashes, bookings: refs.bookings }
   await api.saveYear(konto, year, next)
   return next
 }
@@ -197,21 +200,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addBooking(data) {
         update((f) => ({
           ...f,
-          bookings: [...f.bookings, { ...data, id: makeId(), seq: nextSeq(f) }],
+          bookings: [
+            ...f.bookings,
+            // Beleg-Nummer wird hier einmalig fest vergeben (Maximum + 1)
+            { ...data, id: makeId(), seq: nextSeq(f), refNo: nextRefNo(f, data.categoryId) },
+          ],
         }))
       },
       addBookings(rows) {
         update((f) => {
           let seq = nextSeq(f)
-          const added = rows.map((r) => ({ ...r, id: makeId(), seq: seq++ }))
+          // Nummern-Zähler je Kategorie, damit ein Stapel fortlaufend nummeriert
+          const counters = new Map<string, number>()
+          const takeRefNo = (categoryId: string) => {
+            const n = counters.get(categoryId) ?? nextRefNo(f, categoryId)
+            counters.set(categoryId, n + 1)
+            return n
+          }
+          const added = rows.map((r) => ({ ...r, id: makeId(), seq: seq++, refNo: takeRefNo(r.categoryId) }))
           return { ...f, bookings: [...f.bookings, ...added] }
         })
       },
       updateBooking(id, data) {
-        update((f) => ({
-          ...f,
-          bookings: f.bookings.map((b) => (b.id === id ? { ...b, ...data } : b)),
-        }))
+        update((f) => {
+          const current = f.bookings.find((b) => b.id === id)
+          // Kategoriewechsel: Buchung bekommt eine neue Nummer in der Ziel-Kategorie;
+          // die alte Nummer bleibt dauerhaft unbenutzt.
+          const patch =
+            current && data.categoryId && data.categoryId !== current.categoryId
+              ? { ...data, refNo: nextRefNo(f, data.categoryId) }
+              : data
+          return {
+            ...f,
+            bookings: f.bookings.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+          }
+        })
       },
       deleteBooking(id) {
         update((f) => ({ ...f, bookings: f.bookings.filter((b) => b.id !== id) }))

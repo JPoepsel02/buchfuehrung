@@ -131,6 +131,8 @@ export function validateBackup(data: unknown): ValidationResult {
       if (bo.receiptAvailable !== undefined && typeof bo.receiptAvailable !== 'boolean')
         err(`${bw}: Beleg-Kennzeichen ist kein Wahr/Falsch-Wert.`)
       if (!Number.isInteger(bo.seq)) err(`${bw}: laufende Nummer fehlt.`)
+      if (bo.refNo !== undefined && (!Number.isInteger(bo.refNo) || (bo.refNo as number) < 1))
+        err(`${bw}: Beleg-Nummer muss eine positive Ganzzahl sein.`)
       if (bo.source !== 'manuell' && bo.source !== 'import') err(`${bw}: ungültige Herkunft.`)
       if (bo.importHashVersion !== undefined && bo.importHashVersion !== 2) {
         err(`${bw}: ungültige Import-Hash-Version.`)
