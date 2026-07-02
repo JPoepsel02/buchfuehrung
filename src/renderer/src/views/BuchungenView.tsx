@@ -234,7 +234,7 @@ export function BuchungenView({
                 checked={form.receiptAvailable}
                 onChange={(e) => set('receiptAvailable', e.target.checked)}
               />
-              Beleg im Ordner vorhanden
+              Beleg vorhanden
             </label>
             {form.isUmsatz && (
               <div className="field" style={{ minWidth: 180 }}>
@@ -349,7 +349,7 @@ export function BuchungenView({
                     <td>
                       <label className="checkrow">
                         <input type="checkbox" checked={r.receiptAvailable ?? true} readOnly />
-                        Beleg im Ordner vorhanden
+                        Beleg vorhanden
                       </label>
                     </td>
                     <td>

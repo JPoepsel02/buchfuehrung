@@ -452,7 +452,7 @@ export function ImportView() {
                           checked={receiptAvailableForImport(r)}
                           disabled={!r.selected || isDuplicate}
                           onChange={(e) => setRow(i, { receiptAvailable: e.target.checked })}
-                          aria-label="Beleg im Ordner vorhanden"
+                          aria-label="Beleg vorhanden"
                         />
                         vorhanden
                       </label>
