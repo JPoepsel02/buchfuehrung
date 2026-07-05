@@ -29,8 +29,11 @@ export function PruefberichtView() {
   // Wirtschaftsjahr jedes weiteren Kontos laden: bevorzugt das Jahr, dessen
   // Ende im Kassenjahr des Hauptkontos liegt (Nov 2025–Okt 2026 gehört zu
   // 2026) – sonst einfach das neueste, damit jedes Konto im Bericht steht.
-  const otherIds = kontos
-    .filter((k) => k.id !== 'haupt')
+  // Abgewählte Konten (reportExcludedKontos) bleiben außen vor.
+  const otherKontos = kontos.filter((k) => k.id !== 'haupt')
+  const excluded = new Set(file?.reportExcludedKontos ?? [])
+  const otherIds = otherKontos
+    .filter((k) => !excluded.has(k.id))
     .map((k) => k.id)
     .join(',')
   useEffect(() => {
@@ -74,6 +77,15 @@ export function PruefberichtView() {
 
   function setAudit(key: keyof AuditInfo, value: string) {
     update((f) => ({ ...f, audit: { ...f.audit, [key]: value } }))
+  }
+
+  function toggleKonto(kontoId: string, includeInReport: boolean) {
+    update((f) => {
+      const next = new Set(f.reportExcludedKontos ?? [])
+      if (includeInReport) next.delete(kontoId)
+      else next.add(kontoId)
+      return { ...f, reportExcludedKontos: next.size > 0 ? [...next] : undefined }
+    })
   }
 
   function notify(msg: string) {
@@ -136,6 +148,33 @@ export function PruefberichtView() {
           </div>
         </div>
       </div>
+
+      {otherKontos.length > 0 && (
+        <section className="card">
+          <h2 className="card__title">Konten im Bericht</h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+            <label className="checkrow">
+              <input type="checkbox" checked disabled aria-label="Hauptkonto (immer enthalten)" />
+              Hauptkonto
+            </label>
+            {otherKontos.map((k) => (
+              <label className="checkrow" key={k.id}>
+                <input
+                  type="checkbox"
+                  checked={!excluded.has(k.id)}
+                  onChange={(e) => toggleKonto(k.id, e.target.checked)}
+                  aria-label={`${k.name} im Bericht`}
+                />
+                {k.name}
+              </label>
+            ))}
+          </div>
+          <p className="hint" style={{ marginBottom: 0 }}>
+            Abgewählte Konten erscheinen weder in den Bericht-Abschnitten noch in der Vorschau. Die
+            Auswahl wird je Kassenjahr gespeichert.
+          </p>
+        </section>
+      )}
 
       <section className="card">
         <h2 className="card__title">Angaben zur Kassenprüfung</h2>

@@ -208,6 +208,11 @@ export interface YearFile {
   importDraft?: ImportDraft | null
   /** Angaben für den Kassenprüfbericht */
   audit?: Partial<AuditInfo>
+  /**
+   * Konten, die im Prüfbericht NICHT erscheinen sollen (nur in der
+   * Hauptkonto-Datei gepflegt; Standard: alle Konten erscheinen).
+   */
+  reportExcludedKontos?: KontoId[]
 }
 
 /** Buchung mit allen abgeleiteten Feldern (Beleg-Nr., Vorzeichenbetrag, Umsatz). */
