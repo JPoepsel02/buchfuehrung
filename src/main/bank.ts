@@ -136,6 +136,11 @@ function productId(): string {
   return configured || DEFAULT_PRODUCT_ID
 }
 
+/** FinTS begrenzt productVersion (HKVVB) auf 5 Zeichen – die App-Version passt oft nicht hinein. */
+function productVersion(): string {
+  return app.getVersion().slice(0, 5)
+}
+
 function errorFromResponse(response: ClientResponse, fallback: string): BankFetchResult {
   const message = response.bankAnswers
     .filter((a) => a.code >= 9000)
@@ -243,14 +248,14 @@ async function startFetch(account: BankAccountConfig, opts: BankFetchOptions): P
   const config = stored
     ? FinTSConfig.fromBankingInformation(
         productId(),
-        app.getVersion(),
+        productVersion(),
         stored.bankingInformation,
         account.userId,
         pin,
         stored.tanMethodId,
         stored.tanMediaName,
       )
-    : FinTSConfig.forFirstTimeUse(productId(), app.getVersion(), account.fintsUrl, account.blz, account.userId, pin)
+    : FinTSConfig.forFirstTimeUse(productId(), productVersion(), account.fintsUrl, account.blz, account.userId, pin)
   const client = new FinTSClient(config)
   const session: BankSession = {
     account,
