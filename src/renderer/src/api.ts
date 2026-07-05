@@ -13,6 +13,7 @@ export interface UpdateInfo {
 }
 
 export interface Api {
+  listKontos(): Promise<string[]>
   listYears(konto: string): Promise<number[]>
   loadYear(konto: string, year: number): Promise<unknown | null>
   saveYear(konto: string, year: number, data: unknown): Promise<void>
@@ -48,9 +49,22 @@ declare global {
   }
 }
 
-const keyFor = (konto: string) => (konto === 'zweit' ? 'kassenwart:k2:' : 'kassenwart:jahr:')
+/** Schlüssel je Buch: haupt "kassenwart:jahr:", zweit "kassenwart:k2:", weitere "kassenwart:k3:" … */
+const keyFor = (konto: string) => {
+  if (konto === 'haupt' || !konto) return 'kassenwart:jahr:'
+  return `kassenwart:${konto === 'zweit' ? 'k2' : konto}:`
+}
 
 const webFallback: Api = {
+  async listKontos() {
+    const found = new Set<string>(['haupt'])
+    for (const key of Object.keys(localStorage)) {
+      const m = /^kassenwart:(k\d+):\d{4}$/.exec(key)
+      if (m) found.add(m[1] === 'k2' ? 'zweit' : m[1])
+    }
+    const num = (k: string) => (k === 'zweit' ? 2 : Number(k.slice(1)))
+    return ['haupt', ...[...found].filter((k) => k !== 'haupt').sort((a, b) => num(a) - num(b))]
+  },
   async listYears(konto) {
     const prefix = keyFor(konto)
     return Object.keys(localStorage)

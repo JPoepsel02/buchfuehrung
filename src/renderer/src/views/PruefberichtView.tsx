@@ -22,41 +22,51 @@ const AUDIT_FIELDS: { key: keyof AuditInfo; label: string; span: number; placeho
 const AUDIT_DATE_FIELDS = new Set<keyof AuditInfo>(['pruefDatum', 'wahlDatum', 'gvDatum'])
 
 export function PruefberichtView() {
-  const { file, settings, update, zweitExists } = useStore()
+  const { file, settings, update, kontos } = useStore()
   const [toast, setToast] = useState('')
-  const [zweit, setZweit] = useState<YearFile | null>(null)
+  const [others, setOthers] = useState<YearFile[]>([])
 
-  // Wirtschaftsjahr des Zweitkontos laden: bevorzugt das Jahr, dessen Ende im
-  // Kassenjahr des Hauptkontos liegt (Nov 2025–Okt 2026 gehört zu 2026) –
-  // sonst einfach das neueste, damit das Zweitkonto immer im Bericht steht.
+  // Wirtschaftsjahr jedes weiteren Kontos laden: bevorzugt das Jahr, dessen
+  // Ende im Kassenjahr des Hauptkontos liegt (Nov 2025–Okt 2026 gehört zu
+  // 2026) – sonst einfach das neueste, damit jedes Konto im Bericht steht.
+  const otherIds = kontos
+    .filter((k) => k.id !== 'haupt')
+    .map((k) => k.id)
+    .join(',')
   useEffect(() => {
-    if (!file || !zweitExists) {
-      setZweit(null)
+    if (!file || !otherIds) {
+      setOthers([])
       return
     }
     let cancelled = false
     ;(async () => {
-      const years = await api.listYears('zweit')
-      let fallback: YearFile | null = null
-      for (const candidate of years) {
-        const data = (await api.loadYear('zweit', candidate)) as YearFile | null
-        if (!data) continue
-        fallback ??= data
-        if (Number(fiscalRange(data).end.slice(0, 4)) === file.year) {
-          if (!cancelled) setZweit(data)
-          return
+      const loaded: YearFile[] = []
+      for (const kontoId of otherIds.split(',')) {
+        const years = await api.listYears(kontoId)
+        let match: YearFile | null = null
+        let fallback: YearFile | null = null
+        for (const candidate of years) {
+          const data = (await api.loadYear(kontoId, candidate)) as YearFile | null
+          if (!data) continue
+          fallback ??= data
+          if (Number(fiscalRange(data).end.slice(0, 4)) === file.year) {
+            match = data
+            break
+          }
         }
+        const pick = match ?? fallback
+        if (pick) loaded.push(pick)
       }
-      if (!cancelled) setZweit(fallback)
+      if (!cancelled) setOthers(loaded)
     })()
     return () => {
       cancelled = true
     }
-  }, [file, zweitExists])
+  }, [file, otherIds])
 
   const html = useMemo(
-    () => (file ? buildReportHtml(file, settings.logoDataUrl, zweit) : ''),
-    [file, settings.logoDataUrl, zweit],
+    () => (file ? buildReportHtml(file, settings.logoDataUrl, others) : ''),
+    [file, settings.logoDataUrl, others],
   )
   if (!file) return null
   const totals = yearTotals(file)
@@ -117,7 +127,11 @@ export function PruefberichtView() {
           <div className="stat__label">Inhalt</div>
           <div className="stat__hint" style={{ marginTop: 8 }}>
             Hauptkonto: Zusammenfassung · Chronologie · Veranstaltungen
-            {zweit ? ` · danach ${zweit.kontoName || 'Zweitkonto'} ${fiscalLabel(zweit)} (getrennt, keine Gesamtsummen)` : ''}
+            {others.length > 0
+              ? ` · danach ${others
+                  .map((o) => `${o.kontoName || 'Weiteres Konto'} ${fiscalLabel(o)}`)
+                  .join(', ')} (getrennt, keine Gesamtsummen)`
+              : ''}
             {' '}· Kassenprüfbericht mit Unterschriften
           </div>
         </div>

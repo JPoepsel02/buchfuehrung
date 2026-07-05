@@ -6,21 +6,29 @@ import { assignMissingRefNos, migrateExistingImportHashes, nextRefNo, nextSeq } 
 import type { AppSettings, Booking, Category, KontoId, YearFile } from '@shared/types'
 
 /**
- * Die App führt zwei strikt getrennte Bücher: das Hauptkonto und ein
- * optionales Zweitkonto (eigene Dateien, eigene Kategorien, eigenes
- * Kassenjahr). Es gibt bewusst keine Stelle, an der die Summen
- * beider Konten verrechnet werden.
+ * Die App führt beliebig viele strikt getrennte Bücher: das Hauptkonto und
+ * weitere Konten (eigene Dateien, eigene Kategorien, eigenes Kassenjahr).
+ * Es gibt bewusst keine Stelle, an der die Summen der Konten verrechnet
+ * werden.
  */
+export interface KontoInfo {
+  id: KontoId
+  /** Anzeigename, z. B. "Karnevalskonto" */
+  name: string
+}
+
 interface Store {
   loading: boolean
   /** Aktives Buch */
   konto: KontoId
   /** Jahre des aktiven Buchs */
   years: number[]
-  /** Gibt es bereits ein Zweitkonto? */
-  zweitExists: boolean
-  /** Anzeigename des Zweitkontos (z. B. "Karnevalskonto") */
-  zweitName: string
+  /** Alle vorhandenen Bücher (Hauptkonto zuerst) */
+  kontos: KontoInfo[]
+  /** Läuft gerade das Anlegen eines weiteren Kontos? */
+  creatingKonto: boolean
+  startKontoSetup(): void
+  cancelKontoSetup(): void
   file: YearFile | null
   settings: AppSettings
   updateSettings(patch: Partial<AppSettings>): Promise<void>
@@ -30,8 +38,8 @@ interface Store {
   selectYear(year: number): Promise<void>
   /** Neues Jahr im aktiven Buch anlegen (Jahresabschluss / Erststart) */
   createYear(year: number, openingBalance: number, clubName: string, treasurerName: string): Promise<void>
-  /** Zweitkonto mit erstem Kassenjahr anlegen */
-  createZweitkonto(name: string, fiscalStartMonth: number, year: number, openingBalance: number): Promise<void>
+  /** Weiteres Konto mit erstem Kassenjahr anlegen */
+  createKonto(name: string, fiscalStartMonth: number, year: number, openingBalance: number): Promise<void>
   /** Jahr im aktiven Buch löschen (Datei wandert in den Backup-Ordner) */
   deleteYear(year: number): Promise<void>
   update(mutate: (file: YearFile) => YearFile): void
@@ -59,31 +67,52 @@ async function loadMigratedYear(konto: KontoId, year: number): Promise<YearFile 
   return next
 }
 
+/** Standard-Anzeigename eines Buchs ohne gespeicherten Namen. */
+function defaultKontoName(id: KontoId): string {
+  if (id === 'haupt') return 'Hauptkonto'
+  if (id === 'zweit') return 'Zweitkonto'
+  return `Konto ${id.slice(1)}`
+}
+
+/** Nächste freie Konto-Kennung: erst 'zweit', danach 'k3', 'k4', … */
+function nextKontoId(existing: readonly KontoId[]): KontoId {
+  if (!existing.includes('zweit')) return 'zweit'
+  for (let n = 3; ; n++) {
+    if (!existing.includes(`k${n}`)) return `k${n}`
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [konto, setKonto] = useState<KontoId>('haupt')
-  const [yearsByKonto, setYearsByKonto] = useState<Record<KontoId, number[]>>({ haupt: [], zweit: [] })
-  const [zweitName, setZweitName] = useState('Zweitkonto')
+  const [kontoIds, setKontoIds] = useState<KontoId[]>(['haupt'])
+  const [yearsByKonto, setYearsByKonto] = useState<Record<KontoId, number[]>>({ haupt: [] })
+  const [kontoNames, setKontoNames] = useState<Record<KontoId, string>>({})
+  const [creatingKonto, setCreatingKonto] = useState(false)
   const [file, setFile] = useState<YearFile | null>(null)
   const [settings, setSettings] = useState<AppSettings>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     ;(async () => {
-      const [haupt, zweit, loadedSettings] = await Promise.all([
-        api.listYears('haupt'),
-        api.listYears('zweit'),
-        api.loadSettings(),
-      ])
-      setYearsByKonto({ haupt, zweit })
+      const [ids, loadedSettings] = await Promise.all([api.listKontos(), api.loadSettings()])
       setSettings((loadedSettings as AppSettings) ?? {})
-      const [hauptFiles, zweitFiles] = await Promise.all([
-        Promise.all(haupt.map((year) => loadMigratedYear('haupt', year))),
-        Promise.all(zweit.map((year) => loadMigratedYear('zweit', year))),
-      ])
-      const latestZweit = zweitFiles[0]
-      if (latestZweit?.kontoName) setZweitName(latestZweit.kontoName)
-      if (hauptFiles[0]) setFile(hauptFiles[0])
+      const yearsEntries = await Promise.all(
+        ids.map(async (id) => [id, await api.listYears(id)] as const),
+      )
+      setYearsByKonto(Object.fromEntries(yearsEntries))
+      // Alle Jahresdateien einmal laden: führt Migrationen aus und liefert die Konto-Namen
+      const names: Record<string, string> = {}
+      let hauptFile: YearFile | null = null
+      for (const [id, years] of yearsEntries) {
+        const files = await Promise.all(years.map((year) => loadMigratedYear(id, year)))
+        const latest = files[0]
+        if (latest?.kontoName) names[id] = latest.kontoName
+        if (id === 'haupt') hauptFile = latest ?? null
+      }
+      setKontoNames(names)
+      setKontoIds(ids)
+      if (hauptFile) setFile(hauptFile)
       setLoading(false)
     })()
   }, [])
@@ -109,15 +138,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const years = yearsByKonto[konto]
+  const years = yearsByKonto[konto] ?? []
 
   const store: Store = useMemo(
     () => ({
       loading,
       konto,
       years,
-      zweitExists: yearsByKonto.zweit.length > 0,
-      zweitName,
+      kontos: kontoIds.map((id) => ({
+        id,
+        // Der Name des aktiven Buchs kommt live aus der geladenen Datei,
+        // damit Umbenennungen sofort in der Seitenleiste erscheinen.
+        name:
+          (id === konto && file && (file.konto ?? 'haupt') === konto ? file.kontoName : undefined) ??
+          kontoNames[id] ??
+          defaultKontoName(id),
+      })),
+      creatingKonto,
+      startKontoSetup() {
+        setCreatingKonto(true)
+      },
+      cancelKontoSetup() {
+        setCreatingKonto(false)
+      },
       file,
       settings,
       async updateSettings(patch) {
@@ -129,7 +172,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (target === konto) return
         flushPendingSave(file)
         setKonto(target)
-        const list = yearsByKonto[target]
+        const list = yearsByKonto[target] ?? []
         if (list.length > 0) {
           const data = await loadMigratedYear(target, list[0])
           setFile(data ?? null)
@@ -157,27 +200,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setYearsByKonto((y) => ({ ...y, [konto]: [...new Set([year, ...y[konto]])].sort((a, b) => b - a) }))
         setFile(next)
       },
-      async createZweitkonto(name, fiscalStartMonth, year, openingBalance) {
+      async createKonto(name, fiscalStartMonth, year, openingBalance) {
         flushPendingSave(file)
+        const id = nextKontoId(kontoIds)
         const next: YearFile = {
           ...emptyYearFile(year),
-          konto: 'zweit',
+          konto: id,
           kontoName: name,
           fiscalStartMonth,
           openingBalance,
           clubName: file?.clubName ?? '',
           treasurerName: file?.treasurerName ?? '',
         }
-        await api.saveYear('zweit', year, next)
-        setYearsByKonto((y) => ({ ...y, zweit: [...new Set([year, ...y.zweit])].sort((a, b) => b - a) }))
-        setZweitName(name)
-        setKonto('zweit')
+        await api.saveYear(id, year, next)
+        setKontoIds((ids) => (ids.includes(id) ? ids : [...ids, id]))
+        setYearsByKonto((y) => ({ ...y, [id]: [...new Set([year, ...(y[id] ?? [])])].sort((a, b) => b - a) }))
+        setKontoNames((n) => ({ ...n, [id]: name }))
+        setCreatingKonto(false)
+        setKonto(id)
         setFile(next)
       },
       async deleteYear(year) {
         const remaining = years.filter((y) => y !== year)
         // Das letzte Jahr des Hauptkontos kann nicht gelöscht werden;
-        // beim Zweitkonto verschwindet mit dem letzten Jahr das ganze Konto.
+        // bei weiteren Konten verschwindet mit dem letzten Jahr das ganze Konto.
         if (konto === 'haupt' && remaining.length === 0) return
         if (file?.year === year && saveTimer.current) {
           clearTimeout(saveTimer.current)
@@ -185,9 +231,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         await api.deleteYear(konto, year)
         setYearsByKonto((y) => ({ ...y, [konto]: remaining }))
-        if (konto === 'zweit' && remaining.length === 0) {
+        if (konto !== 'haupt' && remaining.length === 0) {
+          setKontoIds((ids) => ids.filter((id) => id !== konto))
           setKonto('haupt')
-          const data = await loadMigratedYear('haupt', yearsByKonto.haupt[0])
+          const data = await loadMigratedYear('haupt', (yearsByKonto.haupt ?? [])[0])
           setFile(data ?? null)
           return
         }
@@ -255,7 +302,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true
       },
     }),
-    [loading, konto, years, yearsByKonto, zweitName, file, settings, update, flushPendingSave],
+    [loading, konto, years, yearsByKonto, kontoIds, kontoNames, creatingKonto, file, settings, update, flushPendingSave],
   )
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>

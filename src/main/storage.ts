@@ -22,9 +22,13 @@ function backupDir(): string {
   return dir
 }
 
-/** Dateiname je Buch: Hauptkonto "kassenbuch-…", Zweitkonto "kassenbuch-k2-…". */
+/**
+ * Dateiname je Buch: Hauptkonto "kassenbuch-…", das historisch zweite Buch
+ * "kassenbuch-k2-…", weitere Bücher "kassenbuch-k3-…", "kassenbuch-k4-…" usw.
+ */
 function prefixFor(konto: string): string {
-  return konto === 'zweit' ? 'kassenbuch-k2' : 'kassenbuch'
+  if (konto === 'haupt' || !konto) return 'kassenbuch'
+  return `kassenbuch-${konto === 'zweit' ? 'k2' : konto}`
 }
 
 function fileFor(konto: string, year: number): string {
@@ -32,12 +36,29 @@ function fileFor(konto: string, year: number): string {
 }
 
 export function listYears(konto: string): number[] {
-  const re = konto === 'zweit' ? /^kassenbuch-k2-(\d{4})\.json$/ : /^kassenbuch-(\d{4})\.json$/
+  const re = new RegExp(`^${prefixFor(konto)}-(\\d{4})\\.json$`)
   return readdirSync(dataDir())
     .map((f) => re.exec(f)?.[1])
     .filter((y): y is string => Boolean(y))
     .map(Number)
     .sort((a, b) => b - a)
+}
+
+/** Alle vorhandenen Bücher anhand der Jahresdateien ('haupt' immer zuerst). */
+export function listKontos(): string[] {
+  const found = new Set<string>(['haupt'])
+  for (const f of readdirSync(dataDir())) {
+    const m = /^kassenbuch-(k\d+)-\d{4}\.json$/.exec(f)
+    if (m) found.add(m[1] === 'k2' ? 'zweit' : m[1])
+  }
+  const rest = [...found]
+    .filter((k) => k !== 'haupt')
+    .sort((a, b) => kontoNumber(a) - kontoNumber(b))
+  return ['haupt', ...rest]
+}
+
+function kontoNumber(konto: string): number {
+  return konto === 'zweit' ? 2 : Number(konto.slice(1))
 }
 
 export function loadYear(konto: string, year: number): unknown | null {
@@ -116,12 +137,12 @@ function syncDataToCloud(settings: unknown = loadSettings()): void {
     const sourceDir = dataDir()
     if (resolve(dir) === resolve(sourceDir)) return
     for (const file of readdirSync(dir)) {
-      if (/^(kassenbuch(-k2)?-\d{4}|einstellungen)\.json$/.test(file)) {
+      if (/^(kassenbuch(-k\d+)?-\d{4}|einstellungen)\.json$/.test(file)) {
         rmSync(join(dir, file), { force: true })
       }
     }
     for (const file of readdirSync(sourceDir)) {
-      if (/^(kassenbuch(-k2)?-\d{4}|einstellungen)\.json$/.test(file)) {
+      if (/^(kassenbuch(-k\d+)?-\d{4}|einstellungen)\.json$/.test(file)) {
         copyFileSync(join(sourceDir, file), join(dir, basename(file)))
       }
     }

@@ -69,7 +69,7 @@ describe('buildReportHtml', () => {
       ],
     })
 
-    const html = buildReportHtml(main, null, second)
+    const html = buildReportHtml(main, null, [second])
 
     expect(html).toContain('1. Bericht Hauptkonto · IBAN Hauptkonto')
     expect(html).toContain('2. Bericht Karnevalskonto · IBAN Karneval')

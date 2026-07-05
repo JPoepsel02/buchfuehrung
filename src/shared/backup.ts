@@ -1,3 +1,4 @@
+import { isKontoId } from './types'
 import type { AppSettings, YearFile } from './types'
 
 /**
@@ -62,7 +63,7 @@ export function validateBackup(data: unknown): ValidationResult {
     if (!Number.isInteger(f.openingBalance)) err(`Kassenjahr ${yearNo}: Anfangssaldo ist kein Cent-Betrag.`)
     if (typeof f.clubName !== 'string' || typeof f.treasurerName !== 'string')
       err(`Kassenjahr ${yearNo}: Vereins-/Kassenwart-Name fehlt.`)
-    if (f.konto !== undefined && f.konto !== 'haupt' && f.konto !== 'zweit')
+    if (f.konto !== undefined && !isKontoId(f.konto))
       err(`Kassenjahr ${yearNo}: ungültige Konto-Kennung.`)
     if (f.kontoName !== undefined && typeof f.kontoName !== 'string')
       err(`Kassenjahr ${yearNo}: Konto-Name ist kein Text.`)

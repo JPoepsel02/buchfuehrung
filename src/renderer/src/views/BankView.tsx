@@ -57,6 +57,12 @@ export function BankView() {
 
   if (!file) return null
 
+  // Jedes Kassenbuch hat höchstens EINE Bankverbindung – hier zählt nur die
+  // des aktiven Buchs (Einträge ohne Konto-Kennung stammen aus Altdaten = haupt).
+  const bankKonto = file.konto ?? 'haupt'
+  const account = accounts.find((a) => (a.konto ?? 'haupt') === bankKonto) ?? null
+  const kontoLabel = bankKonto === 'haupt' ? 'Hauptkonto' : file.kontoName || 'dieses Konto'
+
   function showToast(text: string) {
     setToast(text)
     setTimeout(() => setToast(''), 6000)
@@ -172,7 +178,8 @@ export function BankView() {
   }
 
   async function saveAccount(draft: BankAccountConfig) {
-    const next = isNew ? [...accounts, draft] : accounts.map((a) => (a.id === draft.id ? draft : a))
+    const withKonto = { ...draft, konto: bankKonto }
+    const next = isNew ? [...accounts, withKonto] : accounts.map((a) => (a.id === draft.id ? withKonto : a))
     await updateSettings({ bankAccounts: next })
     setEditing(null)
   }
@@ -191,34 +198,27 @@ export function BankView() {
       <section className="card">
         <div className="toolbar" style={{ marginBottom: 'var(--space-3)' }}>
           <h2 className="card__title" style={{ marginBottom: 0 }}>
-            Bankkonten
+            Bankverbindung · {kontoLabel}
           </h2>
           <div className="toolbar__spacer" />
-          <label className="checkrow" style={{ whiteSpace: 'nowrap' }}>
-            Zeitraum
-            <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Abruf-Zeitraum">
-              <option value={30}>letzte 30 Tage</option>
-              <option value={60}>letzte 60 Tage</option>
-              <option value={90}>letzte 90 Tage</option>
-            </select>
-          </label>
-          <button
-            className="btn btn--sm"
-            onClick={() => {
-              setIsNew(true)
-              setEditing({ id: makeId(), label: '', blz: '', fintsUrl: DEFAULT_FINTS_URL, userId: '' })
-            }}
-          >
-            Konto hinzufügen
-          </button>
+          {account && (
+            <label className="checkrow" style={{ whiteSpace: 'nowrap' }}>
+              Zeitraum
+              <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Abruf-Zeitraum">
+                <option value={30}>letzte 30 Tage</option>
+                <option value={60}>letzte 60 Tage</option>
+                <option value={90}>letzte 90 Tage</option>
+              </select>
+            </label>
+          )}
         </div>
 
-        {accounts.length === 0 && !editing && (
+        {!account && !editing && (
           <div className="empty">
-            <h3>Noch kein Bankkonto hinterlegt</h3>
+            <h3>Noch keine Bankverbindung für {kontoLabel} hinterlegt</h3>
             <p>
-              Hinterlege dein Online-Banking-Konto (VR-NetKey und Bankleitzahl) – du kannst beliebig viele Konten
-              anlegen.
+              Jedes Kassenbuch hat seine eigene Bankverbindung – hinterlege hier das Online-Banking-Konto
+              (VR-NetKey und Bankleitzahl), das zu {kontoLabel} gehört.
               <br />
               Die PIN wird ausschließlich verschlüsselt im Schlüsselbund deines Rechners gespeichert, niemals in den
               Kassendaten.
@@ -227,15 +227,15 @@ export function BankView() {
               className="btn btn--primary"
               onClick={() => {
                 setIsNew(true)
-                setEditing({ id: makeId(), label: '', blz: '', fintsUrl: DEFAULT_FINTS_URL, userId: '' })
+                setEditing({ id: makeId(), konto: bankKonto, label: '', blz: '', fintsUrl: DEFAULT_FINTS_URL, userId: '' })
               }}
             >
-              Erstes Konto hinzufügen
+              Bankverbindung einrichten
             </button>
           </div>
         )}
 
-        {accounts.length > 0 && (
+        {account && (
           <table className="ledger">
             <thead>
               <tr>
@@ -247,45 +247,43 @@ export function BankView() {
               </tr>
             </thead>
             <tbody>
-              {accounts.map((account) => (
-                <tr key={account.id}>
-                  <td>
-                    <strong>{account.label || 'Ohne Namen'}</strong>
-                    {account.iban && <div className="hint">{account.iban}</div>}
-                  </td>
-                  <td>{account.blz}</td>
-                  <td>{account.userId}</td>
-                  <td>{account.accountNumber ?? <span className="hint">wird beim ersten Abruf gewählt</span>}</td>
-                  <td className="num" style={{ whiteSpace: 'nowrap' }}>
-                    <button
-                      className="btn btn--primary btn--sm"
-                      disabled={busyId !== null}
-                      onClick={() => {
-                        if (confirmDraftReplace()) void beginFetch(account)
-                      }}
-                    >
-                      {busyId === account.id ? 'Abruf läuft …' : 'Umsätze abrufen'}
-                    </button>{' '}
-                    <button
-                      className="btn btn--ghost btn--sm"
-                      disabled={busyId !== null}
-                      onClick={() => {
-                        setIsNew(false)
-                        setEditing(account)
-                      }}
-                    >
-                      Bearbeiten
-                    </button>{' '}
-                    <button
-                      className="btn btn--ghost btn--sm btn--danger"
-                      disabled={busyId !== null}
-                      onClick={() => void removeAccount(account)}
-                    >
-                      Entfernen
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              <tr>
+                <td>
+                  <strong>{account.label || 'Ohne Namen'}</strong>
+                  {account.iban && <div className="hint">{account.iban}</div>}
+                </td>
+                <td>{account.blz}</td>
+                <td>{account.userId}</td>
+                <td>{account.accountNumber ?? <span className="hint">wird beim ersten Abruf gewählt</span>}</td>
+                <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                  <button
+                    className="btn btn--primary btn--sm"
+                    disabled={busyId !== null}
+                    onClick={() => {
+                      if (confirmDraftReplace()) void beginFetch(account)
+                    }}
+                  >
+                    {busyId === account.id ? 'Abruf läuft …' : 'Umsätze abrufen'}
+                  </button>{' '}
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    disabled={busyId !== null}
+                    onClick={() => {
+                      setIsNew(false)
+                      setEditing(account)
+                    }}
+                  >
+                    Bearbeiten
+                  </button>{' '}
+                  <button
+                    className="btn btn--ghost btn--sm btn--danger"
+                    disabled={busyId !== null}
+                    onClick={() => void removeAccount(account)}
+                  >
+                    Entfernen
+                  </button>
+                </td>
+              </tr>
             </tbody>
           </table>
         )}
@@ -380,7 +378,7 @@ function AccountForm({
           <input
             value={draft.blz}
             onChange={(e) => setDraft({ ...draft, blz: e.target.value.replace(/\s/g, '') })}
-            placeholder="z. B. 41660124"
+            placeholder="8-stellige Bankleitzahl"
             inputMode="numeric"
           />
         </label>

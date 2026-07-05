@@ -118,12 +118,16 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
 
 /**
  * Erzeugt den druckfertigen Prüfbericht als eigenständiges HTML-Dokument
- * (A4): Titel + Abschnitte des Hauptkontos, optional die Abschnitte des
- * Zweitkontos (eigenes Kassenjahr, strikt getrennt – keine Summen
- * über beide Konten) und zum Schluss der Kassenprüfbericht nach Vorlage,
- * der beide Konten abdeckt.
+ * (A4): Titel + Abschnitte des Hauptkontos, danach die Abschnitte aller
+ * weiteren Konten (eigenes Kassenjahr, strikt getrennt – keine Summen
+ * über mehrere Konten) und zum Schluss der Kassenprüfbericht nach Vorlage,
+ * der alle Konten abdeckt.
  */
-export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zweit?: YearFile | null): string {
+export function buildReportHtml(
+  file: YearFile,
+  logoDataUrl?: string | null,
+  others: readonly YearFile[] = [],
+): string {
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -192,17 +196,17 @@ export function buildReportHtml(file: YearFile, logoDataUrl?: string | null, zwe
 
   ${ledgerSections(file, 1, accountReportLabel(file, file.audit?.konto1))}
 
-  ${
-    zweit
-      ? `
+  ${others
+    .map(
+      (other, i) => `
   <div class="pagebreak"></div>
-  ${ledgerSections(zweit, 2, accountReportLabel(zweit, file.audit?.konto2))}
-  `
-      : ''
-  }
+  ${ledgerSections(other, 2 + i, accountReportLabel(other, i === 0 ? file.audit?.konto2 : undefined))}
+  `,
+    )
+    .join('\n')}
 
   <div class="pagebreak"></div>
-  ${auditSection(file, zweit ? 3 : 2)}
+  ${auditSection(file, 2 + others.length)}
   <footer>Erstellt mit Buchführung · Kassenbericht ${file.year}</footer>
 </body>
 </html>`
@@ -257,7 +261,7 @@ function auditSection(file: YearFile, sectionNo: number): string {
 }
 
 function accountName(file: YearFile): string {
-  return file.kontoName?.trim() || (file.konto === 'zweit' ? 'Zweitkonto' : 'Hauptkonto')
+  return file.kontoName?.trim() || ((file.konto ?? 'haupt') === 'haupt' ? 'Hauptkonto' : 'Weiteres Konto')
 }
 
 function accountReportLabel(file: YearFile, accountReference?: string): string {

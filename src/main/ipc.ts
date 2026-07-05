@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { registerBankIpc } from './bank'
-import { dataDirPath, deleteYear, listYears, loadSettings, loadYear, saveSettings, saveYear } from './storage'
+import { dataDirPath, deleteYear, listKontos, listYears, loadSettings, loadYear, saveSettings, saveYear } from './storage'
 import { checkForUpdate, downloadAndInstall } from './updater'
 import type { UpdateInfo } from './updater'
 
@@ -32,6 +32,7 @@ export function registerIpc(): void {
   ipcMain.handle('update:install', (e, info: UpdateInfo) =>
     downloadAndInstall(BrowserWindow.fromWebContents(e.sender), info),
   )
+  ipcMain.handle('kontos:list', () => listKontos())
   ipcMain.handle('years:list', (_e, konto: string) => listYears(konto ?? 'haupt'))
   ipcMain.handle('years:load', (_e, konto: string, year: number) => loadYear(konto ?? 'haupt', year))
   ipcMain.handle('years:save', (_e, konto: string, year: number, data: unknown) =>
