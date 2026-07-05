@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, isElectron } from './api'
+import { runStartupBankFetch } from './autoFetch'
 import { LogoMark } from './components/LogoMark'
 import { useStore } from './store'
 import { SetupView } from './views/SetupView'
@@ -33,12 +34,44 @@ type ViewId = (typeof VIEWS)[number]['id']
 const isMac = navigator.userAgent.includes('Macintosh')
 
 export function App() {
-  const { loading, file, years, selectYear, settings, konto, selectKonto, kontos, creatingKonto, startKontoSetup } =
-    useStore()
+  const {
+    loading,
+    file,
+    years,
+    selectYear,
+    settings,
+    konto,
+    selectKonto,
+    kontos,
+    creatingKonto,
+    startKontoSetup,
+    update,
+  } = useStore()
   const [view, setView] = useState<ViewId>('uebersicht')
   const [updateHint, setUpdateHint] = useState('')
+  const [bankHint, setBankHint] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [bookingsFilter, setBookingsFilter] = useState('')
+  const autoFetchStarted = useRef(false)
+
+  // Stiller Bank-Abruf beim Start: neue Umsätze landen im Import-Entwurf
+  // des jeweiligen Kontos; alles mit nötiger Interaktion wird übersprungen.
+  useEffect(() => {
+    if (loading || !isElectron || autoFetchStarted.current) return
+    if (!settings.bankAccounts?.length) return
+    autoFetchStarted.current = true
+    void runStartupBankFetch({
+      accounts: settings.bankAccounts,
+      activeKonto: konto,
+      applyToActive: update,
+    }).then((summary) => {
+      if (summary) {
+        setBankHint(summary)
+        setTimeout(() => setBankHint(''), 15000)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, settings.bankAccounts])
 
   // Strg/Cmd+F öffnet die globale Suche
   useEffect(() => {
@@ -165,7 +198,7 @@ export function App() {
         </div>
       </aside>
       <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>
-        {view === 'uebersicht' && <UebersichtView />}
+        {view === 'uebersicht' && <UebersichtView onNavigate={(target) => setView(target)} />}
         {view === 'buchungen' && (
           <BuchungenView externalFilter={bookingsFilter} onFilterConsumed={() => setBookingsFilter('')} />
         )}
@@ -178,6 +211,7 @@ export function App() {
       </main>
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} onJump={jumpToBooking} />}
       {updateHint && <div className="toast">{updateHint}</div>}
+      {bankHint && <div className="toast">{bankHint}</div>}
     </div>
   )
 }

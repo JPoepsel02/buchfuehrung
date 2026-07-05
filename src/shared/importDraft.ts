@@ -13,6 +13,57 @@ export function receiptAvailableForImport(row: { receiptAvailable?: boolean }): 
  * Duplikate vorab abwählen. Liefert die Mutation für store.update() plus
  * Hinweise über nachgezogene Zuordnungen.
  */
+/**
+ * Hängt neu abgerufene Umsätze an den bestehenden Import-Entwurf an, ohne
+ * vorhandene Zeilen (und damit bereits erledigte Zuweisungsarbeit) zu
+ * verändern. Bereits bekannte Umsätze – im Entwurf oder als importierte
+ * Buchung – werden übersprungen. Für den stillen Abruf beim App-Start.
+ */
+export function appendToDraft(
+  file: YearFile,
+  parsedRows: readonly StatementRow[],
+  sourceName: string,
+): { mutate: (f: YearFile) => YearFile; added: number } {
+  const known = new Set<string>([
+    ...(file.importDraft?.rows.map((r) => r.hash) ?? []),
+    ...file.bookings.flatMap((b) => (b.importHash ? [b.importHash] : [])),
+  ])
+  const fresh = parsedRows
+    .filter((r) => !known.has(r.hash))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  if (fresh.length === 0) return { mutate: (f) => f, added: 0 }
+  const dupes = classifyDraftDuplicates(
+    file.bookings,
+    fresh.map((r) => ({ hash: r.hash, date: r.date, amount: r.amount })),
+  )
+  const newRows: ImportDraftRow[] = fresh.map((r, i) => ({
+    date: r.date,
+    bankText: r.description,
+    amount: r.amount,
+    hash: r.hash,
+    name: r.name,
+    description: '',
+    selected: !dupes.hard[i] && !dupes.soft[i] && inFiscalYear(file, r.date),
+    categoryId: '',
+    isUmsatz: false,
+    receiptAvailable: false,
+  }))
+  return {
+    added: newRows.length,
+    mutate: (f) => {
+      const existingHashes = new Set(f.importDraft?.rows.map((r) => r.hash) ?? [])
+      const rows = newRows.filter((r) => !existingHashes.has(r.hash))
+      if (rows.length === 0) return f
+      return {
+        ...f,
+        importDraft: f.importDraft
+          ? { ...f.importDraft, rows: [...f.importDraft.rows, ...rows] }
+          : { fileName: sourceName, skipped: 0, rows },
+      }
+    },
+  }
+}
+
 export function buildDraft(
   file: YearFile,
   parsedRows: readonly StatementRow[],

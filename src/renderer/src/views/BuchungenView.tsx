@@ -57,6 +57,15 @@ export function BuchungenView({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
+  // Mehrfachauswahl für die Sammel-Bearbeitung
+  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set())
+  const [bulk, setBulk] = useState({
+    categoryId: '',
+    subcategory: '',
+    name: '',
+    receiptAvailable: '' as '' | 'ja' | 'nein',
+    isUmsatz: '' as '' | 'ja' | 'nein',
+  })
 
   // Vorschläge: bereits verwendete Unterkategorien der gewählten Kategorie
   const subSuggestions = useMemo(
@@ -138,6 +147,48 @@ export function BuchungenView({
     setEditingId(null)
     setForm(emptyForm(activeCats[0]?.id ?? '', file!))
     setError('')
+  }
+
+  function toggleChecked(id: string, checked: boolean) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const visibleChecked = rows.filter((r) => checkedIds.has(r.id))
+  const allVisibleChecked = rows.length > 0 && rows.every((r) => checkedIds.has(r.id))
+
+  function toggleAllVisible(checked: boolean) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      for (const r of rows) {
+        if (checked) next.add(r.id)
+        else next.delete(r.id)
+      }
+      return next
+    })
+  }
+
+  const bulkHasValue =
+    Boolean(bulk.categoryId || bulk.subcategory.trim() || bulk.name.trim()) ||
+    bulk.receiptAvailable !== '' ||
+    bulk.isUmsatz !== ''
+
+  /** Wendet die Sammel-Bearbeitung auf alle ausgewählten Buchungen an. */
+  function applyBulk() {
+    const patch: Partial<Booking> = {}
+    if (bulk.categoryId) patch.categoryId = bulk.categoryId
+    if (bulk.subcategory.trim()) patch.subcategory = bulk.subcategory.trim()
+    if (bulk.name.trim()) patch.name = bulk.name.trim()
+    if (bulk.receiptAvailable) patch.receiptAvailable = bulk.receiptAvailable === 'ja'
+    if (bulk.isUmsatz) patch.isUmsatz = bulk.isUmsatz === 'ja'
+    // Kategorie-Wechsel vergibt je Buchung eine neue Beleg-Nummer (updateBooking)
+    for (const r of visibleChecked) updateBooking(r.id, patch)
+    setCheckedIds(new Set())
+    setBulk({ categoryId: '', subcategory: '', name: '', receiptAvailable: '', isUmsatz: '' })
   }
 
   return (
@@ -281,6 +332,56 @@ export function BuchungenView({
             />
           </div>
         </div>
+        {visibleChecked.length > 1 && (
+          <div className="bulkbar">
+            <strong className="bulkbar__count">{visibleChecked.length} ausgewählt</strong>
+            <select
+              value={bulk.categoryId}
+              onChange={(e) => setBulk({ ...bulk, categoryId: e.target.value })}
+              aria-label="Kategorie für Auswahl"
+            >
+              <option value="">Kategorie unverändert</option>
+              {activeCats.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={bulk.subcategory}
+              onChange={(e) => setBulk({ ...bulk, subcategory: e.target.value })}
+              placeholder="Unterkategorie"
+              aria-label="Unterkategorie für Auswahl"
+            />
+            <input
+              value={bulk.name}
+              onChange={(e) => setBulk({ ...bulk, name: e.target.value })}
+              placeholder="Name"
+              aria-label="Name für Auswahl"
+            />
+            <select
+              value={bulk.receiptAvailable}
+              onChange={(e) => setBulk({ ...bulk, receiptAvailable: e.target.value as '' | 'ja' | 'nein' })}
+              aria-label="Beleg für Auswahl"
+            >
+              <option value="">Beleg unverändert</option>
+              <option value="ja">Beleg: vorhanden</option>
+              <option value="nein">Beleg: fehlt</option>
+            </select>
+            <select
+              value={bulk.isUmsatz}
+              onChange={(e) => setBulk({ ...bulk, isUmsatz: e.target.value as '' | 'ja' | 'nein' })}
+              aria-label="Umsatz für Auswahl"
+            >
+              <option value="">Umsatz unverändert</option>
+              <option value="ja">zählt als Umsatz</option>
+              <option value="nein">kein Umsatz</option>
+            </select>
+            <button className="btn btn--sm btn--primary" disabled={!bulkHasValue} onClick={applyBulk}>
+              Auf Auswahl anwenden
+            </button>
+          </div>
+        )}
         <div className="bookings-list__scroll">
           {rows.length === 0 ? (
             <div className="empty">
@@ -290,6 +391,14 @@ export function BuchungenView({
             <table className="ledger">
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={allVisibleChecked}
+                      onChange={(e) => toggleAllVisible(e.target.checked)}
+                      aria-label="Alle sichtbaren Buchungen auswählen"
+                    />
+                  </th>
                   <th>Nr.</th>
                   <th>Datum</th>
                   <th>Kategorie</th>
@@ -321,6 +430,14 @@ export function BuchungenView({
                       }
                     }}
                   >
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={checkedIds.has(r.id)}
+                        onChange={(e) => toggleChecked(r.id, e.target.checked)}
+                        aria-label={`Buchung ${r.ref} auswählen`}
+                      />
+                    </td>
                     <td className="ref">{r.ref}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</td>
                     <td>

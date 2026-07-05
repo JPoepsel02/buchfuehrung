@@ -26,10 +26,23 @@ function classifyRows(bookings: Booking[], rows: readonly ImportDraftRow[]) {
  * Übernahme als Buchungen. Wird vom Kontoauszug-Import (CSV) und vom
  * Online-Banking-Abruf gemeinsam genutzt.
  */
+/** Sammel-Zuweisung: leere Felder bzw. "unverändert" lassen den Wert der Zeile unangetastet. */
+interface BulkPatch {
+  categoryId: string
+  subcategory: string
+  description: string
+  name: string
+  receiptAvailable: '' | 'ja' | 'nein'
+  isUmsatz: '' | 'ja' | 'nein'
+}
+
+const EMPTY_BULK: BulkPatch = { categoryId: '', subcategory: '', description: '', name: '', receiptAvailable: '', isUmsatz: '' }
+
 export function ImportDraftCard() {
   const { file, update } = useStore()
   const [toast, setToast] = useState('')
   const [onlyNew, setOnlyNew] = useState(false)
+  const [bulk, setBulk] = useState<BulkPatch>(EMPTY_BULK)
 
   const activeCats = useMemo(
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
@@ -138,6 +151,43 @@ export function ImportDraftCard() {
     update((f) => ({ ...f, importDraft: null }))
   }
 
+  /** Wendet die Sammel-Zuweisung auf alle ausgewählten (nicht gesperrten) Zeilen an. */
+  function applyBulk() {
+    const cls = classifyRows(file!.bookings, draft.rows)
+    let touched = 0
+    update((f) => {
+      if (!f.importDraft) return f
+      return {
+        ...f,
+        importDraft: {
+          ...f.importDraft,
+          rows: f.importDraft.rows.map((r, i) => {
+            if (!r.selected || cls.hard[i]) return r
+            touched++
+            const next = { ...r }
+            // Kategorie/Verwendungszweck/Unterkategorie gelten nicht für aufgeteilte Zeilen
+            if (!r.splits?.length) {
+              if (bulk.categoryId) next.categoryId = bulk.categoryId
+              if (bulk.subcategory.trim()) next.subcategory = bulk.subcategory.trim()
+              if (bulk.description.trim()) next.description = bulk.description.trim()
+              if (bulk.isUmsatz) next.isUmsatz = bulk.isUmsatz === 'ja'
+            }
+            if (bulk.name.trim()) next.name = bulk.name.trim()
+            if (bulk.receiptAvailable) next.receiptAvailable = bulk.receiptAvailable === 'ja'
+            return next
+          }),
+        },
+      }
+    })
+    setToast(`Zuweisung auf ${touched} ausgewählte Umsätze angewendet.`)
+    setTimeout(() => setToast(''), 4000)
+  }
+
+  const bulkHasValue =
+    Boolean(bulk.categoryId || bulk.subcategory.trim() || bulk.description.trim() || bulk.name.trim()) ||
+    bulk.receiptAvailable !== '' ||
+    bulk.isUmsatz !== ''
+
   /** Übernimmt alle ausgewählten Zeilen als Buchungen und entfernt sie aus dem Entwurf. */
   function doImport() {
     const selectedRows = draft.rows
@@ -225,6 +275,63 @@ export function ImportDraftCard() {
         <p className="hint" style={{ marginTop: 0 }}>
           {draft.skipped} Zeilen konnten nicht gelesen werden (z. B. Kopf- oder Saldozeilen).
         </p>
+      )}
+      {selected.length > 1 && (
+        <div className="bulkbar">
+          <strong className="bulkbar__count">{selected.length} ausgewählt</strong>
+          <select
+            value={bulk.categoryId}
+            onChange={(e) => setBulk({ ...bulk, categoryId: e.target.value })}
+            aria-label="Kategorie für Auswahl"
+          >
+            <option value="">Kategorie unverändert</option>
+            {activeCats.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <input
+            value={bulk.subcategory}
+            onChange={(e) => setBulk({ ...bulk, subcategory: e.target.value })}
+            placeholder="Unterkategorie"
+            aria-label="Unterkategorie für Auswahl"
+            list={bulk.categoryId ? `import-sub-suggestions-${bulk.categoryId}` : undefined}
+          />
+          <input
+            value={bulk.description}
+            onChange={(e) => setBulk({ ...bulk, description: e.target.value })}
+            placeholder="Verwendungszweck"
+            aria-label="Verwendungszweck für Auswahl"
+          />
+          <input
+            value={bulk.name}
+            onChange={(e) => setBulk({ ...bulk, name: e.target.value })}
+            placeholder="Name"
+            aria-label="Name für Auswahl"
+          />
+          <select
+            value={bulk.receiptAvailable}
+            onChange={(e) => setBulk({ ...bulk, receiptAvailable: e.target.value as BulkPatch['receiptAvailable'] })}
+            aria-label="Beleg für Auswahl"
+          >
+            <option value="">Beleg unverändert</option>
+            <option value="ja">Beleg: vorhanden</option>
+            <option value="nein">Beleg: fehlt</option>
+          </select>
+          <select
+            value={bulk.isUmsatz}
+            onChange={(e) => setBulk({ ...bulk, isUmsatz: e.target.value as BulkPatch['isUmsatz'] })}
+            aria-label="Umsatz für Auswahl"
+          >
+            <option value="">Umsatz unverändert</option>
+            <option value="ja">zählt als Umsatz</option>
+            <option value="nein">kein Umsatz</option>
+          </select>
+          <button className="btn btn--sm btn--primary" disabled={!bulkHasValue} onClick={applyBulk}>
+            Auf Auswahl anwenden
+          </button>
+        </div>
       )}
       {activeCats.map((category) => (
         <datalist key={category.id} id={`import-sub-suggestions-${category.id}`}>
