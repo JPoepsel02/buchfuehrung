@@ -34,6 +34,12 @@ export interface Api {
   checkForUpdate(): Promise<UpdateInfo>
   installUpdate(info: UpdateInfo): Promise<{ ok: boolean; error?: string }>
   onUpdateProgress(cb: (p: { received: number; total: number }) => void): () => void
+  bankFetch(account: unknown, opts: unknown): Promise<unknown>
+  bankContinue(sessionId: string, tan?: string): Promise<unknown>
+  bankCancel(sessionId: string): Promise<void>
+  bankPinExists(accountId: string): Promise<boolean>
+  bankPinDelete(accountId: string): Promise<void>
+  bankForget(accountId: string): Promise<void>
 }
 
 declare global {
@@ -140,6 +146,18 @@ const webFallback: Api = {
   onUpdateProgress() {
     return () => {}
   },
+  async bankFetch() {
+    return { status: 'error', message: 'Der Bank-Abruf ist nur in der installierten App verfügbar.' }
+  },
+  async bankContinue() {
+    return { status: 'error', message: 'Der Bank-Abruf ist nur in der installierten App verfügbar.' }
+  },
+  async bankCancel() {},
+  async bankPinExists() {
+    return false
+  },
+  async bankPinDelete() {},
+  async bankForget() {},
 }
 
 export const api: Api = window.kassenwart ?? webFallback

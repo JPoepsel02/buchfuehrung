@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { receiptAvailableForImport, subcategorySuggestions } from '../importDraft'
+import { emptyYearFile } from '../defaults'
+import { buildDraft, receiptAvailableForImport, subcategorySuggestions } from '../importDraft'
+import type { Booking, YearFile } from '../types'
+import type { StatementRow } from '../csv'
 
 describe('receiptAvailableForImport', () => {
   test('behandelt alte Importentwürfe ohne Feld als nicht vorhanden', () => {
@@ -23,5 +26,62 @@ describe('receiptAvailableForImport', () => {
     expect(subcategorySuggestions(bookings, 'a')).toEqual(['Beiträge', 'Getränke'])
     expect(subcategorySuggestions(bookings, 'b')).toEqual(['Reise'])
     expect(subcategorySuggestions(bookings, '')).toEqual([])
+  })
+})
+
+describe('buildDraft', () => {
+  const row = (date: string, amount: number, hash: string): StatementRow => ({
+    date,
+    name: 'Erika Muster',
+    description: `Umsatz ${hash}`,
+    amount,
+    hash,
+    legacyHashes: [],
+  })
+
+  function fileWith(bookings: Booking[] = []): YearFile {
+    return { ...emptyYearFile(2026), bookings }
+  }
+
+  test('sortiert Bank-Reihenfolge (neueste zuerst) chronologisch aufsteigend', () => {
+    const { mutate } = buildDraft(
+      fileWith(),
+      [row('2026-06-20', 7500, 'h1'), row('2026-04-02', -2350, 'h2')],
+      'Abruf',
+      0,
+    )
+    const next = mutate(fileWith())
+    expect(next.importDraft?.rows.map((r) => r.date)).toEqual(['2026-04-02', '2026-06-20'])
+    expect(next.importDraft?.fileName).toBe('Abruf')
+  })
+
+  test('wählt Zeilen ab, die sich mit einer manuellen Buchung decken', () => {
+    const manual: Booking = {
+      id: 'b1',
+      date: '2026-04-02',
+      categoryId: 'c1',
+      description: 'Getränke',
+      type: 'ausgabe',
+      amount: 2350,
+      isUmsatz: true,
+      nonUmsatzAmount: 0,
+      note: '',
+      seq: 1,
+      source: 'manuell',
+    }
+    const { mutate } = buildDraft(
+      fileWith([manual]),
+      [row('2026-04-02', -2350, 'h2'), row('2026-06-20', 7500, 'h1')],
+      'Abruf',
+      0,
+    )
+    const next = mutate(fileWith([manual]))
+    const byHash = Object.fromEntries(next.importDraft!.rows.map((r) => [r.hash, r.selected]))
+    expect(byHash).toEqual({ h2: false, h1: true })
+  })
+
+  test('wählt Zeilen außerhalb des Kassenjahres ab', () => {
+    const { mutate } = buildDraft(fileWith(), [row('2025-12-31', 1000, 'h3')], 'Abruf', 0)
+    expect(mutate(fileWith()).importDraft?.rows[0].selected).toBe(false)
   })
 })

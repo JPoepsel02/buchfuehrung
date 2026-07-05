@@ -39,6 +39,13 @@ const api = {
     suggestedName: string,
     options?: { landscape?: boolean },
   ): Promise<{ ok: boolean; path?: string }> => ipcRenderer.invoke('pdf:export', html, suggestedName, options),
+  bankFetch: (account: unknown, opts: unknown): Promise<unknown> => ipcRenderer.invoke('bank:fetch', account, opts),
+  bankContinue: (sessionId: string, tan?: string): Promise<unknown> =>
+    ipcRenderer.invoke('bank:continue', sessionId, tan),
+  bankCancel: (sessionId: string): Promise<void> => ipcRenderer.invoke('bank:cancel', sessionId),
+  bankPinExists: (accountId: string): Promise<boolean> => ipcRenderer.invoke('bank:pin:has', accountId),
+  bankPinDelete: (accountId: string): Promise<void> => ipcRenderer.invoke('bank:pin:delete', accountId),
+  bankForget: (accountId: string): Promise<void> => ipcRenderer.invoke('bank:forget', accountId),
 }
 
 export type KassenwartApi = typeof api

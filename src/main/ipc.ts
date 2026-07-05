@@ -2,6 +2,7 @@ import { BrowserWindow, app, dialog, ipcMain, nativeImage, shell } from 'electro
 import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { registerBankIpc } from './bank'
 import { dataDirPath, deleteYear, listYears, loadSettings, loadYear, saveSettings, saveYear } from './storage'
 import { checkForUpdate, downloadAndInstall } from './updater'
 import type { UpdateInfo } from './updater'
@@ -25,6 +26,7 @@ export function currentLogo(): string | null {
 }
 
 export function registerIpc(): void {
+  registerBankIpc()
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('update:check', () => checkForUpdate())
   ipcMain.handle('update:install', (e, info: UpdateInfo) =>

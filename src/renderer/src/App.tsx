@@ -9,6 +9,7 @@ import { BuchungenView } from './views/BuchungenView'
 import { ChronoView } from './views/ChronoView'
 import { VeranstaltungenView } from './views/VeranstaltungenView'
 import { ImportView } from './views/ImportView'
+import { BankView } from './views/BankView'
 import { PruefberichtView } from './views/PruefberichtView'
 import { EinstellungenView } from './views/EinstellungenView'
 import { fiscalLabel } from '@shared/fiscal'
@@ -22,6 +23,7 @@ const VIEWS = [
   { id: 'chronologisch', label: 'Chronologisch', icon: '☰' },
   { id: 'veranstaltungen', label: 'Veranstaltungen', icon: '⊞' },
   { id: 'import', label: 'Kontoauszug-Import', icon: '⇲' },
+  { id: 'bank', label: 'Online-Banking', icon: '⇄' },
   { id: 'pruefbericht', label: 'Prüfbericht', icon: '✓' },
   { id: 'einstellungen', label: 'Einstellungen', icon: '⚙' },
 ] as const
@@ -158,6 +160,7 @@ export function App() {
         {view === 'chronologisch' && <ChronoView />}
         {view === 'veranstaltungen' && <VeranstaltungenView />}
         {view === 'import' && <ImportView />}
+        {view === 'bank' && <BankView />}
         {view === 'pruefbericht' && <PruefberichtView />}
         {view === 'einstellungen' && <EinstellungenView />}
       </main>
