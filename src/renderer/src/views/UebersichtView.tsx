@@ -4,13 +4,17 @@ import { fiscalLabel } from '@shared/fiscal'
 import { byCategory, monthSummaries, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur } from '@shared/money'
 
-export function UebersichtView() {
+export function UebersichtView({ onNavigate }: { onNavigate?: (view: 'bank' | 'buchungen') => void }) {
   const { file } = useStore()
   if (!file) return null
   const totals = yearTotals(file)
   const months = monthSummaries(file)
   const groups = byCategory(file)
   const activeMonths = months.filter((m) => m.count > 0)
+
+  // Offene Arbeit: nicht übernommene Import-Umsätze und Buchungen ohne Beleg
+  const openImportRows = file.importDraft?.rows.length ?? 0
+  const missingReceipts = file.bookings.filter((b) => b.receiptAvailable === false).length
 
   return (
     <div className="view">
@@ -22,6 +26,29 @@ export function UebersichtView() {
           </p>
         </div>
       </header>
+
+      {(openImportRows > 0 || missingReceipts > 0) && (
+        <div className="todo-tiles">
+          {openImportRows > 0 && (
+            <button className="todo-tile" onClick={() => onNavigate?.('bank')}>
+              <span className="todo-tile__count">{openImportRows}</span>
+              <span className="todo-tile__text">
+                {openImportRows === 1 ? 'Umsatz wartet' : 'Umsätze warten'} auf Zuweisung
+                <span className="todo-tile__hint">Jetzt zuweisen und übernehmen →</span>
+              </span>
+            </button>
+          )}
+          {missingReceipts > 0 && (
+            <button className="todo-tile" onClick={() => onNavigate?.('buchungen')}>
+              <span className="todo-tile__count">{missingReceipts}</span>
+              <span className="todo-tile__text">
+                {missingReceipts === 1 ? 'Buchung ohne Beleg' : 'Buchungen ohne Beleg'}
+                <span className="todo-tile__hint">Belege in den Ordner legen und abhaken →</span>
+              </span>
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="stats">
         <div className="stat stat--hero">
