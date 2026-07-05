@@ -4,7 +4,9 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // lib-fints ist ein reines ESM-Paket und wird deshalb in das
+    // CommonJS-Main-Bundle eingebettet statt externalisiert.
+    plugins: [externalizeDepsPlugin({ exclude: ['lib-fints'] })],
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

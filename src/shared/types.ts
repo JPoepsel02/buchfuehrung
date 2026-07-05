@@ -68,6 +68,28 @@ export interface Booking {
 
 export type ThemeSetting = 'hell' | 'dunkel' | 'system'
 
+/**
+ * Zugangsdaten eines Online-Banking-Kontos für den FinTS-Abruf.
+ * Die PIN gehört bewusst NICHT hierher – sie wird ausschließlich
+ * verschlüsselt über den Betriebssystem-Schlüsselbund (safeStorage)
+ * im Main-Prozess abgelegt.
+ */
+export interface BankAccountConfig {
+  id: string
+  /** Anzeigename, z. B. "Hauptkonto Volksbank" */
+  label: string
+  /** Bankleitzahl */
+  blz: string
+  /** FinTS-Zugangsadresse der Bank */
+  fintsUrl: string
+  /** VR-NetKey bzw. Online-Banking-Anmeldename */
+  userId: string
+  /** Kontonummer bei der Bank – wird nach der ersten Synchronisation gewählt */
+  accountNumber?: string
+  /** IBAN, nur zur Anzeige */
+  iban?: string
+}
+
 /** Jahresübergreifende App-Einstellungen (eigene Datei neben den Jahresdateien). */
 export interface AppSettings {
   /** Eigenes Vereinslogo als Data-URL (PNG/JPEG); erscheint in Seitenleiste, Prüfbericht und Dock */
@@ -78,6 +100,10 @@ export interface AppSettings {
   cloudBackupDir?: string | null
   /** Spiegelt Jahresdateien und Einstellungen zusätzlich in den Cloud-Ordner */
   cloudBackupEnabled?: boolean
+  /** Hinterlegte Online-Banking-Konten (beliebig viele) */
+  bankAccounts?: BankAccountConfig[]
+  /** FinTS-Produktkennung (kostenlose Registrierung bei der Deutschen Kreditwirtschaft) */
+  fintsProductId?: string | null
 }
 
 export interface ImportDraftSplit {
