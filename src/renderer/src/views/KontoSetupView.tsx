@@ -4,11 +4,11 @@ import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { MONTH_NAMES, parseAmountToCents } from '@shared/money'
 
-/** Erstes Kassenjahr des Zweitkontos anlegen (z. B. Karnevalskonto, Nov–Okt). */
-export function ZweitkontoSetupView() {
-  const { createZweitkonto, selectKonto, settings } = useStore()
-  const [name, setName] = useState('Karnevalskonto')
-  const [startMonth, setStartMonth] = useState(11)
+/** Erstes Kassenjahr eines weiteren Kontos anlegen (z. B. Karnevalskonto, Nov–Okt). */
+export function KontoSetupView() {
+  const { createKonto, cancelKontoSetup, settings } = useStore()
+  const [name, setName] = useState('')
+  const [startMonth, setStartMonth] = useState(1)
   const [year, setYear] = useState(String(new Date().getFullYear()))
   const [balance, setBalance] = useState('0,00')
   const [error, setError] = useState('')
@@ -22,7 +22,7 @@ export function ZweitkontoSetupView() {
     if (!name.trim()) return setError('Bitte einen Konto-Namen angeben.')
     if (!Number.isInteger(y) || y < 2000 || y > 2100) return setError('Bitte ein gültiges Jahr angeben.')
     if (cents === null) return setError('Der Anfangssaldo ist kein gültiger Betrag.')
-    await createZweitkonto(name.trim(), startMonth, y, cents)
+    await createKonto(name.trim(), startMonth, y, cents)
   }
 
   return (
@@ -31,16 +31,15 @@ export function ZweitkontoSetupView() {
         <div style={{ marginBottom: 'var(--space-3)' }}>
           <LogoMark logo={settings.logoDataUrl} size={72} />
         </div>
-        <div className="setup__brand">Zweites Konto anlegen</div>
+        <div className="setup__brand">Weiteres Konto anlegen</div>
         <p className="setup__sub">
-          Das Zweitkonto wird vollständig getrennt vom Hauptkonto geführt – eigene Kategorien,
-          eigene Beleg-Nummern, eigenes Kassenjahr. Die Summen beider Konten werden nie
-          verrechnet.
+          Jedes Konto wird vollständig getrennt geführt – eigene Kategorien, eigene
+          Beleg-Nummern, eigenes Kassenjahr. Die Summen der Konten werden nie verrechnet.
         </p>
         <div className="form-grid">
           <div className="field" style={{ gridColumn: 'span 12' }}>
             <label htmlFor="zk-name">Name des Kontos</label>
-            <input id="zk-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Karnevalskonto" />
+            <input id="zk-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Festkonto" autoFocus />
           </div>
           <div className="field" style={{ gridColumn: 'span 6' }}>
             <label htmlFor="zk-month">Kassenjahr beginnt im</label>
@@ -62,9 +61,9 @@ export function ZweitkontoSetupView() {
           </div>
           <div style={{ gridColumn: 'span 12', display: 'flex', gap: 'var(--space-2)' }}>
             <button className="btn btn--primary" type="submit">
-              Zweitkonto anlegen
+              Konto anlegen
             </button>
-            <button className="btn" type="button" onClick={() => void selectKonto('haupt')}>
+            <button className="btn" type="button" onClick={cancelKontoSetup}>
               Abbrechen
             </button>
             {error && (

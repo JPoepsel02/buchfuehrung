@@ -3,7 +3,7 @@ import { api, isElectron } from './api'
 import { LogoMark } from './components/LogoMark'
 import { useStore } from './store'
 import { SetupView } from './views/SetupView'
-import { ZweitkontoSetupView } from './views/ZweitkontoSetupView'
+import { KontoSetupView } from './views/KontoSetupView'
 import { UebersichtView } from './views/UebersichtView'
 import { BuchungenView } from './views/BuchungenView'
 import { ChronoView } from './views/ChronoView'
@@ -33,7 +33,8 @@ type ViewId = (typeof VIEWS)[number]['id']
 const isMac = navigator.userAgent.includes('Macintosh')
 
 export function App() {
-  const { loading, file, years, selectYear, settings, konto, selectKonto, zweitExists, zweitName } = useStore()
+  const { loading, file, years, selectYear, settings, konto, selectKonto, kontos, creatingKonto, startKontoSetup } =
+    useStore()
   const [view, setView] = useState<ViewId>('uebersicht')
   const [updateHint, setUpdateHint] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -76,11 +77,18 @@ export function App() {
   const dragStrip = isElectron && isMac ? <div className="titlebar-drag" aria-hidden /> : null
 
   if (loading) return null
+  if (creatingKonto)
+    return (
+      <>
+        {dragStrip}
+        <KontoSetupView />
+      </>
+    )
   if (!file)
     return (
       <>
         {dragStrip}
-        {konto === 'zweit' ? <ZweitkontoSetupView /> : <SetupView />}
+        <SetupView />
       </>
     )
 
@@ -88,9 +96,13 @@ export function App() {
   // der Prüfbericht enthält dort beide Konten.
   const navViews = VIEWS.filter((v) => konto === 'haupt' || v.id !== 'pruefbericht')
 
-  async function switchKonto(target: KontoId) {
-    await selectKonto(target)
-    if (target === 'zweit' && view === 'pruefbericht') setView('uebersicht')
+  async function switchKonto(target: string) {
+    if (target === '__neu__') {
+      startKontoSetup()
+      return
+    }
+    await selectKonto(target as KontoId)
+    if (target !== 'haupt' && view === 'pruefbericht') setView('uebersicht')
   }
 
   function jumpToBooking(term: string) {
@@ -111,13 +123,13 @@ export function App() {
         </div>
         <div className="sidebar__year">
           <span>Konto</span>
-          <select
-            value={konto}
-            onChange={(e) => void switchKonto(e.target.value as KontoId)}
-            aria-label="Konto wählen"
-          >
-            <option value="haupt">Hauptkonto</option>
-            <option value="zweit">{zweitExists ? zweitName : '+ Zweitkonto anlegen …'}</option>
+          <select value={konto} onChange={(e) => void switchKonto(e.target.value)} aria-label="Konto wählen">
+            {kontos.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.name}
+              </option>
+            ))}
+            <option value="__neu__">+ Konto anlegen …</option>
           </select>
         </div>
         <div className="sidebar__year">
@@ -149,7 +161,7 @@ export function App() {
           ))}
         </nav>
         <div className="sidebar__footer">
-          {konto === 'zweit' ? file.kontoName || 'Zweitkonto' : file.clubName || 'Verein'} · {fiscalLabel(file)}
+          {konto !== 'haupt' ? file.kontoName || 'Konto' : file.clubName || 'Verein'} · {fiscalLabel(file)}
         </div>
       </aside>
       <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>

@@ -20,6 +20,7 @@ const api = {
     ipcRenderer.on('update:progress', listener)
     return () => ipcRenderer.removeListener('update:progress', listener)
   },
+  listKontos: (): Promise<string[]> => ipcRenderer.invoke('kontos:list'),
   listYears: (konto: string): Promise<number[]> => ipcRenderer.invoke('years:list', konto),
   loadYear: (konto: string, year: number): Promise<unknown | null> => ipcRenderer.invoke('years:load', konto, year),
   saveYear: (konto: string, year: number, data: unknown): Promise<void> =>

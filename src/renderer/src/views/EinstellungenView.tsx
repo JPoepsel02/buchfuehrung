@@ -40,9 +40,8 @@ export function EinstellungenView() {
     file,
     years,
     konto,
-    zweitExists,
-    zweitName,
-    selectKonto,
+    kontos,
+    startKontoSetup,
     update,
     createYear,
     deleteYear,
@@ -135,7 +134,7 @@ export function EinstellungenView() {
 
       <section className="card">
         <h2 className="card__title">
-          {konto === 'zweit' ? `${file.kontoName ?? 'Zweitkonto'} · ` : ''}
+          {konto !== 'haupt' ? `${file.kontoName ?? 'Konto'} · ` : ''}
           {jahrWort} {fiscalLabel(file)}
         </h2>
         <div className="form-grid">
@@ -164,7 +163,7 @@ export function EinstellungenView() {
               Jahresabschluss → {fiscalLabel({ year: file.year + 1, fiscalStartMonth: file.fiscalStartMonth })}
             </button>
           </div>
-          {konto === 'zweit' && (
+          {konto !== 'haupt' && (
             <div className="field" style={{ gridColumn: 'span 4' }}>
               <label htmlFor="s-kontoname">Konto-Name</label>
               <input
@@ -187,22 +186,23 @@ export function EinstellungenView() {
       <section className="card">
         <h2 className="card__title">Konten</h2>
         <p className="hint" style={{ marginTop: 0 }}>
-          Hauptkonto und Zweitkonto werden vollständig getrennt geführt – eigene Kategorien,
-          eigene Beleg-Nummern, eigenes Kassenjahr. Summen werden nie verrechnet.
+          Alle Konten werden vollständig getrennt geführt – eigene Kategorien, eigene
+          Beleg-Nummern, eigenes Kassenjahr. Summen werden nie verrechnet. Es können beliebig
+          viele Konten angelegt werden.
         </p>
-        {zweitExists ? (
+        {kontos.length > 1 && (
           <p className="hint">
-            Zweitkonto „{zweitName}“ ist angelegt – Wechsel über die Konto-Auswahl in der Seitenleiste.
+            Angelegt: {kontos.map((k) => k.name).join(', ')} – Wechsel über die Konto-Auswahl in
+            der Seitenleiste.
           </p>
-        ) : (
-          <button className="btn" onClick={() => void selectKonto('zweit')}>
-            Zweites Konto anlegen …
-          </button>
         )}
+        <button className="btn" onClick={startKontoSetup}>
+          Weiteres Konto anlegen …
+        </button>
       </section>
 
       <section className="card">
-        <h2 className="card__title">{jahrWort}e{konto === 'zweit' ? ` · ${file.kontoName ?? 'Zweitkonto'}` : ''}</h2>
+        <h2 className="card__title">{jahrWort}e{konto !== 'haupt' ? ` · ${file.kontoName ?? 'Konto'}` : ''}</h2>
         <table className="ledger">
           <tbody>
             {years.map((y) => (
@@ -232,7 +232,7 @@ export function EinstellungenView() {
         <p className="hint">
           Gelöschte Jahre wandern als Sicherungskopie in den Backup-Ordner – z. B. falls ein
           Jahresabschluss versehentlich ausgelöst wurde. Das letzte Jahr des Hauptkontos kann nicht
-          gelöscht werden; wird das letzte Jahr des Zweitkontos gelöscht, verschwindet das Zweitkonto.
+          gelöscht werden; wird das letzte Jahr eines weiteren Kontos gelöscht, verschwindet das Konto.
         </p>
       </section>
 
@@ -371,10 +371,10 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
   const cloudEnabled = settings.cloudBackupEnabled === true
   const cloudDir = settings.cloudBackupDir?.trim() ?? ''
 
-  /** Alle Jahre beider Konten plus Einstellungen als eine Sicherungsdatei exportieren. */
+  /** Alle Jahre sämtlicher Konten plus Einstellungen als eine Sicherungsdatei exportieren. */
   async function exportBackup() {
     const files: YearFile[] = []
-    for (const konto of ['haupt', 'zweit'] as const) {
+    for (const konto of await api.listKontos()) {
       const list = await api.listYears(konto)
       for (const y of list) {
         const data = (await api.loadYear(konto, y)) as YearFile | null
@@ -404,16 +404,19 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
         `Die Datei wurde NICHT importiert – sie ist keine gültige Sicherung:\n\n• ${result.errors.join('\n• ')}`,
       )
     }
+    const kontoLabel = (y: YearFile) =>
+      (y.konto ?? 'haupt') !== 'haupt' ? `${y.kontoName ?? 'Weiteres Konto'} ` : ''
     const summary = result.backup.years
-      .map(
-        (y) =>
-          `• ${y.konto === 'zweit' ? `${y.kontoName ?? 'Zweitkonto'} ` : ''}${y.year}: ${y.bookings.length} Buchungen, ${y.categories.length} Kategorien`,
-      )
+      .map((y) => `• ${kontoLabel(y)}${y.year}: ${y.bookings.length} Buchungen, ${y.categories.length} Kategorien`)
       .join('\n')
-    const existing = { haupt: await api.listYears('haupt'), zweit: await api.listYears('zweit') }
+    const existing: Record<string, number[]> = {}
+    for (const y of result.backup.years) {
+      const konto = y.konto ?? 'haupt'
+      existing[konto] ??= await api.listYears(konto)
+    }
     const replaces = result.backup.years
       .filter((y) => existing[y.konto ?? 'haupt'].includes(y.year))
-      .map((y) => `${y.konto === 'zweit' ? 'Zweitkonto ' : ''}${y.year}`)
+      .map((y) => `${kontoLabel(y)}${y.year}`)
     if (
       !confirm(
         `Sicherung „${file.name}“ importieren?\n\n${summary}\n\n${

@@ -76,6 +76,8 @@ export type ThemeSetting = 'hell' | 'dunkel' | 'system'
  */
 export interface BankAccountConfig {
   id: string
+  /** Zu welchem Buch die Bankverbindung gehört (fehlend = haupt, Altdaten) */
+  konto?: KontoId
   /** Anzeigename, z. B. "Hauptkonto Volksbank" */
   label: string
   /** Bankleitzahl */
@@ -169,8 +171,17 @@ export interface AuditInfo {
   ort: string
 }
 
-/** Kennung der geführten Bücher: Hauptkonto und optionales Zweitkonto. */
-export type KontoId = 'haupt' | 'zweit'
+/**
+ * Kennung eines geführten Buchs. 'haupt' ist das Hauptkonto, 'zweit' das
+ * historisch zweite Buch (Dateien "kassenbuch-k2-…"); weitere Bücher heißen
+ * 'k3', 'k4', … – es können beliebig viele angelegt werden.
+ */
+export type KontoId = string
+
+/** Prüft, ob eine Konto-Kennung gültig ist ('haupt', 'zweit' oder 'k<Nr>'). */
+export function isKontoId(value: unknown): value is KontoId {
+  return value === 'haupt' || value === 'zweit' || (typeof value === 'string' && /^k(?:[3-9]|[1-9]\d+)$/.test(value))
+}
 
 export interface YearFile {
   schemaVersion: 1
