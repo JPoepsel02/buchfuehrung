@@ -260,9 +260,8 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
       ${heroLogo}
       <div class="eyebrow">${esc(file.clubName || 'Kassenbericht')}</div>
       <h1>Kassenbericht<br><span class="year-accent">${file.year}</span></h1>
-      <div class="subtitle">Generalversammlung · Kassenführung: ${esc(file.treasurerName || '–')}</div>
+      <div class="subtitle">Generalversammlung</div>
     </div>
-    <footer>Alle Angaben ohne Gewähr</footer>
   </section>
 
   <section class="slide light">
@@ -311,7 +310,6 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
       ${centerMark}
       <div class="big-label">Saldo für das Geschäftsjahr ${file.year}</div>
       <div class="big-number ${totals.saldo < 0 ? 'neg' : 'pos'}">${totals.saldo > 0 ? '+ ' : totals.saldo < 0 ? '− ' : ''}${formatEur(Math.abs(totals.saldo))}</div>
-      <div class="big-sub">Einnahmen ${formatEur(totals.einnahmen)} · Ausgaben ${formatEur(totals.ausgaben)} · ${totals.count} Buchungen</div>
     </div>
   </section>
 
