@@ -206,17 +206,29 @@ export function buildReportHtml(
     .join('\n')}
 
   <div class="pagebreak"></div>
-  ${auditSection(file, 2 + others.length)}
+  ${auditSection(file, 2 + others.length, auditKontoRefs(file, others))}
   <footer>Erstellt mit Buchführung · Kassenbericht ${file.year}</footer>
 </body>
 </html>`
 }
 
-/** Kassenprüfbericht – Aufbau und Formulierungen folgen der Vereinsvorlage. */
-function auditSection(file: YearFile, sectionNo: number): string {
+/**
+ * Ein "Geprüft wurde"-Block je Konto des Berichts: das Hauptkonto nutzt die
+ * Kontonummer aus "Geprüftes Konto 1", das erste weitere Konto die aus
+ * "Geprüftes Konto 2" – ohne Eintrag steht der Konto-Name im Block.
+ */
+function auditKontoRefs(file: YearFile, others: readonly YearFile[]): (string | undefined)[] {
   const a: Partial<AuditInfo> = file.audit ?? {}
-  const konten = [a.konto1, a.konto2].filter((k) => (k ?? '').trim() !== '')
-  const kontoBlocks = (konten.length > 0 ? konten : [undefined]).map(
+  return [
+    a.konto1?.trim() || accountName(file),
+    ...others.map((other, i) => (i === 0 && a.konto2?.trim() ? a.konto2.trim() : accountName(other))),
+  ]
+}
+
+/** Kassenprüfbericht – Aufbau und Formulierungen folgen der Vereinsvorlage. */
+function auditSection(file: YearFile, sectionNo: number, kontoRefs: readonly (string | undefined)[]): string {
+  const a: Partial<AuditInfo> = file.audit ?? {}
+  const kontoBlocks = (kontoRefs.length > 0 ? kontoRefs : [undefined]).map(
     (konto) => `
     <div class="konto">
       <div class="konto-head">Geprüft wurde das Bankkonto ${val(konto, 160)}</div>
