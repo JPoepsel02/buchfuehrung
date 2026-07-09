@@ -613,28 +613,38 @@ table.ledger {
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-soft);
+  padding-left: var(--space-1);
 }
 
-.field input,
-.field select,
-.field textarea {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  background: var(--color-field);
-  box-shadow: var(--glass-edge);
-  padding: var(--space-2) var(--space-3);
+.view input:not([type='checkbox']):not([type='radio']),
+.view select,
+.view textarea {
+  min-height: 40px;
+  border: 1px solid rgb(18 32 25 / 0.11);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.76);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(14 40 26 / 0.05);
+  padding: 9px 13px;
   font-size: var(--text-sm);
   transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
+    background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
+.view input:not([type='checkbox']):not([type='radio']):focus,
+.view select:focus,
+.view textarea:focus {
   outline: none;
-  border-color: var(--color-focus);
-  box-shadow: 0 0 0 4px rgb(15 169 104 / 0.2), var(--glass-edge);
-  background: rgb(255 255 255 / 0.92);
+  border-color: rgb(15 169 104 / 0.58);
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.96), 0 0 0 3px rgb(15 169 104 / 0.13);
+}
+
+.view input:not([type='checkbox']):not([type='radio'])[aria-invalid='true'],
+.view select[aria-invalid='true'],
+.view textarea[aria-invalid='true'] {
+  border-color: rgb(213 80 58 / 0.28);
+  background: rgb(255 245 243 / 0.84);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 0 0 2px rgb(213 80 58 / 0.06);
 }
 
 .form-grid {
