@@ -120,11 +120,12 @@ export function buildDraft(
 export function subcategorySuggestions(
   bookings: readonly { categoryId: string; subcategory?: string }[],
   categoryId: string,
+  draftRows: readonly { categoryId: string; subcategory?: string }[] = [],
 ): string[] {
   if (!categoryId) return []
   return [
     ...new Set(
-      bookings
+      [...bookings, ...draftRows]
         .filter((booking) => booking.categoryId === categoryId)
         .map((booking) => (booking.subcategory ?? '').trim())
         .filter(Boolean),

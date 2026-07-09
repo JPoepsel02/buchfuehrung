@@ -335,7 +335,7 @@ export function ImportDraftCard() {
       )}
       {activeCats.map((category) => (
         <datalist key={category.id} id={`import-sub-suggestions-${category.id}`}>
-          {subcategorySuggestions(file.bookings, category.id).map((sName) => (
+          {subcategorySuggestions(file.bookings, category.id, draft.rows).map((sName) => (
             <option key={sName} value={sName} />
           ))}
         </datalist>
