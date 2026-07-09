@@ -27,6 +27,17 @@ describe('receiptAvailableForImport', () => {
     expect(subcategorySuggestions(bookings, 'b')).toEqual(['Reise'])
     expect(subcategorySuggestions(bookings, '')).toEqual([])
   })
+
+  test('berücksichtigt auch Unterkategorien aus dem offenen Importentwurf', () => {
+    const bookings = [{ categoryId: 'a', subcategory: 'Gebucht' }]
+    const draftRows = [
+      { categoryId: 'a', subcategory: 'Im Entwurf' },
+      { categoryId: 'a', subcategory: 'Gebucht' },
+      { categoryId: 'b', subcategory: 'Andere Kategorie' },
+    ]
+
+    expect(subcategorySuggestions(bookings, 'a', draftRows)).toEqual(['Gebucht', 'Im Entwurf'])
+  })
 })
 
 describe('buildDraft', () => {
