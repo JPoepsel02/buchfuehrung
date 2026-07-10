@@ -12,6 +12,13 @@ export interface UpdateInfo {
   notes?: string
 }
 
+export interface CloudSyncStatus {
+  enabled: boolean
+  lastSuccessAt?: string
+  lastError?: string
+  fileCount?: number
+}
+
 export interface Api {
   listKontos(): Promise<string[]>
   listYears(konto: string): Promise<number[]>
@@ -23,6 +30,8 @@ export interface Api {
   openDataFolder(): Promise<void>
   openCloudFolder(): Promise<void>
   selectCloudFolder(): Promise<string | null>
+  cloudSyncStatus(): Promise<CloudSyncStatus>
+  syncCloudNow(): Promise<CloudSyncStatus>
   openCsv(): Promise<{ name: string; content: string } | null>
   saveTextFile(suggestedName: string, content: string): Promise<{ ok: boolean; path?: string }>
   openTextFile(): Promise<{ name: string; content: string } | null>
@@ -99,6 +108,12 @@ const webFallback: Api = {
     alert('Cloud-Sicherung ist nur in der installierten App verfügbar.')
     return null
   },
+  async cloudSyncStatus() {
+    return { enabled: false }
+  },
+  async syncCloudNow() {
+    return { enabled: false }
+  },
   openCsv() {
     return new Promise((resolve) => {
       const input = document.createElement('input')
@@ -116,7 +131,8 @@ const webFallback: Api = {
     })
   },
   async saveTextFile(suggestedName, content) {
-    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
+    const type = suggestedName.toLowerCase().endsWith('.csv') ? 'text/csv;charset=utf-8' : 'application/json'
+    const url = URL.createObjectURL(new Blob([content], { type }))
     const a = document.createElement('a')
     a.href = url
     a.download = suggestedName

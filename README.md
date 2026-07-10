@@ -20,8 +20,8 @@ im Prüfbericht und als Dock-Symbol.
 - **Veranstaltungen**: Buchungen je Veranstaltung gruppiert mit Zwischensummen.
 - **Übersicht**: Kassenstand, Einnahmen, Ausgaben, Umsatz sowie Monats- und
   Kategorien-Auswertung.
-- **Kontoauszug-Import**: CSV-Exporte aus dem Online-Banking (Sparkasse,
-  Volksbank, ING, DKB u. a.) einlesen. Datum, Verwendungszweck und Betrag
+- **Umsatz-Import**: CSV-Exporte aus dem Online-Banking (Sparkasse,
+  Volksbank, ING, DKB u. a.) einlesen oder Umsätze direkt per FinTS abrufen. Datum, Verwendungszweck und Betrag
   werden automatisch erkannt, Duplikate markiert; je Umsatz wird die Kategorie
   zugeordnet.
 - **Prüfbericht als PDF**: druckfertiger Kassenbericht mit Abhak-Kästchen je

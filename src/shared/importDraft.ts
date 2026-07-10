@@ -1,10 +1,11 @@
 import { inFiscalYear } from './fiscal'
 import { classifyDraftDuplicates, reconcileImportedBookings } from './ledger'
+import { receiptAvailable, receiptStatus, withReceiptStatus } from './receipt'
 import type { StatementRow } from './csv'
 import type { ImportDraftRow, YearFile } from './types'
 
-export function receiptAvailableForImport(row: { receiptAvailable?: boolean }): boolean {
-  return row.receiptAvailable === true
+export function receiptAvailableForImport(row: { receiptStatus?: import('./types').ReceiptStatus; receiptAvailable?: boolean }): boolean {
+  return receiptAvailable(receiptStatus(row, 'offen'))
 }
 
 /**
@@ -36,7 +37,7 @@ export function appendToDraft(
     file.bookings,
     fresh.map((r) => ({ hash: r.hash, date: r.date, amount: r.amount })),
   )
-  const newRows: ImportDraftRow[] = fresh.map((r, i) => ({
+  const newRows: ImportDraftRow[] = fresh.map((r, i) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
     amount: r.amount,
@@ -46,8 +47,7 @@ export function appendToDraft(
     selected: !dupes.hard[i] && !dupes.soft[i] && inFiscalYear(file, r.date),
     categoryId: '',
     isUmsatz: false,
-    receiptAvailable: false,
-  }))
+  }, 'offen'))
   return {
     added: newRows.length,
     mutate: (f) => {
@@ -84,7 +84,7 @@ export function buildDraft(
     preview.bookings,
     sorted.map(({ r }) => ({ hash: r.hash, date: r.date, amount: r.amount })),
   )
-  const rows: ImportDraftRow[] = sorted.map(({ r }, i) => ({
+  const rows: ImportDraftRow[] = sorted.map(({ r }, i) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
     amount: r.amount,
@@ -95,8 +95,7 @@ export function buildDraft(
     // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
     categoryId: '',
     isUmsatz: false,
-    receiptAvailable: false,
-  }))
+  }, 'offen'))
   const messages: string[] = []
   if (preview.migratedHashCount > 0) {
     messages.push(`${preview.migratedHashCount} bestehende Import-Zuordnungen aktualisiert`)

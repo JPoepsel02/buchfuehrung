@@ -10,21 +10,19 @@ import { BuchungenView } from './views/BuchungenView'
 import { ChronoView } from './views/ChronoView'
 import { VeranstaltungenView } from './views/VeranstaltungenView'
 import { ImportView } from './views/ImportView'
-import { BankView } from './views/BankView'
 import { PruefberichtView } from './views/PruefberichtView'
 import { EinstellungenView } from './views/EinstellungenView'
 import { fiscalLabel } from '@shared/fiscal'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, formatEur } from '@shared/money'
-import type { KontoId } from '@shared/types'
+import type { ComputedBooking, KontoId, YearFile } from '@shared/types'
 
 const VIEWS = [
   { id: 'uebersicht', label: 'Übersicht', icon: '◫' },
   { id: 'buchungen', label: 'Buchungen', icon: '✎' },
   { id: 'chronologisch', label: 'Chronologisch', icon: '☰' },
   { id: 'veranstaltungen', label: 'Veranstaltungen', icon: '⊞' },
-  { id: 'import', label: 'Kontoauszug-Import', icon: '⇲' },
-  { id: 'bank', label: 'Online-Banking', icon: '⇄' },
+  { id: 'import', label: 'Umsätze importieren', icon: '⇲' },
   { id: 'pruefbericht', label: 'Prüfbericht', icon: '✓' },
   { id: 'einstellungen', label: 'Einstellungen', icon: '⚙' },
 ] as const
@@ -39,6 +37,7 @@ export function App() {
     file,
     years,
     selectYear,
+    selectKontoYear,
     settings,
     konto,
     selectKonto,
@@ -51,7 +50,7 @@ export function App() {
   const [updateHint, setUpdateHint] = useState('')
   const [bankHint, setBankHint] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [bookingsFilter, setBookingsFilter] = useState('')
+  const [bookingToOpenId, setBookingToOpenId] = useState<string | null>(null)
   const autoFetchStarted = useRef(false)
 
   // Stiller Bank-Abruf beim Start: neue Umsätze landen im Import-Entwurf
@@ -138,11 +137,14 @@ export function App() {
     if (target !== 'haupt' && view === 'pruefbericht') setView('uebersicht')
   }
 
-  function jumpToBooking(term: string) {
-    setBookingsFilter(term)
+  async function openSearchHit(hit: SearchHit) {
+    await selectKontoYear(hit.konto, hit.year)
+    setBookingToOpenId(hit.booking.id)
     setView('buchungen')
     setSearchOpen(false)
   }
+
+  const openImportRows = file.importDraft?.rows.length ?? 0
 
   return (
     <div className="app">
@@ -190,6 +192,7 @@ export function App() {
                 {v.icon}
               </span>
               {v.label}
+              {v.id === 'import' && openImportRows > 0 && <span className="navlink__badge">{openImportRows}</span>}
             </button>
           ))}
         </nav>
@@ -200,36 +203,89 @@ export function App() {
       <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>
         {view === 'uebersicht' && <UebersichtView onNavigate={(target) => setView(target)} />}
         {view === 'buchungen' && (
-          <BuchungenView externalFilter={bookingsFilter} onFilterConsumed={() => setBookingsFilter('')} />
+          <BuchungenView bookingToOpenId={bookingToOpenId} onBookingOpened={() => setBookingToOpenId(null)} />
         )}
         {view === 'chronologisch' && <ChronoView />}
         {view === 'veranstaltungen' && <VeranstaltungenView />}
         {view === 'import' && <ImportView />}
-        {view === 'bank' && <BankView />}
         {view === 'pruefbericht' && <PruefberichtView />}
         {view === 'einstellungen' && <EinstellungenView />}
       </main>
-      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} onJump={jumpToBooking} />}
+      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} onSelect={openSearchHit} />}
       {updateHint && <div className="toast">{updateHint}</div>}
       {bankHint && <div className="toast">{bankHint}</div>}
     </div>
   )
 }
 
-/** Globale Suche (Strg/Cmd+F): durchsucht alle Buchungen des Kassenjahres. */
-function SearchOverlay({ onClose, onJump }: { onClose: () => void; onJump: (term: string) => void }) {
-  const { file } = useStore()
+interface SearchHit {
+  booking: ComputedBooking
+  konto: KontoId
+  kontoName: string
+  year: number
+  fiscal: string
+}
+
+interface SearchFile {
+  file: YearFile
+  konto: KontoId
+  kontoName: string
+}
+
+/** Globale Suche (Strg/Cmd+F): standardmäßig über alle Konten und Kassenjahre. */
+function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (hit: SearchHit) => void }) {
+  const { file, konto, kontos } = useStore()
   const [query, setQuery] = useState('')
+  const [scope, setScope] = useState<'all' | 'current'>('all')
+  const [allFiles, setAllFiles] = useState<SearchFile[] | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => inputRef.current?.focus(), [])
 
+  useEffect(() => {
+    if (scope !== 'all') return
+    let cancelled = false
+    setAllFiles(null)
+    void (async () => {
+      const loaded = await Promise.all(
+        kontos.map(async (entry) => {
+          const years = await api.listYears(entry.id)
+          const files = await Promise.all(years.map((year) => api.loadYear(entry.id, year)))
+          return files
+            .filter((candidate): candidate is YearFile => Boolean(candidate))
+            .map((candidate) => ({ file: candidate, konto: entry.id, kontoName: entry.name }))
+        }),
+      )
+      if (!cancelled) setAllFiles(loaded.flat())
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [scope, kontos])
+
   const results = useMemo(() => {
-    if (!file || !query.trim()) return []
-    return computeBookings(file)
-      .filter((r) => bookingMatches(r, query))
-      .slice(0, 12)
-  }, [file, query])
+    if (!query.trim()) return []
+    const files: SearchFile[] =
+      scope === 'current'
+        ? file
+          ? [{ file, konto, kontoName: kontos.find((entry) => entry.id === konto)?.name ?? 'Konto' }]
+          : []
+        : allFiles ?? []
+    return files
+      .flatMap((entry) =>
+        computeBookings(entry.file)
+          .filter((booking) => bookingMatches(booking, query))
+          .map((booking) => ({
+            booking,
+            konto: entry.konto,
+            kontoName: entry.kontoName,
+            year: entry.file.year,
+            fiscal: fiscalLabel(entry.file),
+          })),
+      )
+      .sort((a, b) => b.booking.date.localeCompare(a.booking.date) || b.booking.seq - a.booking.seq)
+      .slice(0, 24)
+  }, [allFiles, file, konto, kontos, query, scope])
 
   return (
     <div className="search-overlay" onClick={onClose}>
@@ -239,23 +295,32 @@ function SearchOverlay({ onClose, onJump }: { onClose: () => void; onJump: (term
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && query.trim()) onJump(query.trim())
+            if (e.key === 'Enter' && results[0]) onSelect(results[0])
           }}
-          placeholder="Buchungen durchsuchen … (Enter zeigt alle Treffer)"
+          placeholder="Buchungen durchsuchen …"
           aria-label="Suchbegriff"
         />
+        <div className="search-scope" role="group" aria-label="Suchbereich">
+          <button className={scope === 'all' ? 'is-active' : ''} onClick={() => setScope('all')}>
+            Alle Konten & Jahre
+          </button>
+          <button className={scope === 'current' ? 'is-active' : ''} onClick={() => setScope('current')}>
+            Dieses Kassenjahr
+          </button>
+        </div>
         {query.trim() && (
           <div className="search-results">
-            {results.length === 0 && <div className="search-empty">Keine Treffer.</div>}
-            {results.map((r) => (
-              <button key={r.id} className="search-hit" onClick={() => onJump(query.trim())}>
-                <span className="ref">{r.ref}</span>
+            {scope === 'all' && !allFiles && <div className="search-empty">Durchsuche Konten und Kassenjahre …</div>}
+            {results.length === 0 && (scope === 'current' || allFiles) && <div className="search-empty">Keine Treffer.</div>}
+            {results.map((hit) => (
+              <button key={`${hit.konto}-${hit.year}-${hit.booking.id}`} className="search-hit" onClick={() => onSelect(hit)}>
+                <span className="ref">{hit.booking.ref}</span>
                 <span className="search-hit__text">
-                  {r.name?.trim() ? `${r.name} · ` : ''}
-                  {r.description}
-                  <span className="hint"> · {r.categoryName} · {formatDate(r.date)}</span>
+                  {hit.booking.name?.trim() ? `${hit.booking.name} · ` : ''}
+                  {hit.booking.description}
+                  <span className="hint"> · {hit.booking.categoryName} · {formatDate(hit.booking.date)} · {hit.kontoName} {hit.fiscal}</span>
                 </span>
-                <span className="search-hit__amount">{formatEur(r.signedAmount)}</span>
+                <span className="search-hit__amount">{formatEur(hit.booking.signedAmount)}</span>
               </button>
             ))}
           </div>

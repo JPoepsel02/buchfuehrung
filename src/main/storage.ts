@@ -10,6 +10,13 @@ import { basename, join, resolve } from 'node:path'
 
 const MAX_BACKUPS = 20
 
+export interface CloudSyncStatus {
+  enabled: boolean
+  lastSuccessAt?: string
+  lastError?: string
+  fileCount?: number
+}
+
 function dataDir(): string {
   const dir = join(app.getPath('userData'), 'daten')
   mkdirSync(dir, { recursive: true })
@@ -97,6 +104,31 @@ function settingsFile(): string {
   return join(dataDir(), 'einstellungen.json')
 }
 
+function cloudStatusFile(): string {
+  return join(dataDir(), '.cloud-sync-status.json')
+}
+
+function writeCloudStatus(status: CloudSyncStatus): void {
+  try {
+    const file = cloudStatusFile()
+    const tmp = file + '.tmp'
+    writeFileSync(tmp, JSON.stringify(status), 'utf-8')
+    renameSync(tmp, file)
+  } catch {
+    // Ein Status-Hinweis darf die lokale Buchführung nie beeinträchtigen.
+  }
+}
+
+export function cloudSyncStatus(settings: unknown = loadSettings()): CloudSyncStatus {
+  if (!cloudBackupDir(settings)) return { enabled: false }
+  try {
+    const stored = JSON.parse(readFileSync(cloudStatusFile(), 'utf-8')) as CloudSyncStatus
+    return { ...stored, enabled: true }
+  } catch {
+    return { enabled: true }
+  }
+}
+
 export function loadSettings(): unknown {
   if (!existsSync(settingsFile())) return {}
   try {
@@ -141,14 +173,25 @@ function syncDataToCloud(settings: unknown = loadSettings()): void {
         rmSync(join(dir, file), { force: true })
       }
     }
+    let fileCount = 0
     for (const file of readdirSync(sourceDir)) {
       if (/^(kassenbuch(-k\d+)?-\d{4}|einstellungen)\.json$/.test(file)) {
         copyFileSync(join(sourceDir, file), join(dir, basename(file)))
+        fileCount++
       }
     }
-  } catch {
+    writeCloudStatus({ enabled: true, lastSuccessAt: new Date().toISOString(), fileCount })
+  } catch (error) {
     // Cloud-Ordner sind manchmal kurzzeitig nicht verfügbar; lokales Speichern bleibt maßgeblich.
+    const message = error instanceof Error ? error.message : String(error)
+    writeCloudStatus({ ...cloudSyncStatus(settings), enabled: true, lastError: message })
   }
+}
+
+/** Manuell ausgelöste Spiegelung für die Statusanzeige in den Einstellungen. */
+export function syncCloudNow(): CloudSyncStatus {
+  syncDataToCloud()
+  return cloudSyncStatus()
 }
 
 function cloudBackupDir(settings: unknown): string | null {

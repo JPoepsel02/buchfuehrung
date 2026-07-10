@@ -31,6 +31,10 @@ const api = {
   openDataFolder: (): Promise<void> => ipcRenderer.invoke('data:openFolder'),
   openCloudFolder: (): Promise<void> => ipcRenderer.invoke('data:openCloudFolder'),
   selectCloudFolder: (): Promise<string | null> => ipcRenderer.invoke('data:selectCloudFolder'),
+  cloudSyncStatus: (): Promise<{ enabled: boolean; lastSuccessAt?: string; lastError?: string; fileCount?: number }> =>
+    ipcRenderer.invoke('data:cloudStatus'),
+  syncCloudNow: (): Promise<{ enabled: boolean; lastSuccessAt?: string; lastError?: string; fileCount?: number }> =>
+    ipcRenderer.invoke('data:syncCloudNow'),
   openCsv: (): Promise<{ name: string; content: string } | null> => ipcRenderer.invoke('csv:open'),
   saveTextFile: (suggestedName: string, content: string): Promise<{ ok: boolean; path?: string }> =>
     ipcRenderer.invoke('file:saveText', suggestedName, content),

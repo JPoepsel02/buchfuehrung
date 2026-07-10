@@ -3,6 +3,9 @@ export type Cents = number
 
 export type BookingType = 'einnahme' | 'ausgabe'
 
+/** Status eines Belegs für die Kassenprüfung. */
+export type ReceiptStatus = 'vorhanden' | 'offen' | 'nicht_erforderlich'
+
 export interface Category {
   id: string
   /** Vollständiger Name, z. B. "Maskenball" */
@@ -46,7 +49,13 @@ export interface Booking {
    * einzeln gelistet.
    */
   subcategory?: string
-  /** Gibt an, ob eine Rechnung/Quittung/ein Eigenbeleg im Belegordner liegt */
+  /** Prüffähiger Status des physischen Belegs im Ordner. */
+  receiptStatus?: ReceiptStatus
+  /**
+   * Altes Wahr/Falsch-Feld für Daten aus früheren App-Versionen.
+   * Neue Buchungen schreiben es zusätzlich weiter, damit ein Rückwechsel
+   * auf eine ältere Version die Bedeutung nicht verliert.
+   */
   receiptAvailable?: boolean
   note: string
   /** Laufende Nummer der Erfassung – bestimmt die Beleg-Nr.-Vergabe */
@@ -133,7 +142,9 @@ export interface ImportDraftRow {
   selected: boolean
   categoryId: string
   isUmsatz: boolean
-  /** Liegt ein Beleg im Ordner vor? (Standard beim Import: nein) */
+  /** Status des physischen Belegs (Standard beim Import: noch offen). */
+  receiptStatus?: ReceiptStatus
+  /** Altes Wahr/Falsch-Feld für Entwürfe aus früheren App-Versionen. */
   receiptAvailable?: boolean
   /** Optionale Unterkategorie für die Veranstaltungs-Zusammenfassung */
   subcategory?: string

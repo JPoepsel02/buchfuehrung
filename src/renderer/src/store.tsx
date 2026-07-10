@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { api } from './api'
 import { emptyYearFile, makeId } from '@shared/defaults'
 import { assignMissingRefNos, migrateExistingImportHashes, nextRefNo, nextSeq } from '@shared/ledger'
+import { migrateReceiptStatuses } from '@shared/receipt'
 import type { AppSettings, Booking, Category, KontoId, YearFile } from '@shared/types'
 
 /**
@@ -36,6 +37,8 @@ interface Store {
   selectKonto(konto: KontoId): Promise<void>
   /** Jahr im aktiven Buch wechseln */
   selectYear(year: number): Promise<void>
+  /** Konto und Kassenjahr gemeinsam öffnen (z. B. aus der globalen Suche). */
+  selectKontoYear(konto: KontoId, year: number): Promise<void>
   /** Neues Jahr im aktiven Buch anlegen (Jahresabschluss / Erststart) */
   createYear(year: number, openingBalance: number, clubName: string, treasurerName: string): Promise<void>
   /** Weiteres Konto mit erstem Kassenjahr anlegen */
@@ -57,11 +60,12 @@ const StoreContext = createContext<Store | null>(null)
 async function loadMigratedYear(konto: KontoId, year: number): Promise<YearFile | null> {
   const data = (await api.loadYear(konto, year)) as YearFile | null
   if (!data) return null
-  const hashes = migrateExistingImportHashes(data.bookings)
-  const withHashes = { ...data, bookings: hashes.bookings }
+  const receipts = migrateReceiptStatuses(data)
+  const hashes = migrateExistingImportHashes(receipts.file.bookings)
+  const withHashes = { ...receipts.file, bookings: hashes.bookings }
   // Beleg-Nummern von Altdaten einmalig festschreiben – danach sind sie fix
   const refs = assignMissingRefNos(withHashes)
-  if (hashes.migratedCount === 0 && refs.migratedCount === 0) return data
+  if (receipts.migratedCount === 0 && hashes.migratedCount === 0 && refs.migratedCount === 0) return data
   const next = { ...withHashes, bookings: refs.bookings }
   await api.saveYear(konto, year, next)
   return next
@@ -184,6 +188,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         flushPendingSave(file)
         const data = await loadMigratedYear(konto, year)
         if (data) setFile(data)
+      },
+      async selectKontoYear(target, year) {
+        if (target === konto && file?.year === year) return
+        flushPendingSave(file)
+        setKonto(target)
+        const data = await loadMigratedYear(target, year)
+        setFile(data ?? null)
       },
       async createYear(year, openingBalance, clubName, treasurerName) {
         const existing = await loadMigratedYear(konto, year)
