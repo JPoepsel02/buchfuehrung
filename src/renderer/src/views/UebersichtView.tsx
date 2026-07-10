@@ -4,7 +4,9 @@ import { fiscalLabel } from '@shared/fiscal'
 import { byCategory, monthSummaries, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur } from '@shared/money'
 
-export function UebersichtView({ onNavigate }: { onNavigate?: (view: 'bank' | 'buchungen') => void }) {
+type OverviewTarget = 'buchungen' | 'import'
+
+export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTarget) => void }) {
   const { file } = useStore()
   if (!file) return null
   const totals = yearTotals(file)
@@ -26,17 +28,31 @@ export function UebersichtView({ onNavigate }: { onNavigate?: (view: 'bank' | 'b
         </div>
       </header>
 
-      {openImportRows > 0 && (
-        <div className="todo-tiles">
-          <button className="todo-tile" onClick={() => onNavigate?.('bank')}>
-            <span className="todo-tile__count">{openImportRows}</span>
-            <span className="todo-tile__text">
-              {openImportRows === 1 ? 'Umsatz wartet' : 'Umsätze warten'} auf Zuweisung
-              <span className="todo-tile__hint">Jetzt zuweisen und übernehmen →</span>
+      <section className="workbench" aria-label="Schnell starten">
+        <button className="workbench-tile workbench-tile--primary" onClick={() => onNavigate?.('buchungen')}>
+          <span className="workbench-tile__icon" aria-hidden>✎</span>
+          <span className="workbench-tile__content">
+            <strong>Neue Buchung</strong>
+            <span>Ausgabe oder Einnahme direkt erfassen</span>
+          </span>
+          <span className="workbench-tile__arrow" aria-hidden>→</span>
+        </button>
+        <button
+          className={`workbench-tile${openImportRows > 0 ? ' workbench-tile--attention' : ''}`}
+          onClick={() => onNavigate?.('import')}
+        >
+          <span className="workbench-tile__icon" aria-hidden>⇲</span>
+          <span className="workbench-tile__content">
+            <strong>{openImportRows > 0 ? 'Import weiterführen' : 'Umsätze importieren'}</strong>
+            <span>
+              {openImportRows > 0
+                ? `${openImportRows} ${openImportRows === 1 ? 'Umsatz wartet' : 'Umsätze warten'} auf Zuweisung`
+                : 'CSV-Datei wählen oder Online-Banking nutzen'}
             </span>
-          </button>
-        </div>
-      )}
+          </span>
+          {openImportRows > 0 ? <span className="workbench-tile__count">{openImportRows}</span> : <span className="workbench-tile__arrow" aria-hidden>→</span>}
+        </button>
+      </section>
 
       <div className="stats">
         <div className="stat stat--hero">

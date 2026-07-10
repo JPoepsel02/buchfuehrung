@@ -1,6 +1,7 @@
 import { fiscalEndLabel, fiscalLabel, prevFiscalEndLabel } from '@shared/fiscal'
 import { byCategory, chronological, eventRows, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatAmount, formatDate, formatEur, monthOf } from '@shared/money'
+import { receiptAvailable, receiptStatus } from '@shared/receipt'
 import type { AuditInfo, YearFile } from '@shared/types'
 
 /** Leere Angaben erscheinen im Druck als Schreiblinie. */
@@ -34,7 +35,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
       <tr>
         <td class="nowrap">${formatDate(r.date)}</td>
         <td class="ref">${esc(r.ref)}</td>
-        <td>${receiptCell(r.receiptAvailable === false ? 0 : 1, 1)}</td>
+        <td>${bookingReceiptCell(receiptStatus(r))}</td>
         <td>${esc((r.name ?? '').trim() || '–')}</td>
         <td>${esc(r.description)}</td>
         <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
@@ -95,7 +96,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
     <tr class="total"><td>Abschlusssaldo ${fiscalEndLabel(file)}</td><td class="num">${formatEur(totals.closingBalance)}</td></tr>
   </table>
 
-  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(▤ = Beleg vorhanden)</span></h3>
+  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(▤ = Beleg im Ordner, □ = noch prüfen, — = nicht erforderlich)</span></h3>
   <table>
     <thead>
       <tr><th>Datum</th><th>Nr.</th><th>Beleg</th><th>Name</th><th>Verwendungszweck</th>
@@ -286,6 +287,13 @@ function receiptCell(available: number, total: number): string {
   if (available === 0) return ''
   const count = total > 1 ? ` ${available}/${total}` : ''
   return `<span class="receipt-state">▤${count}</span>`
+}
+
+/** Im Bericht unterscheidet ein Strich "nicht erforderlich" von offenem Beleg. */
+function bookingReceiptCell(status: ReturnType<typeof receiptStatus>): string {
+  if (receiptAvailable(status)) return receiptCell(1, 1)
+  if (status === 'nicht_erforderlich') return '<span class="receipt-state">—</span>'
+  return '<span class="receipt-state">□</span>'
 }
 
 function formatAuditDate(value: string | undefined, fallbackYear: number): string | null {

@@ -80,7 +80,7 @@ describe('buildReportHtml', () => {
     expect(html).toContain('<th>Beleg</th>')
     expect(html).toContain('<th>Name</th>')
     expect(html).toContain('Max Mustermann')
-    expect(html).toContain('▤ = Beleg vorhanden')
+    expect(html).toContain('▤ = Beleg im Ordner, □ = noch prüfen, — = nicht erforderlich')
     expect(html).toContain('<span class="receipt-state">▤</span>')
     expect(html).toContain('<span class="receipt-state">▤ 1/2</span>')
     expect(html).toContain('<td></td>\n          <td>Beiträge</td>')

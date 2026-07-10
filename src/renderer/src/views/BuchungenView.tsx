@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
+import { api } from '../api'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
 import { shouldStartBookingEdit } from '../bookingRow'
 import { fiscalRange, inFiscalYear } from '@shared/fiscal'
+import { bookingsToCsv } from '@shared/bookingExport'
 import { subcategorySuggestions } from '@shared/importDraft'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { formatDate, parseAmountToCents } from '@shared/money'
-import type { Booking, BookingType } from '@shared/types'
+import { receiptAvailable, receiptStatus, receiptStatusLabel, withReceiptStatus } from '@shared/receipt'
+import type { Booking, BookingType, ReceiptStatus } from '@shared/types'
 
 interface FormState {
   date: string
@@ -18,7 +21,7 @@ interface FormState {
   type: BookingType
   amount: string
   isUmsatz: boolean
-  receiptAvailable: boolean
+  receiptStatus: ReceiptStatus
   nonUmsatz: string
   note: string
 }
@@ -35,7 +38,7 @@ const emptyForm = (categoryId: string, fiscal: { year: number; fiscalStartMonth?
   type: 'ausgabe',
   amount: '',
   isUmsatz: false,
-  receiptAvailable: true,
+  receiptStatus: 'vorhanden',
   nonUmsatz: '',
   note: '',
 })
@@ -43,10 +46,15 @@ const emptyForm = (categoryId: string, fiscal: { year: number; fiscalStartMonth?
 export function BuchungenView({
   externalFilter = '',
   onFilterConsumed,
+  bookingToOpenId,
+  onBookingOpened,
 }: {
   /** Suchbegriff aus der globalen Strg+F-Suche */
   externalFilter?: string
   onFilterConsumed?: () => void
+  /** Konkreter Treffer aus der globalen Suche. */
+  bookingToOpenId?: string | null
+  onBookingOpened?: () => void
 }) {
   const { file, addBooking, updateBooking, deleteBooking } = useStore()
   const activeCats = useMemo(
@@ -56,14 +64,16 @@ export function BuchungenView({
   const [form, setForm] = useState<FormState>(() => emptyForm(activeCats[0]?.id ?? '', file ?? { year: 2026 }))
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
   const [filter, setFilter] = useState('')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   // Mehrfachauswahl für die Sammel-Bearbeitung
   const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set())
   const [bulk, setBulk] = useState({
     categoryId: '',
     subcategory: '',
     name: '',
-    receiptAvailable: '' as '' | 'ja' | 'nein',
+    receiptStatus: '' as '' | ReceiptStatus,
     isUmsatz: '' as '' | 'ja' | 'nein',
   })
 
@@ -80,6 +90,21 @@ export function BuchungenView({
       onFilterConsumed?.()
     }
   }, [externalFilter, onFilterConsumed])
+
+  useEffect(() => {
+    if (!bookingToOpenId || !file) return
+    const booking = file.bookings.find((row) => row.id === bookingToOpenId)
+    if (!booking) return
+    setFilter('')
+    startEdit(booking)
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-booking-id="${bookingToOpenId}"]`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    })
+    onBookingOpened?.()
+  }, [bookingToOpenId, file])
 
   if (!file) return null
   const rows = computeBookings(file)
@@ -101,10 +126,11 @@ export function BuchungenView({
       type: b.type,
       amount: (b.amount / 100).toFixed(2).replace('.', ','),
       isUmsatz: b.isUmsatz,
-      receiptAvailable: b.receiptAvailable ?? true,
+      receiptStatus: receiptStatus(b),
       nonUmsatz: b.nonUmsatzAmount ? (b.nonUmsatzAmount / 100).toFixed(2).replace('.', ',') : '',
       note: b.note,
     })
+    setAdvancedOpen(true)
   }
 
   function submit(e: React.FormEvent) {
@@ -113,6 +139,7 @@ export function BuchungenView({
     const amount = parseAmountToCents(form.amount)
     const nonUmsatz = form.nonUmsatz.trim() ? parseAmountToCents(form.nonUmsatz) : 0
     if (!form.date || !/^\d{4}-\d{2}-\d{2}$/.test(form.date)) return setError('Bitte ein Datum wählen.')
+    if (!inFiscalYear(file!, form.date)) return setError('Das Datum liegt außerhalb des aktiven Kassenjahrs.')
     if (!form.categoryId) return setError('Bitte eine Kategorie wählen.')
     if (!form.name.trim()) return setError('Bitte einen Namen angeben.')
     if (!form.description.trim()) return setError('Bitte einen Verwendungszweck angeben.')
@@ -120,7 +147,7 @@ export function BuchungenView({
     if (nonUmsatz === null || nonUmsatz < 0) return setError('„Davon kein Umsatz“ ist kein gültiger Betrag.')
     if (nonUmsatz > amount) return setError('„Davon kein Umsatz“ darf den Betrag nicht übersteigen.')
 
-    const data = {
+    const data = withReceiptStatus({
       date: form.date,
       categoryId: form.categoryId,
       name: form.name.trim(),
@@ -129,11 +156,10 @@ export function BuchungenView({
       type: form.type,
       amount,
       isUmsatz: form.isUmsatz,
-      receiptAvailable: form.receiptAvailable,
       nonUmsatzAmount: form.isUmsatz ? nonUmsatz : 0,
       note: form.note.trim(),
       source: 'manuell' as const,
-    }
+    }, form.receiptStatus)
     if (editingId) {
       updateBooking(editingId, data)
       setEditingId(null)
@@ -141,12 +167,14 @@ export function BuchungenView({
       addBooking(data)
     }
     setForm((f) => ({ ...emptyForm(f.categoryId, file!), date: f.date }))
+    setAdvancedOpen(false)
   }
 
   function cancelEdit() {
     setEditingId(null)
     setForm(emptyForm(activeCats[0]?.id ?? '', file!))
     setError('')
+    setAdvancedOpen(false)
   }
 
   function toggleChecked(id: string, checked: boolean) {
@@ -174,7 +202,7 @@ export function BuchungenView({
 
   const bulkHasValue =
     Boolean(bulk.categoryId || bulk.subcategory.trim() || bulk.name.trim()) ||
-    bulk.receiptAvailable !== '' ||
+    bulk.receiptStatus !== '' ||
     bulk.isUmsatz !== ''
 
   /** Wendet die Sammel-Bearbeitung auf alle ausgewählten Buchungen an. */
@@ -183,12 +211,24 @@ export function BuchungenView({
     if (bulk.categoryId) patch.categoryId = bulk.categoryId
     if (bulk.subcategory.trim()) patch.subcategory = bulk.subcategory.trim()
     if (bulk.name.trim()) patch.name = bulk.name.trim()
-    if (bulk.receiptAvailable) patch.receiptAvailable = bulk.receiptAvailable === 'ja'
+    if (bulk.receiptStatus) {
+      patch.receiptStatus = bulk.receiptStatus
+      patch.receiptAvailable = receiptAvailable(bulk.receiptStatus)
+    }
     if (bulk.isUmsatz) patch.isUmsatz = bulk.isUmsatz === 'ja'
     // Kategorie-Wechsel vergibt je Buchung eine neue Beleg-Nummer (updateBooking)
     for (const r of visibleChecked) updateBooking(r.id, patch)
     setCheckedIds(new Set())
-    setBulk({ categoryId: '', subcategory: '', name: '', receiptAvailable: '', isUmsatz: '' })
+    setBulk({ categoryId: '', subcategory: '', name: '', receiptStatus: '', isUmsatz: '' })
+  }
+
+  async function exportRows() {
+    if (rows.length === 0) return
+    const suffix = filter.trim() ? '-gefiltert' : ''
+    const result = await api.saveTextFile(`Buchungen-${file!.year}${suffix}.csv`, bookingsToCsv(rows))
+    if (!result.ok) return
+    setToast(result.path ? `CSV gespeichert: ${result.path}` : 'CSV exportiert.')
+    setTimeout(() => setToast(''), 4000)
   }
 
   return (
@@ -205,7 +245,14 @@ export function BuchungenView({
         <div className="form-grid">
           <div className="field" style={{ gridColumn: 'span 3' }}>
             <label htmlFor="b-date">Datum</label>
-            <input id="b-date" type="date" value={form.date} onChange={(e) => set('date', e.target.value)} />
+            <input
+              id="b-date"
+              type="date"
+              min={fiscalRange(file).start}
+              max={fiscalRange(file).end}
+              value={form.date}
+              onChange={(e) => set('date', e.target.value)}
+            />
           </div>
           <div className="field" style={{ gridColumn: 'span 5' }}>
             <label htmlFor="b-cat">Veranstaltung / Kategorie</label>
@@ -251,55 +298,65 @@ export function BuchungenView({
               placeholder="Verwendungszweck"
             />
           </div>
-          <div className="field" style={{ gridColumn: 'span 3' }}>
-            <label htmlFor="b-sub">Unterkategorie (optional)</label>
-            <input
-              id="b-sub"
-              value={form.subcategory}
-              onChange={(e) => set('subcategory', e.target.value)}
-              placeholder="z. B. Karnevalsbeiträge"
-              list="b-sub-suggestions"
-            />
-            <datalist id="b-sub-suggestions">
-              {subSuggestions.map((sName) => (
-                <option key={sName} value={sName} />
-              ))}
-            </datalist>
+          <div className="form-advanced-toggle" style={{ gridColumn: 'span 12' }}>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setAdvancedOpen((open) => !open)}>
+              {advancedOpen ? 'Weniger Angaben' : 'Weitere Angaben'}
+            </button>
+            <span className="hint">Unterkategorie, Belegstatus, Umsatz und Notiz</span>
           </div>
-          <div className="field" style={{ gridColumn: 'span 12' }}>
-            <label htmlFor="b-note">Notiz (optional)</label>
-            <input id="b-note" value={form.note} onChange={(e) => set('note', e.target.value)} />
-          </div>
-          <div style={{ gridColumn: 'span 8', display: 'flex', gap: 'var(--space-5)', alignItems: 'center' }}>
-            <label className="checkrow">
-              <input
-                type="checkbox"
-                checked={form.isUmsatz}
-                onChange={(e) => set('isUmsatz', e.target.checked)}
-              />
-              Zählt als Umsatz
-            </label>
-            <label className="checkrow">
-              <input
-                type="checkbox"
-                checked={form.receiptAvailable}
-                onChange={(e) => set('receiptAvailable', e.target.checked)}
-              />
-              Beleg vorhanden
-            </label>
-            {form.isUmsatz && (
-              <div className="field" style={{ minWidth: 180 }}>
-                <label htmlFor="b-nonumsatz">davon kein Umsatz (€, z. B. Wechselgeld)</label>
-                <AmountField
-                  id="b-nonumsatz"
-                  value={form.nonUmsatz}
-                  onChange={(v) => set('nonUmsatz', v)}
-                  placeholder="0,00"
+          {advancedOpen && (
+            <>
+              <div className="field" style={{ gridColumn: 'span 3' }}>
+                <label htmlFor="b-sub">Unterkategorie (optional)</label>
+                <input
+                  id="b-sub"
+                  value={form.subcategory}
+                  onChange={(e) => set('subcategory', e.target.value)}
+                  placeholder="z. B. Karnevalsbeiträge"
+                  list="b-sub-suggestions"
                 />
+                <datalist id="b-sub-suggestions">
+                  {subSuggestions.map((sName) => (
+                    <option key={sName} value={sName} />
+                  ))}
+                </datalist>
               </div>
-            )}
-          </div>
-          <div style={{ gridColumn: 'span 4', display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+              <div className="field" style={{ gridColumn: 'span 3' }}>
+                <label htmlFor="b-receipt">Belegstatus</label>
+                <select id="b-receipt" value={form.receiptStatus} onChange={(e) => set('receiptStatus', e.target.value as ReceiptStatus)}>
+                  <option value="vorhanden">Beleg im Ordner vorhanden</option>
+                  <option value="offen">Beleg noch prüfen</option>
+                  <option value="nicht_erforderlich">Kein Beleg erforderlich</option>
+                </select>
+              </div>
+              <div className="field" style={{ gridColumn: 'span 6' }}>
+                <label htmlFor="b-note">Notiz (optional)</label>
+                <input id="b-note" value={form.note} onChange={(e) => set('note', e.target.value)} />
+              </div>
+              <div style={{ gridColumn: 'span 12', display: 'flex', gap: 'var(--space-5)', alignItems: 'center' }}>
+                <label className="checkrow">
+                  <input
+                    type="checkbox"
+                    checked={form.isUmsatz}
+                    onChange={(e) => set('isUmsatz', e.target.checked)}
+                  />
+                  Zählt als Umsatz
+                </label>
+                {form.isUmsatz && (
+                  <div className="field" style={{ minWidth: 180 }}>
+                    <label htmlFor="b-nonumsatz">davon kein Umsatz (€, z. B. Wechselgeld)</label>
+                    <AmountField
+                      id="b-nonumsatz"
+                      value={form.nonUmsatz}
+                      onChange={(v) => set('nonUmsatz', v)}
+                      placeholder="0,00"
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          <div style={{ gridColumn: 'span 12', display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
             {editingId && (
               <button type="button" className="btn" onClick={cancelEdit}>
                 Abbrechen
@@ -331,6 +388,9 @@ export function BuchungenView({
               aria-label="Buchungen durchsuchen"
             />
           </div>
+          <button className="btn btn--sm" onClick={() => void exportRows()} disabled={rows.length === 0}>
+            CSV exportieren …
+          </button>
         </div>
         {visibleChecked.length > 1 && (
           <div className="bulkbar">
@@ -360,13 +420,14 @@ export function BuchungenView({
               aria-label="Name für Auswahl"
             />
             <select
-              value={bulk.receiptAvailable}
-              onChange={(e) => setBulk({ ...bulk, receiptAvailable: e.target.value as '' | 'ja' | 'nein' })}
+              value={bulk.receiptStatus}
+              onChange={(e) => setBulk({ ...bulk, receiptStatus: e.target.value as '' | ReceiptStatus })}
               aria-label="Beleg für Auswahl"
             >
               <option value="">Beleg unverändert</option>
-              <option value="ja">Beleg: vorhanden</option>
-              <option value="nein">Beleg: fehlt</option>
+              <option value="vorhanden">Beleg: vorhanden</option>
+              <option value="offen">Beleg: noch prüfen</option>
+              <option value="nicht_erforderlich">Beleg: nicht erforderlich</option>
             </select>
             <select
               value={bulk.isUmsatz}
@@ -414,6 +475,7 @@ export function BuchungenView({
                 {rows.map((r) => (
                   <tr
                     key={r.id}
+                    data-booking-id={r.id}
                     className={editingId === r.id ? 'is-selected' : undefined}
                     aria-selected={editingId === r.id}
                     tabIndex={0}
@@ -464,10 +526,9 @@ export function BuchungenView({
                       <Amount cents={r.signedAmount} withSign />
                     </td>
                     <td>
-                      <label className="checkrow">
-                        <input type="checkbox" checked={r.receiptAvailable ?? true} readOnly />
-                        Beleg vorhanden
-                      </label>
+                      <span className={`receipt-status receipt-status--${receiptStatus(r)}`}>
+                        {receiptStatusLabel(receiptStatus(r))}
+                      </span>
                     </td>
                     <td>
                       {r.isUmsatz ? (
@@ -498,6 +559,7 @@ export function BuchungenView({
           )}
         </div>
       </section>
+      {toast && <div className="toast">{toast}</div>}
     </div>
   )
 }

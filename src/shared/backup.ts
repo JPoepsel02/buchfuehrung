@@ -136,6 +136,13 @@ export function validateBackup(data: unknown): ValidationResult {
         err(`${bw}: Unterkategorie ist kein Text.`)
       if (bo.receiptAvailable !== undefined && typeof bo.receiptAvailable !== 'boolean')
         err(`${bw}: Beleg-Kennzeichen ist kein Wahr/Falsch-Wert.`)
+      if (
+        bo.receiptStatus !== undefined &&
+        bo.receiptStatus !== 'vorhanden' &&
+        bo.receiptStatus !== 'offen' &&
+        bo.receiptStatus !== 'nicht_erforderlich'
+      )
+        err(`${bw}: Beleg-Status ist ungültig.`)
       if (!Number.isInteger(bo.seq)) err(`${bw}: laufende Nummer fehlt.`)
       if (bo.refNo !== undefined && (!Number.isInteger(bo.refNo) || (bo.refNo as number) < 1))
         err(`${bw}: Beleg-Nummer muss eine positive Ganzzahl sein.`)

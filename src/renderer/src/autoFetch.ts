@@ -32,7 +32,7 @@ export async function runStartupBankFetch(opts: {
     if (added > 0) results.push(`${account.label}: ${added} neue Umsätze`)
   }
   if (results.length === 0) return null
-  return `${results.join(' · ')} – unter Online-Banking zuweisen.`
+  return `${results.join(' · ')} – unter Umsätze importieren zuweisen.`
 }
 
 async function fetchAccount(

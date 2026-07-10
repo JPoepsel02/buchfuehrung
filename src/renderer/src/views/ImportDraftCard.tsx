@@ -4,10 +4,11 @@ import { Amount } from '../components/Amount'
 import { CentsAmountInput } from '../components/AmountInput'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
-import { receiptAvailableForImport, subcategorySuggestions } from '@shared/importDraft'
+import { subcategorySuggestions } from '@shared/importDraft'
 import { classifyDraftDuplicates, nextRefNo, nextSeq } from '@shared/ledger'
 import { formatDate } from '@shared/money'
-import type { Booking, ImportDraftRow, ImportDraftSplit } from '@shared/types'
+import { receiptStatus, withReceiptStatus } from '@shared/receipt'
+import type { Booking, ImportDraftRow, ImportDraftSplit, ReceiptStatus } from '@shared/types'
 
 /** Reduziert eine Entwurfszeile auf die Felder der Duplikat-Erkennung. */
 const toDupInput = (r: { hash: string; date: string; amount: number }) => ({
@@ -32,11 +33,11 @@ interface BulkPatch {
   subcategory: string
   description: string
   name: string
-  receiptAvailable: '' | 'ja' | 'nein'
+  receiptStatus: '' | ReceiptStatus
   isUmsatz: '' | 'ja' | 'nein'
 }
 
-const EMPTY_BULK: BulkPatch = { categoryId: '', subcategory: '', description: '', name: '', receiptAvailable: '', isUmsatz: '' }
+const EMPTY_BULK: BulkPatch = { categoryId: '', subcategory: '', description: '', name: '', receiptStatus: '', isUmsatz: '' }
 
 export function ImportDraftCard() {
   const { file, update } = useStore()
@@ -173,8 +174,7 @@ export function ImportDraftCard() {
               if (bulk.isUmsatz) next.isUmsatz = bulk.isUmsatz === 'ja'
             }
             if (bulk.name.trim()) next.name = bulk.name.trim()
-            if (bulk.receiptAvailable) next.receiptAvailable = bulk.receiptAvailable === 'ja'
-            return next
+            return bulk.receiptStatus ? withReceiptStatus(next, bulk.receiptStatus) : next
           }),
         },
       }
@@ -185,7 +185,7 @@ export function ImportDraftCard() {
 
   const bulkHasValue =
     Boolean(bulk.categoryId || bulk.subcategory.trim() || bulk.description.trim() || bulk.name.trim()) ||
-    bulk.receiptAvailable !== '' ||
+    bulk.receiptStatus !== '' ||
     bulk.isUmsatz !== ''
 
   /** Übernimmt alle ausgewählten Zeilen als Buchungen und entfernt sie aus dem Entwurf. */
@@ -221,7 +221,7 @@ export function ImportDraftCard() {
             type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
             amount: part.amount,
             isUmsatz: part.isUmsatz,
-            receiptAvailable: receiptAvailableForImport(r),
+            ...withReceiptStatus({}, receiptStatus(r, 'offen')),
             nonUmsatzAmount: 0,
             note: r.bankText,
             source: 'import' as const,
@@ -311,13 +311,14 @@ export function ImportDraftCard() {
             aria-label="Name für Auswahl"
           />
           <select
-            value={bulk.receiptAvailable}
-            onChange={(e) => setBulk({ ...bulk, receiptAvailable: e.target.value as BulkPatch['receiptAvailable'] })}
+            value={bulk.receiptStatus}
+            onChange={(e) => setBulk({ ...bulk, receiptStatus: e.target.value as BulkPatch['receiptStatus'] })}
             aria-label="Beleg für Auswahl"
           >
             <option value="">Beleg unverändert</option>
-            <option value="ja">Beleg: vorhanden</option>
-            <option value="nein">Beleg: fehlt</option>
+            <option value="vorhanden">Beleg: vorhanden</option>
+            <option value="offen">Beleg: noch prüfen</option>
+            <option value="nicht_erforderlich">Beleg: nicht erforderlich</option>
           </select>
           <select
             value={bulk.isUmsatz}
@@ -467,16 +468,17 @@ export function ImportDraftCard() {
                   )}
                 </td>
                 <td>
-                  <label className="checkrow" style={{ whiteSpace: 'nowrap' }}>
-                    <input
-                      type="checkbox"
-                      checked={receiptAvailableForImport(r)}
-                      disabled={!r.selected || isDuplicate}
-                      onChange={(e) => setRow(i, { receiptAvailable: e.target.checked })}
-                      aria-label="Beleg vorhanden"
-                    />
-                    vorhanden
-                  </label>
+                  <select
+                    value={receiptStatus(r, 'offen')}
+                    disabled={!r.selected || isDuplicate}
+                    onChange={(e) => setRow(i, withReceiptStatus(r, e.target.value as ReceiptStatus))}
+                    aria-label="Belegstatus"
+                    style={{ maxWidth: 178 }}
+                  >
+                    <option value="vorhanden">Vorhanden</option>
+                    <option value="offen">Noch prüfen</option>
+                    <option value="nicht_erforderlich">Nicht erforderlich</option>
+                  </select>
                 </td>
                 <td>
                   <input

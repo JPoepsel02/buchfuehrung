@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
-import { ImportDraftCard } from './ImportDraftCard'
 import { buildDraft } from '@shared/importDraft'
 import { makeId } from '@shared/defaults'
 import { rowHash } from '@shared/csv'
@@ -43,7 +42,8 @@ function isoDaysAgo(days: number): string {
  * Kassenjahr und werden mit derselben Zuweisungstabelle übernommen wie ein
  * CSV-Kontoauszug.
  */
-export function BankView() {
+/** Eingebetteter Online-Banking-Weg innerhalb von „Umsätze importieren“. */
+export function BankImportPanel() {
   const { file, update, settings, updateSettings } = useStore()
   const accounts = settings.bankAccounts ?? []
   const [editing, setEditing] = useState<BankAccountConfig | null>(null)
@@ -185,16 +185,7 @@ export function BankView() {
   }
 
   return (
-    <div className="view">
-      <header className="view__header">
-        <div>
-          <h1 className="view__title">Online-Banking</h1>
-          <p className="view__subtitle">
-            Umsätze direkt von der Bank abrufen (FinTS) und hier zuweisen – sie landen im aktiven Kassenjahr.
-          </p>
-        </div>
-      </header>
-
+    <>
       <section className="card">
         <div className="toolbar" style={{ marginBottom: 'var(--space-3)' }}>
           <h2 className="card__title" style={{ marginBottom: 0 }}>
@@ -315,8 +306,6 @@ export function BankView() {
         />
       )}
 
-      <ImportDraftCard />
-
       {flow?.modal?.kind === 'pin' && (
         <PinModal
           account={flow.account}
@@ -341,7 +330,7 @@ export function BankView() {
         />
       )}
       {toast && <div className="toast">{toast}</div>}
-    </div>
+    </>
   )
 }
 

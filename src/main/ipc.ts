@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { registerBankIpc } from './bank'
-import { dataDirPath, deleteYear, listKontos, listYears, loadSettings, loadYear, saveSettings, saveYear } from './storage'
+import { cloudSyncStatus, dataDirPath, deleteYear, listKontos, listYears, loadSettings, loadYear, saveSettings, saveYear, syncCloudNow } from './storage'
 import { checkForUpdate, downloadAndInstall } from './updater'
 import type { UpdateInfo } from './updater'
 
@@ -52,6 +52,8 @@ export function registerIpc(): void {
     if (!settings.cloudBackupDir) return
     return shell.openPath(settings.cloudBackupDir)
   })
+  ipcMain.handle('data:cloudStatus', () => cloudSyncStatus())
+  ipcMain.handle('data:syncCloudNow', () => syncCloudNow())
   ipcMain.handle('data:selectCloudFolder', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     if (!win) return null
@@ -63,14 +65,15 @@ export function registerIpc(): void {
     return result.filePaths[0]
   })
 
-  /** Textdatei speichern (z. B. Sicherungs-Export) – Vorschlag: Downloads-Ordner. */
+  /** Textdatei speichern (z. B. Sicherung oder Buchungs-CSV) – Vorschlag: Downloads-Ordner. */
   ipcMain.handle('file:saveText', async (e, suggestedName: string, content: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     if (!win) return { ok: false }
+    const isCsv = suggestedName.toLowerCase().endsWith('.csv')
     const target = await dialog.showSaveDialog(win, {
-      title: 'Sicherung speichern',
+      title: 'Datei speichern',
       defaultPath: join(app.getPath('downloads'), suggestedName),
-      filters: [{ name: 'JSON', extensions: ['json'] }],
+      filters: [isCsv ? { name: 'CSV', extensions: ['csv'] } : { name: 'JSON', extensions: ['json'] }],
     })
     if (target.canceled || !target.filePath) return { ok: false }
     writeFileSync(target.filePath, content, 'utf-8')

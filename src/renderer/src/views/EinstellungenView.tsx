@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isElectron } from '../api'
-import type { UpdateInfo } from '../api'
+import type { CloudSyncStatus, UpdateInfo } from '../api'
 import { AmountField } from '../components/AmountInput'
 import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
@@ -370,6 +370,16 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
   const { settings, updateSettings } = useStore()
   const cloudEnabled = settings.cloudBackupEnabled === true
   const cloudDir = settings.cloudBackupDir?.trim() ?? ''
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus | null>(null)
+  const [syncing, setSyncing] = useState(false)
+
+  useEffect(() => {
+    void refreshCloudStatus()
+  }, [cloudEnabled, cloudDir])
+
+  async function refreshCloudStatus() {
+    setCloudStatus(await api.cloudSyncStatus())
+  }
 
   /** Alle Jahre sämtlicher Konten plus Einstellungen als eine Sicherungsdatei exportieren. */
   async function exportBackup() {
@@ -436,6 +446,7 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
     const dir = await api.selectCloudFolder()
     if (!dir) return
     await updateSettings({ cloudBackupDir: dir, cloudBackupEnabled: true })
+    await refreshCloudStatus()
     notify('Cloud-Sicherung gespeichert.')
   }
 
@@ -445,12 +456,26 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
       return
     }
     await updateSettings({ cloudBackupEnabled: enabled })
+    await refreshCloudStatus()
     notify(enabled ? 'Cloud-Sicherung aktiviert.' : 'Cloud-Sicherung deaktiviert.')
   }
 
   async function clearCloudFolder() {
     await updateSettings({ cloudBackupDir: null, cloudBackupEnabled: false })
+    await refreshCloudStatus()
     notify('Cloud-Sicherung entfernt.')
+  }
+
+  async function syncNow() {
+    setSyncing(true)
+    try {
+      const status = await api.syncCloudNow()
+      setCloudStatus(status)
+      if (status.lastError) notify(`Cloud-Synchronisierung fehlgeschlagen: ${status.lastError}`)
+      else notify('Cloud-Sicherung ist aktuell.')
+    } finally {
+      setSyncing(false)
+    }
   }
 
   return (
@@ -493,9 +518,25 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
             {cloudDir ? 'Ordner ändern …' : 'Cloud-Ordner wählen …'}
           </button>
         </div>
+        {cloudEnabled && (
+          <div className={`cloud-sync-state${cloudStatus?.lastError ? ' is-error' : ''}`}>
+            <span>
+              {syncing
+                ? 'Synchronisiere lokale Daten …'
+                : cloudStatus?.lastError
+                  ? `Letzte Synchronisierung fehlgeschlagen: ${cloudStatus.lastError}`
+                  : cloudStatus?.lastSuccessAt
+                    ? `Zuletzt synchronisiert: ${formatCloudSyncDate(cloudStatus.lastSuccessAt)}${cloudStatus.fileCount ? ` · ${cloudStatus.fileCount} Dateien` : ''}`
+                    : 'Noch nicht synchronisiert'}
+            </span>
+            <button className="btn btn--ghost btn--sm" disabled={!isElectron || syncing} onClick={() => void syncNow()}>
+              Jetzt synchronisieren
+            </button>
+          </div>
+        )}
         <p className="hint" style={{ marginBottom: 0 }}>
-          Die App speichert weiterhin lokal. Wenn die Cloud-Sicherung aktiv ist, werden Jahresdateien
-          und Einstellungen zusätzlich in den gewählten Ordner kopiert.
+          Die lokale Datei bleibt maßgeblich. Jede Speicherung wird zusätzlich in den gewählten
+          Cloud-Ordner gespiegelt; es findet kein automatisches Zurücksynchronisieren statt.
         </p>
       </div>
       <div className="storage-cloud">
@@ -517,6 +558,12 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
       </div>
     </section>
   )
+}
+
+function formatCloudSyncDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(date)
 }
 
 /** Eigenes Vereinslogo hochladen – erscheint in Seitenleiste, Prüfbericht und Dock. */

@@ -1,5 +1,6 @@
 import { formatEur } from './money'
 import { rowHash } from './csv'
+import { receiptAvailable, receiptStatus } from './receipt'
 import type {
   Booking,
   CategoryGroup,
@@ -208,7 +209,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
       ausgaben: r.type === 'ausgabe' ? r.amount : 0,
       einnahmen: r.type === 'einnahme' ? r.amount : 0,
       count: 1,
-      receiptAvailableCount: r.receiptAvailable === false ? 0 : 1,
+      receiptAvailableCount: receiptAvailable(receiptStatus(r)) ? 1 : 0,
     }))
 
   const bySub = new Map<string, ComputedBooking[]>()
@@ -228,7 +229,7 @@ export function eventRows(group: CategoryGroup): EventRow[] {
     ausgaben: rows.filter((r) => r.type === 'ausgabe').reduce((a, r) => a + r.amount, 0),
     einnahmen: rows.filter((r) => r.type === 'einnahme').reduce((a, r) => a + r.amount, 0),
     count: rows.length,
-    receiptAvailableCount: rows.filter((r) => r.receiptAvailable !== false).length,
+    receiptAvailableCount: rows.filter((r) => receiptAvailable(receiptStatus(r))).length,
   }))
 
   return [...singles, ...aggregated].sort((a, b) => a.date.localeCompare(b.date))

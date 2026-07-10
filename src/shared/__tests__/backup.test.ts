@@ -83,6 +83,18 @@ describe('validateBackup', () => {
     if (!r.ok) expect(r.errors.join(' ')).toContain('Beleg')
   })
 
+  test('akzeptiert den neuen Belegstatus und lehnt unbekannte Werte ab', () => {
+    const valid = backup()
+    valid.years[0].bookings[0].receiptStatus = 'nicht_erforderlich'
+    expect(validateBackup(valid).ok).toBe(true)
+
+    const invalid = backup()
+    invalid.years[0].bookings[0].receiptStatus = 'vielleicht'
+    const result = validateBackup(invalid)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.join(' ')).toContain('Beleg-Status')
+  })
+
   test('lehnt einen ungültigen Namen ab', () => {
     const b = backup()
     b.years[0].bookings[0].name = 123
