@@ -3,7 +3,7 @@ import { api } from '../api'
 import { useStore } from '../store'
 import { buildDraft } from '@shared/importDraft'
 import { makeId } from '@shared/defaults'
-import { rowHash } from '@shared/csv'
+import { legacyRowHashes, rowHash } from '@shared/csv'
 import { formatDate } from '@shared/money'
 import type { StatementRow } from '@shared/csv'
 import type { BankAccountChoice, BankFetchResult, BankFetchedRow } from '@shared/bank'
@@ -155,7 +155,7 @@ export function BankImportPanel() {
     const statementRows: StatementRow[] = rows.map((r) => ({
       ...r,
       hash: rowHash(r.date, r.amount, r.description),
-      legacyHashes: [],
+      legacyHashes: legacyRowHashes(r.date, r.amount, r.description),
     }))
     const sourceName = `${account.label} · Abruf vom ${formatDate(new Date().toISOString().slice(0, 10))}`
     const { mutate, messages } = buildDraft(file!, statementRows, sourceName, 0)

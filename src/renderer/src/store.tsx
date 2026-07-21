@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { api } from './api'
 import { emptyYearFile, makeId } from '@shared/defaults'
 import { assignMissingRefNos, migrateExistingImportHashes, nextRefNo, nextSeq } from '@shared/ledger'
+import { migrateImportDraftHashes } from '@shared/importDraft'
 import { migrateReceiptStatuses } from '@shared/receipt'
 import type { AppSettings, Booking, Category, KontoId, YearFile } from '@shared/types'
 
@@ -63,10 +64,16 @@ async function loadMigratedYear(konto: KontoId, year: number): Promise<YearFile 
   const receipts = migrateReceiptStatuses(data)
   const hashes = migrateExistingImportHashes(receipts.file.bookings)
   const withHashes = { ...receipts.file, bookings: hashes.bookings }
+  const draftHashes = migrateImportDraftHashes(withHashes)
   // Beleg-Nummern von Altdaten einmalig festschreiben – danach sind sie fix
-  const refs = assignMissingRefNos(withHashes)
-  if (receipts.migratedCount === 0 && hashes.migratedCount === 0 && refs.migratedCount === 0) return data
-  const next = { ...withHashes, bookings: refs.bookings }
+  const refs = assignMissingRefNos(draftHashes.file)
+  if (
+    receipts.migratedCount === 0 &&
+    hashes.migratedCount === 0 &&
+    draftHashes.migratedCount === 0 &&
+    refs.migratedCount === 0
+  ) return data
+  const next = { ...draftHashes.file, bookings: refs.bookings }
   await api.saveYear(konto, year, next)
   return next
 }

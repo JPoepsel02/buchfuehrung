@@ -46,6 +46,8 @@ const GENERIC_NAME_HEADERS = [
   'name zahlungsbeteiligter', 'auftraggeber/empfänger', 'auftraggeber/empfaenger',
 ]
 
+export const IMPORT_HASH_VERSION = 3 as const
+
 export function detectDelimiter(headerLine: string): string {
   const counts: [string, number][] = [';', ',', '\t'].map((d) => [d, headerLine.split(d).length])
   counts.sort((a, b) => b[1] - a[1])
@@ -107,14 +109,59 @@ function findColumn(headers: string[], candidates: string[]): number {
   return -1
 }
 
-/** Einfacher, stabiler Hash für Duplikat-Erkennung. */
-export function rowHash(date: string, amount: number, description: string): string {
-  const str = `${date}|${amount}|${description.toLowerCase().replace(/\s+/g, ' ')}`
+function hashText(str: string): string {
   let h = 0
   for (let i = 0; i < str.length; i++) {
     h = (Math.imul(31, h) + str.charCodeAt(i)) | 0
   }
   return (h >>> 0).toString(36) + '-' + str.length.toString(36)
+}
+
+function descriptionParts(description: string): string[] {
+  return description
+    .normalize('NFKC')
+    .split(/\s+[–·]\s+/u)
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+/** Einheitliche Darstellung für CSV und Online-Banking. */
+export function bankDescription(purpose: string, bookingText: string): string {
+  return [purpose, bookingText]
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join(' – ')
+}
+
+function legacyRowHash(date: string, amount: number, description: string): string {
+  return hashText(`${date}|${amount}|${description.toLowerCase().replace(/\s+/g, ' ')}`)
+}
+
+/**
+ * Stabile Importkennung aus Datum, Betrag und dem zuvor vereinheitlichten
+ * Banktext. Trennzeichen und Leerraum werden technisch normalisiert.
+ */
+export function rowHash(date: string, amount: number, description: string): string {
+  const normalizedDescription = descriptionParts(description)
+    .map((part) => part.toLowerCase())
+    .join(' | ')
+  return hashText(`${date}|${amount}|${normalizedDescription}`)
+}
+
+/** Frühere, reihenfolgeabhängige Varianten zum Abgleich alter Importe. */
+export function legacyRowHashes(date: string, amount: number, description: string): string[] {
+  const parts = descriptionParts(description)
+  const reversed = [...parts].reverse()
+  const renderings = new Set([
+    description,
+    parts.join(' – '),
+    reversed.join(' – '),
+    parts.join(' · '),
+    reversed.join(' · '),
+  ])
+  const current = rowHash(date, amount, description)
+  return [...new Set([...renderings].map((text) => legacyRowHash(date, amount, text)))]
+    .filter((hash) => hash !== current)
 }
 
 export function parseBankCsv(content: string): ParseResult {
@@ -181,18 +228,19 @@ export function parseBankCsv(content: string): ParseResult {
       .replace(/\s+/g, ' ')
       .trim()
     const hash = rowHash(date, amount, description)
-    const legacyHash = rowHash(
-      date,
-      amount,
-      [description, explicitName].filter(Boolean).join(' – '),
-    )
+    const descriptionWithName = [description, explicitName].filter(Boolean).join(' – ')
+    const legacyHashes = [
+      ...legacyRowHashes(date, amount, description),
+      ...legacyRowHashes(date, amount, descriptionWithName),
+      rowHash(date, amount, descriptionWithName),
+    ].filter((candidate, index, all) => candidate !== hash && all.indexOf(candidate) === index)
     rows.push({
       date,
       name,
       description,
       amount,
       hash,
-      legacyHashes: legacyHash === hash ? [] : [legacyHash],
+      legacyHashes,
     })
   }
   return {

@@ -147,10 +147,93 @@ export function validateBackup(data: unknown): ValidationResult {
       if (bo.refNo !== undefined && (!Number.isInteger(bo.refNo) || (bo.refNo as number) < 1))
         err(`${bw}: Beleg-Nummer muss eine positive Ganzzahl sein.`)
       if (bo.source !== 'manuell' && bo.source !== 'import') err(`${bw}: ungültige Herkunft.`)
-      if (bo.importHashVersion !== undefined && bo.importHashVersion !== 2) {
+      if (
+        bo.legacyImportHashes !== undefined &&
+        (!Array.isArray(bo.legacyImportHashes) ||
+          bo.legacyImportHashes.some((hash) => typeof hash !== 'string'))
+      ) {
+        err(`${bw}: frühere Import-Hashes sind ungültig.`)
+      }
+      if (
+        bo.importHashVersion !== undefined &&
+        bo.importHashVersion !== 2 &&
+        bo.importHashVersion !== 3
+      ) {
         err(`${bw}: ungültige Import-Hash-Version.`)
       }
     })
+
+    if (f.importDraft !== undefined && f.importDraft !== null) {
+      const dw = `Kassenjahr ${yearNo}, Import-Entwurf`
+      if (typeof f.importDraft !== 'object' || Array.isArray(f.importDraft)) {
+        err(`${dw}: kein Objekt.`)
+      } else {
+        const draft = f.importDraft as Record<string, unknown>
+        if (typeof draft.fileName !== 'string') err(`${dw}: Quellenname fehlt.`)
+        if (!Number.isInteger(draft.skipped) || (draft.skipped as number) < 0)
+          err(`${dw}: Anzahl übersprungener Zeilen ist ungültig.`)
+        if (!Array.isArray(draft.rows)) {
+          err(`${dw}: Zeilen fehlen.`)
+        } else {
+          draft.rows.forEach((item, index) => {
+            const rw = `${dw}, Zeile ${index + 1}`
+            if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+              err(`${rw}: kein Objekt.`)
+              return
+            }
+            const row = item as Record<string, unknown>
+            if (typeof row.date !== 'string' || !DATE_RE.test(row.date)) err(`${rw}: Datum ist ungültig.`)
+            if (typeof row.bankText !== 'string') err(`${rw}: Banktext fehlt.`)
+            if (!Number.isInteger(row.amount)) err(`${rw}: Betrag ist kein Cent-Betrag.`)
+            if (typeof row.hash !== 'string' || !row.hash) err(`${rw}: Import-Hash fehlt.`)
+            if (
+              row.legacyHashes !== undefined &&
+              (!Array.isArray(row.legacyHashes) ||
+                row.legacyHashes.some((hash) => typeof hash !== 'string'))
+            ) {
+              err(`${rw}: frühere Entwurf-Hashes sind ungültig.`)
+            }
+            if (typeof row.name !== 'string') err(`${rw}: Name ist kein Text.`)
+            if (typeof row.description !== 'string') err(`${rw}: Verwendungszweck fehlt.`)
+            if (typeof row.selected !== 'boolean') err(`${rw}: Auswahl-Kennzeichen fehlt.`)
+            if (typeof row.categoryId !== 'string') err(`${rw}: Kategorie ist kein Text.`)
+            if (typeof row.isUmsatz !== 'boolean') err(`${rw}: Umsatz-Kennzeichen fehlt.`)
+            if (row.subcategory !== undefined && typeof row.subcategory !== 'string')
+              err(`${rw}: Unterkategorie ist kein Text.`)
+            if (row.receiptAvailable !== undefined && typeof row.receiptAvailable !== 'boolean')
+              err(`${rw}: Beleg-Kennzeichen ist ungültig.`)
+            if (
+              row.receiptStatus !== undefined &&
+              row.receiptStatus !== 'vorhanden' &&
+              row.receiptStatus !== 'offen' &&
+              row.receiptStatus !== 'nicht_erforderlich'
+            ) {
+              err(`${rw}: Beleg-Status ist ungültig.`)
+            }
+            if (row.splits !== undefined) {
+              if (!Array.isArray(row.splits)) {
+                err(`${rw}: Aufteilung ist ungültig.`)
+              } else {
+                row.splits.forEach((item, splitIndex) => {
+                  const sw = `${rw}, Aufteilung ${splitIndex + 1}`
+                  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+                    err(`${sw}: kein Objekt.`)
+                    return
+                  }
+                  const split = item as Record<string, unknown>
+                  if (typeof split.id !== 'string' || !split.id) err(`${sw}: ID fehlt.`)
+                  if (typeof split.description !== 'string') err(`${sw}: Verwendungszweck fehlt.`)
+                  if (typeof split.categoryId !== 'string') err(`${sw}: Kategorie ist kein Text.`)
+                  if (!Number.isInteger(split.amount) || (split.amount as number) < 0)
+                    err(`${sw}: Betrag ist kein gültiger Cent-Betrag.`)
+                  if (typeof split.isUmsatz !== 'boolean') err(`${sw}: Umsatz-Kennzeichen fehlt.`)
+                })
+              }
+            }
+          })
+        }
+      }
+    }
   })
 
   if (b.settings !== undefined) {

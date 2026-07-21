@@ -1,5 +1,5 @@
 import { api } from './api'
-import { rowHash } from '@shared/csv'
+import { legacyRowHashes, rowHash } from '@shared/csv'
 import { appendToDraft } from '@shared/importDraft'
 import { formatDate } from '@shared/money'
 import type { StatementRow } from '@shared/csv'
@@ -51,7 +51,7 @@ async function fetchAccount(
   const statementRows: StatementRow[] = result.rows.map((r: BankFetchedRow) => ({
     ...r,
     hash: rowHash(r.date, r.amount, r.description),
-    legacyHashes: [],
+    legacyHashes: legacyRowHashes(r.date, r.amount, r.description),
   }))
   const sourceName = `${account.label} · Abruf vom ${formatDate(new Date().toISOString().slice(0, 10))}`
   const konto = account.konto ?? 'haupt'

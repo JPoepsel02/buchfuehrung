@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseBankCsv, parseGermanDate, rowHash, splitCsvLine } from '../csv'
+import { bankDescription, parseBankCsv, parseGermanDate, rowHash, splitCsvLine } from '../csv'
 import { parseAmountToCents } from '../money'
 
 describe('parseAmountToCents', () => {
@@ -41,10 +41,15 @@ describe('parseBankCsv', () => {
   test('vereinheitlicht denselben Volksbank-Umsatz aus CSV und Online-Banking', () => {
     const date = '2026-05-17'
     const amount = 7300
-    const csvText = 'Testperson Beispiel, Referenz TEST-001 – Überweisungsgutschr.'
-    const onlineText = 'Überweisungsgutschr. · Testperson Beispiel, Referenz TEST-001'
+    const csv = [
+      'Buchungstag;Name Zahlungsbeteiligter;Buchungstext;Verwendungszweck;Betrag',
+      '17.05.2026;Testperson Beispiel;Überweisungsgutschr.;Testperson Beispiel, Referenz TEST-001;73,00',
+    ].join('\n')
+    const csvRow = parseBankCsv(csv).rows[0]
+    const onlineText = bankDescription('Testperson Beispiel, Referenz TEST-001', 'Überweisungsgutschr.')
 
-    expect(rowHash(date, amount, csvText)).toBe(rowHash(date, amount, onlineText))
+    expect(csvRow.description).toBe(onlineText)
+    expect(csvRow.hash).toBe(rowHash(date, amount, onlineText))
   })
 
   test('unterscheidet weiterhin tatsächlich verschiedene Banktexte', () => {

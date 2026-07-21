@@ -71,8 +71,10 @@ export interface Booking {
   source: 'manuell' | 'import'
   /** Duplikat-Erkennung beim Kontoauszug-Import */
   importHash?: string
-  /** Version des Import-Hashes; 2 = Datum, Betrag und Bank-Beschreibung */
-  importHashVersion?: 2
+  /** Frühere Importkennungen bleiben für sichere Migrationen erhalten. */
+  legacyImportHashes?: string[]
+  /** Version des Import-Hashes; 3 = quellenübergreifend vereinheitlichter Banktext */
+  importHashVersion?: 2 | 3
 }
 
 export type ThemeSetting = 'hell' | 'dunkel' | 'system'
@@ -135,6 +137,8 @@ export interface ImportDraftRow {
   amount: Cents
   /** Duplikat-Erkennung */
   hash: string
+  /** Frühere Hashvarianten für den Abgleich mit älteren Buchungen. */
+  legacyHashes?: string[]
   /** Eigener, kurzer Verwendungszweck – Pflicht vor der Übernahme */
   description: string
   /** Zahlungspflichtige:r bzw. Empfänger:in */

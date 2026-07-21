@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { emptyYearFile } from '../defaults'
-import { appendToDraft, buildDraft, receiptAvailableForImport, subcategorySuggestions } from '../importDraft'
+import {
+  appendToDraft,
+  buildDraft,
+  migrateImportDraftHashes,
+  receiptAvailableForImport,
+  subcategorySuggestions,
+} from '../importDraft'
 import type { Booking, YearFile } from '../types'
 import type { StatementRow } from '../csv'
 
@@ -54,6 +60,40 @@ describe('buildDraft', () => {
     return { ...emptyYearFile(2026), bookings }
   }
 
+  test('migriert offene Entwürfe ohne ausgefüllte Felder zu verändern', () => {
+    const original: YearFile = {
+      ...fileWith(),
+      importDraft: {
+        fileName: 'Testkonto · synthetischer Abruf',
+        skipped: 0,
+        rows: [{
+          date: '2026-05-17',
+          bankText: 'Testperson Beispiel, Referenz TEST-001 – Überweisungsgutschr.',
+          amount: 7300,
+          hash: 'legacy-test-payment',
+          name: 'Testperson Beispiel',
+          description: 'Testartikel TEST-001',
+          selected: true,
+          categoryId: 'c1',
+          subcategory: 'Kleidung',
+          isUmsatz: true,
+          receiptStatus: 'vorhanden',
+        }],
+      },
+    }
+
+    const result = migrateImportDraftHashes(original)
+    const migrated = result.file.importDraft!.rows[0]
+
+    expect(result.migratedCount).toBe(1)
+    expect(migrated.hash).not.toBe('legacy-test-payment')
+    const { hash: _newHash, legacyHashes: _legacyHashes, ...userFields } = migrated
+    const { hash: _oldHash, ...originalUserFields } = original.importDraft!.rows[0]
+    expect(userFields).toEqual(originalUserFields)
+    expect(migrated.legacyHashes).toContain('legacy-test-payment')
+    expect(original.importDraft!.rows[0].hash).toBe('legacy-test-payment')
+  })
+
   test('sortiert Bank-Reihenfolge (neueste zuerst) chronologisch aufsteigend', () => {
     const { mutate } = buildDraft(
       fileWith(),
@@ -64,6 +104,16 @@ describe('buildDraft', () => {
     const next = mutate(fileWith())
     expect(next.importDraft?.rows.map((r) => r.date)).toEqual(['2026-04-02', '2026-06-20'])
     expect(next.importDraft?.fileName).toBe('Abruf')
+  })
+
+  test('wählt denselben Umsatz innerhalb eines Entwurfs nur einmal aus', () => {
+    const duplicate = row('2026-05-17', 4000, 'gleicher-hash')
+    const { mutate } = buildDraft(fileWith(), [duplicate, { ...duplicate }], 'Abruf', 0)
+
+    expect(mutate(fileWith()).importDraft?.rows.map((draftRow) => draftRow.selected)).toEqual([
+      true,
+      false,
+    ])
   })
 
   test('wählt Zeilen ab, die sich mit einer manuellen Buchung decken', () => {

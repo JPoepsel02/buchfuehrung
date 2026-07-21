@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { FinTSClient, FinTSConfig } from 'lib-fints'
 import type { BankingInformation, ClientResponse, StatementResponse } from 'lib-fints'
 import { loadSettings } from './storage'
+import { bankDescription } from '../shared/csv'
 import type { BankAccountChoice, BankFetchOptions, BankFetchResult, BankFetchedRow } from '../shared/bank'
 import type { BankAccountConfig } from '../shared/types'
 
@@ -196,10 +197,10 @@ function mapStatements(response: StatementResponse): BankFetchedRow[] {
       // Beträge kommen als Euro-Gleitkommazahl, vorzeichenbehaftet (Soll negativ)
       amount: Math.round(t.amount * 100),
       name: (t.remoteName ?? '').trim(),
-      description: [t.bookingText, t.purpose ?? t.additionalInformation]
-        .map((part) => part?.trim())
-        .filter(Boolean)
-        .join(' · '),
+      description: bankDescription(
+        t.purpose ?? t.additionalInformation ?? '',
+        t.bookingText ?? '',
+      ),
     })),
   )
 }
