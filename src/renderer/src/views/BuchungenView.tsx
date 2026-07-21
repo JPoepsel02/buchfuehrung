@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
 import { shouldStartBookingEdit } from '../bookingRow'
+import { bookingMatchesSelectionFilter, selectBookingRange } from '../bookingSelection'
 import { fiscalRange, inFiscalYear } from '@shared/fiscal'
 import { bookingsToCsv } from '@shared/bookingExport'
 import { subcategorySuggestions } from '@shared/importDraft'
@@ -66,9 +67,15 @@ export function BuchungenView({
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [filter, setFilter] = useState('')
+  const [selectionFilter, setSelectionFilter] = useState({
+    categoryId: '',
+    amount: '',
+    subcategory: '',
+  })
   const [advancedOpen, setAdvancedOpen] = useState(false)
   // Mehrfachauswahl für die Sammel-Bearbeitung
   const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set())
+  const selectionAnchorId = useRef<string | null>(null)
   const [bulk, setBulk] = useState({
     categoryId: '',
     subcategory: '',
@@ -82,11 +89,25 @@ export function BuchungenView({
     () => subcategorySuggestions(file?.bookings ?? [], form.categoryId),
     [file, form.categoryId],
   )
+  const filterSubcategories = useMemo(
+    () => [
+      ...new Set(
+        (file?.bookings ?? [])
+          .filter((booking) => !selectionFilter.categoryId || booking.categoryId === selectionFilter.categoryId)
+          .map((booking) => (booking.subcategory ?? '').trim())
+          .filter(Boolean),
+      ),
+    ].sort((a, b) => a.localeCompare(b, 'de')),
+    [file, selectionFilter.categoryId],
+  )
 
   // Suchbegriff aus der globalen Strg+F-Suche übernehmen
   useEffect(() => {
     if (externalFilter) {
       setFilter(externalFilter)
+      setSelectionFilter({ categoryId: '', amount: '', subcategory: '' })
+      setCheckedIds(new Set())
+      selectionAnchorId.current = null
       onFilterConsumed?.()
     }
   }, [externalFilter, onFilterConsumed])
@@ -96,6 +117,9 @@ export function BuchungenView({
     const booking = file.bookings.find((row) => row.id === bookingToOpenId)
     if (!booking) return
     setFilter('')
+    setSelectionFilter({ categoryId: '', amount: '', subcategory: '' })
+    setCheckedIds(new Set([booking.id]))
+    selectionAnchorId.current = booking.id
     startEdit(booking)
     requestAnimationFrame(() => {
       document.querySelector<HTMLElement>(`[data-booking-id="${bookingToOpenId}"]`)?.scrollIntoView({
@@ -107,12 +131,35 @@ export function BuchungenView({
   }, [bookingToOpenId, file])
 
   if (!file) return null
-  const rows = computeBookings(file)
-    .sort((a, b) => b.seq - a.seq)
-    .filter((r) => bookingMatches(r, filter))
+  const allRows = computeBookings(file).sort((a, b) => b.seq - a.seq)
+  const parsedSelectionAmount = selectionFilter.amount.trim()
+    ? parseAmountToCents(selectionFilter.amount)
+    : null
+  const selectionAmountInvalid =
+    Boolean(selectionFilter.amount.trim()) &&
+    (parsedSelectionAmount === null || parsedSelectionAmount < 0)
+  const rows = allRows.filter((row) =>
+    bookingMatches(row, filter) &&
+    !selectionAmountInvalid &&
+    bookingMatchesSelectionFilter(row, {
+      categoryId: selectionFilter.categoryId,
+      amount: parsedSelectionAmount,
+      subcategory: selectionFilter.subcategory,
+    }),
+  )
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  function changeSearchFilter(value: string) {
+    clearSelection()
+    setFilter(value)
+  }
+
+  function changeSelectionFilter(patch: Partial<typeof selectionFilter>) {
+    clearSelection()
+    setSelectionFilter((current) => ({ ...current, ...patch }))
   }
 
   function startEdit(b: Booking) {
@@ -166,6 +213,7 @@ export function BuchungenView({
     } else {
       addBooking(data)
     }
+    clearSelection()
     setForm((f) => ({ ...emptyForm(f.categoryId, file!), date: f.date }))
     setAdvancedOpen(false)
   }
@@ -177,17 +225,34 @@ export function BuchungenView({
     setAdvancedOpen(false)
   }
 
-  function toggleChecked(id: string, checked: boolean) {
+  function toggleChecked(id: string, checked: boolean, shiftKey = false) {
     setCheckedIds((prev) => {
-      const next = new Set(prev)
+      if (shiftKey) {
+        return selectBookingRange(prev, rows.map((row) => row.id), selectionAnchorId.current, id, checked)
+      }
+      const next = new Set<string>(prev)
       if (checked) next.add(id)
       else next.delete(id)
       return next
     })
+    if (!shiftKey) selectionAnchorId.current = id
   }
 
-  const visibleChecked = rows.filter((r) => checkedIds.has(r.id))
+  function selectRow(id: string, shiftKey: boolean) {
+    if (shiftKey) {
+      setCheckedIds((prev) =>
+        selectBookingRange(prev, rows.map((row) => row.id), selectionAnchorId.current, id, true),
+      )
+      return
+    }
+    selectionAnchorId.current = id
+    setCheckedIds(new Set([id]))
+  }
+
+  const selectedRows = rows.filter((row) => checkedIds.has(row.id))
+  const visibleSelectedCount = rows.filter((row) => checkedIds.has(row.id)).length
   const allVisibleChecked = rows.length > 0 && rows.every((r) => checkedIds.has(r.id))
+  const someVisibleChecked = visibleSelectedCount > 0 && !allVisibleChecked
 
   function toggleAllVisible(checked: boolean) {
     setCheckedIds((prev) => {
@@ -198,7 +263,27 @@ export function BuchungenView({
       }
       return next
     })
+    if (checked && rows.length > 0) selectionAnchorId.current = rows[0].id
   }
+
+  function selectFilteredRows() {
+    setCheckedIds(new Set(rows.map((row) => row.id)))
+    if (rows.length > 0) selectionAnchorId.current = rows[0].id
+  }
+
+  function clearSelection() {
+    setCheckedIds(new Set())
+    selectionAnchorId.current = null
+  }
+
+  function clearSelectionFilter() {
+    clearSelection()
+    setSelectionFilter({ categoryId: '', amount: '', subcategory: '' })
+  }
+
+  const selectionFilterActive = Boolean(
+    selectionFilter.categoryId || selectionFilter.amount.trim() || selectionFilter.subcategory,
+  )
 
   const bulkHasValue =
     Boolean(bulk.categoryId || bulk.subcategory.trim() || bulk.name.trim()) ||
@@ -217,14 +302,14 @@ export function BuchungenView({
     }
     if (bulk.isUmsatz) patch.isUmsatz = bulk.isUmsatz === 'ja'
     // Kategorie-Wechsel vergibt je Buchung eine neue Beleg-Nummer (updateBooking)
-    for (const r of visibleChecked) updateBooking(r.id, patch)
-    setCheckedIds(new Set())
+    for (const r of selectedRows) updateBooking(r.id, patch)
+    clearSelection()
     setBulk({ categoryId: '', subcategory: '', name: '', receiptStatus: '', isUmsatz: '' })
   }
 
   async function exportRows() {
     if (rows.length === 0) return
-    const suffix = filter.trim() ? '-gefiltert' : ''
+    const suffix = filter.trim() || selectionFilterActive ? '-gefiltert' : ''
     const result = await api.saveTextFile(`Buchungen-${file!.year}${suffix}.csv`, bookingsToCsv(rows))
     if (!result.ok) return
     setToast(result.path ? `CSV gespeichert: ${result.path}` : 'CSV exportiert.')
@@ -383,7 +468,7 @@ export function BuchungenView({
           <div className="field">
             <input
               value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              onChange={(e) => changeSearchFilter(e.target.value)}
               placeholder="Suchen …"
               aria-label="Buchungen durchsuchen"
             />
@@ -392,9 +477,70 @@ export function BuchungenView({
             CSV exportieren …
           </button>
         </div>
-        {visibleChecked.length > 1 && (
+        <div className="booking-filterbar">
+          <div className="field">
+            <label htmlFor="booking-filter-category">Kategorie</label>
+            <select
+              id="booking-filter-category"
+              value={selectionFilter.categoryId}
+              onChange={(event) => changeSelectionFilter({
+                categoryId: event.target.value,
+                subcategory: '',
+              })}
+            >
+              <option value="">Alle Kategorien</option>
+              {[...file.categories].sort((a, b) => a.sortOrder - b.sortOrder).map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="booking-filter-amount">Betragshöhe exakt (€)</label>
+            <AmountField
+              id="booking-filter-amount"
+              value={selectionFilter.amount}
+              onChange={(amount) => changeSelectionFilter({ amount })}
+              invalid={selectionAmountInvalid}
+              placeholder="z. B. 70,00"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="booking-filter-subcategory">Unterkategorie</label>
+            <select
+              id="booking-filter-subcategory"
+              value={selectionFilter.subcategory}
+              onChange={(event) => changeSelectionFilter({ subcategory: event.target.value })}
+            >
+              <option value="">Alle Unterkategorien</option>
+              {filterSubcategories.map((subcategory) => (
+                <option key={subcategory} value={subcategory}>{subcategory}</option>
+              ))}
+            </select>
+          </div>
+          <div className="booking-filterbar__actions">
+            {selectionFilterActive && (
+              <button className="btn btn--ghost btn--sm" type="button" onClick={clearSelectionFilter}>
+                Filter zurücksetzen
+              </button>
+            )}
+            <button
+              className="btn btn--primary btn--sm"
+              type="button"
+              disabled={rows.length === 0 || selectionAmountInvalid}
+              onClick={selectFilteredRows}
+            >
+              {rows.length} Treffer auswählen
+            </button>
+            {selectedRows.length > 0 && (
+              <button className="btn btn--ghost btn--sm" type="button" onClick={clearSelection}>
+                Auswahl aufheben
+              </button>
+            )}
+          </div>
+        </div>
+        {selectedRows.length > 1 && (
           <div className="bulkbar">
-            <strong className="bulkbar__count">{visibleChecked.length} ausgewählt</strong>
+            <strong className="bulkbar__count">{selectedRows.length} ausgewählt</strong>
             <select
               value={bulk.categoryId}
               onChange={(e) => setBulk({ ...bulk, categoryId: e.target.value })}
@@ -455,8 +601,12 @@ export function BuchungenView({
                   <th>
                     <input
                       type="checkbox"
+                      ref={(element) => {
+                        if (element) element.indeterminate = someVisibleChecked
+                      }}
                       checked={allVisibleChecked}
                       onChange={(e) => toggleAllVisible(e.target.checked)}
+                      aria-checked={someVisibleChecked ? 'mixed' : allVisibleChecked}
                       aria-label="Alle sichtbaren Buchungen auswählen"
                     />
                   </th>
@@ -476,11 +626,16 @@ export function BuchungenView({
                   <tr
                     key={r.id}
                     data-booking-id={r.id}
-                    className={editingId === r.id ? 'is-selected' : undefined}
-                    aria-selected={editingId === r.id}
+                    className={[
+                      editingId === r.id ? 'is-editing' : '',
+                      checkedIds.has(r.id) ? 'is-checked' : '',
+                    ].filter(Boolean).join(' ') || undefined}
+                    aria-selected={checkedIds.has(r.id)}
                     tabIndex={0}
                     onClick={(event) => {
-                      if (shouldStartBookingEdit(event.target as HTMLElement)) startEdit(r)
+                      if (!shouldStartBookingEdit(event.target as HTMLElement)) return
+                      selectRow(r.id, event.shiftKey)
+                      if (!event.shiftKey) startEdit(r)
                     }}
                     onKeyDown={(event) => {
                       if (
@@ -488,6 +643,7 @@ export function BuchungenView({
                         (event.key === 'Enter' || event.key === ' ')
                       ) {
                         event.preventDefault()
+                        selectRow(r.id, false)
                         startEdit(r)
                       }
                     }}
@@ -496,7 +652,8 @@ export function BuchungenView({
                       <input
                         type="checkbox"
                         checked={checkedIds.has(r.id)}
-                        onChange={(e) => toggleChecked(r.id, e.target.checked)}
+                        onClick={(event) => toggleChecked(r.id, event.currentTarget.checked, event.shiftKey)}
+                        onChange={() => undefined}
                         aria-label={`Buchung ${r.ref} auswählen`}
                       />
                     </td>
@@ -540,7 +697,10 @@ export function BuchungenView({
                       )}
                     </td>
                     <td className="num" style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn--ghost btn--sm" onClick={() => startEdit(r)}>
+                      <button className="btn btn--ghost btn--sm" onClick={() => {
+                        selectRow(r.id, false)
+                        startEdit(r)
+                      }}>
                         Bearbeiten
                       </button>
                       <button
