@@ -6,13 +6,20 @@ import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
 import { subcategorySuggestions } from '@shared/importDraft'
 import { classifyDraftDuplicates, nextRefNo, nextSeq } from '@shared/ledger'
+import { IMPORT_HASH_VERSION } from '@shared/csv'
 import { formatDate } from '@shared/money'
 import { receiptStatus, withReceiptStatus } from '@shared/receipt'
 import type { Booking, ImportDraftRow, ImportDraftSplit, ReceiptStatus } from '@shared/types'
 
 /** Reduziert eine Entwurfszeile auf die Felder der Duplikat-Erkennung. */
-const toDupInput = (r: { hash: string; date: string; amount: number }) => ({
+const toDupInput = (r: {
+  hash: string
+  legacyHashes?: readonly string[]
+  date: string
+  amount: number
+}) => ({
   hash: r.hash,
+  legacyHashes: r.legacyHashes,
   date: r.date,
   amount: r.amount,
 })
@@ -50,7 +57,7 @@ export function ImportDraftCard() {
     [file],
   )
   // Duplikat-Erkennung für die offenen Entwurfszeilen: hard = bereits
-  // importiert (Hash), soft = deckt sich mit einer manuellen Buchung.
+  // importiert, repeated = doppelt im Entwurf, soft = manuelle Buchung.
   const dupes = useMemo(
     () => classifyRows(file?.bookings ?? [], file?.importDraft?.rows ?? []),
     [file?.bookings, file?.importDraft?.rows],
@@ -140,7 +147,9 @@ export function ImportDraftCard() {
         importDraft: {
           ...f.importDraft,
           rows: f.importDraft.rows.map((r, i) =>
-            cls.hard[i] || cls.soft[i] || !inFiscalYear(f, r.date) ? r : { ...r, selected },
+            cls.hard[i] || cls.repeated[i] || cls.soft[i] || !inFiscalYear(f, r.date)
+              ? r
+              : { ...r, selected },
           ),
         },
       }
@@ -163,7 +172,7 @@ export function ImportDraftCard() {
         importDraft: {
           ...f.importDraft,
           rows: f.importDraft.rows.map((r, i) => {
-            if (!r.selected || cls.hard[i]) return r
+            if (!r.selected || cls.hard[i] || cls.repeated[i]) return r
             touched++
             const next = { ...r }
             // Kategorie/Verwendungszweck/Unterkategorie gelten nicht für aufgeteilte Zeilen
@@ -192,7 +201,10 @@ export function ImportDraftCard() {
   function doImport() {
     const selectedRows = draft.rows
       .map((r, i) => ({ row: r, index: i }))
-      .filter(({ row, index }) => row.selected && rowIsImportable(row) && !dupes.hard[index])
+      .filter(
+        ({ row, index }) =>
+          row.selected && rowIsImportable(row) && !dupes.hard[index] && !dupes.repeated[index],
+      )
     const selectedIdx = new Set(selectedRows.map(({ index }) => index))
     if (selectedIdx.size === 0) return
     const importedBookingsCount = selectedRows.reduce((count, { row }) => count + bookingParts(row).length, 0)
@@ -226,7 +238,8 @@ export function ImportDraftCard() {
             note: r.bankText,
             source: 'import' as const,
             importHash: r.hash,
-            importHashVersion: 2 as const,
+            legacyImportHashes: r.legacyHashes,
+            importHashVersion: IMPORT_HASH_VERSION,
           })),
         )
       const remaining = f.importDraft.rows.filter((_, i) => !selectedIdx.has(i))
@@ -240,12 +253,17 @@ export function ImportDraftCard() {
     setTimeout(() => setToast(''), 4000)
   }
 
-  const selected = draft.rows.filter((r, i) => r.selected && !dupes.hard[i])
+  const selected = draft.rows.filter(
+    (r, i) => r.selected && !dupes.hard[i] && !dupes.repeated[i],
+  )
   const invalidRows = selected.filter((r) => !rowIsImportable(r)).length
   const readyRows = selected.filter(rowIsImportable)
   const readyBookings = readyRows.reduce((count, r) => count + bookingParts(r).length, 0)
   // Bereits vorhandene Zeilen (Import oder manuell) – für Zähler und Filter
-  const dupCount = dupes.hard.filter(Boolean).length + dupes.soft.filter(Boolean).length
+  const dupCount =
+    dupes.hard.filter(Boolean).length +
+    dupes.repeated.filter(Boolean).length +
+    dupes.soft.filter(Boolean).length
 
   return (
     <section className="card">
@@ -358,23 +376,28 @@ export function ImportDraftCard() {
         <tbody>
           {draft.rows
             .map((r, i) => ({ r, i }))
-            .filter(({ i }) => !onlyNew || (!dupes.hard[i] && !dupes.soft[i]))
+            .filter(
+              ({ i }) =>
+                !onlyNew || (!dupes.hard[i] && !dupes.repeated[i] && !dupes.soft[i]),
+            )
             .map(({ r, i }) => {
             // hart = bereits importiert (gesperrt), weich = deckt sich mit
             // einer manuellen Buchung (vorab abgewählt, aber überschreibbar)
             const isDuplicate = dupes.hard[i]
+            const isRepeated = dupes.repeated[i]
+            const isBlocked = isDuplicate || isRepeated
             const isSoftDup = dupes.soft[i]
             const inYear = inFiscalYear(file, r.date)
             const splitTotal = sumSplits(r.splits)
             const splitDiff = Math.abs(r.amount) - splitTotal
             return (
               <Fragment key={`${r.hash}-${i}`}>
-              <tr style={isDuplicate || isSoftDup || !inYear ? { opacity: 0.5 } : undefined}>
+              <tr style={isBlocked || isSoftDup || !inYear ? { opacity: 0.5 } : undefined}>
                 <td>
                   <input
                     type="checkbox"
-                    checked={r.selected && !isDuplicate}
-                    disabled={isDuplicate}
+                    checked={r.selected && !isBlocked}
+                    disabled={isBlocked}
                     onChange={(e) => setRow(i, { selected: e.target.checked })}
                     aria-label="Umsatz importieren"
                   />
@@ -382,6 +405,7 @@ export function ImportDraftCard() {
                 <td style={{ whiteSpace: 'nowrap' }}>
                   {formatDate(r.date)}
                   {isDuplicate && <div><span className="pill pill--out">importiert</span></div>}
+                  {isRepeated && <div><span className="pill pill--out">doppelt im Entwurf</span></div>}
                   {isSoftDup && (
                     <div>
                       <span className="pill pill--out" title="Datum und Betrag decken sich mit einer vorhandenen Buchung">
@@ -389,7 +413,7 @@ export function ImportDraftCard() {
                       </span>
                     </div>
                   )}
-                  {!inYear && !isDuplicate && !isSoftDup && (
+                  {!inYear && !isBlocked && !isSoftDup && (
                     <div><span className="pill">anderes Jahr</span></div>
                   )}
                 </td>
@@ -403,9 +427,9 @@ export function ImportDraftCard() {
                     value={r.name ?? ''}
                     onChange={(e) => setRow(i, { name: e.target.value })}
                     placeholder="Zahlungspflichtige:r / Empfänger:in"
-                    disabled={!r.selected || isDuplicate}
+                    disabled={!r.selected || isBlocked}
                     aria-label="Name"
-                    aria-invalid={r.selected && !isDuplicate && !(r.name ?? '').trim()}
+                    aria-invalid={r.selected && !isBlocked && !(r.name ?? '').trim()}
                     style={{ minWidth: 150, width: '100%' }}
                   />
                 </td>
@@ -414,9 +438,9 @@ export function ImportDraftCard() {
                     value={r.description}
                     onChange={(e) => setRow(i, { description: e.target.value })}
                     placeholder="Verwendungszweck"
-                    disabled={!r.selected || isDuplicate || Boolean(r.splits?.length)}
+                    disabled={!r.selected || isBlocked || Boolean(r.splits?.length)}
                     aria-label="Eigener Verwendungszweck"
-                    aria-invalid={r.selected && !isDuplicate && !(r.splits?.length) && !r.description.trim()}
+                    aria-invalid={r.selected && !isBlocked && !(r.splits?.length) && !r.description.trim()}
                     style={{ minWidth: 140, width: '100%' }}
                   />
                   {r.splits?.length ? (
@@ -427,7 +451,7 @@ export function ImportDraftCard() {
                     <button
                       className="btn btn--ghost btn--sm"
                       style={{ marginTop: 6 }}
-                      disabled={!r.selected || isDuplicate}
+                      disabled={!r.selected || isBlocked}
                       onClick={() => startSplit(i)}
                     >
                       Aufteilen
@@ -441,9 +465,9 @@ export function ImportDraftCard() {
                   <select
                     value={r.categoryId}
                     onChange={(e) => setRow(i, { categoryId: e.target.value })}
-                    disabled={!r.selected || isDuplicate || Boolean(r.splits?.length)}
+                    disabled={!r.selected || isBlocked || Boolean(r.splits?.length)}
                     aria-label="Kategorie"
-                    aria-invalid={r.selected && !isDuplicate && !r.splits?.length && !r.categoryId}
+                    aria-invalid={r.selected && !isBlocked && !r.splits?.length && !r.categoryId}
                     style={{ maxWidth: 160 }}
                   >
                     <option value="" disabled>
@@ -460,7 +484,7 @@ export function ImportDraftCard() {
                       value={r.subcategory ?? ''}
                       onChange={(e) => setRow(i, { subcategory: e.target.value })}
                       placeholder="Unterkategorie (optional)"
-                      disabled={!r.selected || isDuplicate}
+                      disabled={!r.selected || isBlocked}
                       aria-label="Unterkategorie"
                       list={r.categoryId ? `import-sub-suggestions-${r.categoryId}` : undefined}
                       style={{ minWidth: 140, width: '100%', marginTop: 4, fontSize: 'var(--text-xs)' }}
@@ -470,7 +494,7 @@ export function ImportDraftCard() {
                 <td>
                   <select
                     value={receiptStatus(r, 'offen')}
-                    disabled={!r.selected || isDuplicate}
+                    disabled={!r.selected || isBlocked}
                     onChange={(e) => setRow(i, withReceiptStatus(r, e.target.value as ReceiptStatus))}
                     aria-label="Belegstatus"
                     style={{ maxWidth: 178 }}
@@ -484,7 +508,7 @@ export function ImportDraftCard() {
                   <input
                     type="checkbox"
                     checked={r.isUmsatz}
-                    disabled={!r.selected || isDuplicate || Boolean(r.splits?.length)}
+                    disabled={!r.selected || isBlocked || Boolean(r.splits?.length)}
                     onChange={(e) => setRow(i, { isUmsatz: e.target.checked })}
                     aria-label="Zählt als Umsatz"
                   />
@@ -501,16 +525,16 @@ export function ImportDraftCard() {
                             value={split.description}
                             onChange={(e) => setSplit(i, split.id, { description: e.target.value })}
                             placeholder="z. B. Getränke Event A"
-                            disabled={!r.selected || isDuplicate}
+                            disabled={!r.selected || isBlocked}
                             aria-label="Split-Verwendungszweck"
-                            aria-invalid={r.selected && !isDuplicate && !split.description.trim()}
+                            aria-invalid={r.selected && !isBlocked && !split.description.trim()}
                           />
                           <select
                             value={split.categoryId}
                             onChange={(e) => setSplit(i, split.id, { categoryId: e.target.value })}
-                            disabled={!r.selected || isDuplicate}
+                            disabled={!r.selected || isBlocked}
                             aria-label="Split-Kategorie"
-                            aria-invalid={r.selected && !isDuplicate && !split.categoryId}
+                            aria-invalid={r.selected && !isBlocked && !split.categoryId}
                           >
                             <option value="" disabled>
                               – Kategorie wählen –
@@ -523,8 +547,8 @@ export function ImportDraftCard() {
                           </select>
                           <CentsAmountInput
                             cents={split.amount}
-                            disabled={!r.selected || isDuplicate}
-                            invalid={r.selected && !isDuplicate && split.amount <= 0}
+                            disabled={!r.selected || isBlocked}
+                            invalid={r.selected && !isBlocked && split.amount <= 0}
                             onCommit={(amount) => setSplit(i, split.id, { amount })}
                             aria-label="Split-Betrag"
                             style={{ maxWidth: 120, textAlign: 'right' }}
@@ -533,14 +557,14 @@ export function ImportDraftCard() {
                             <input
                               type="checkbox"
                               checked={split.isUmsatz}
-                              disabled={!r.selected || isDuplicate}
+                              disabled={!r.selected || isBlocked}
                               onChange={(e) => setSplit(i, split.id, { isUmsatz: e.target.checked })}
                             />
                             Umsatz
                           </label>
                           <button
                             className="btn btn--ghost btn--sm btn--danger"
-                            disabled={!r.selected || isDuplicate || r.splits!.length <= 2}
+                            disabled={!r.selected || isBlocked || r.splits!.length <= 2}
                             onClick={() => removeSplit(i, split.id)}
                           >
                             Entfernen
@@ -550,14 +574,14 @@ export function ImportDraftCard() {
                       <div className="toolbar">
                         <button
                           className="btn btn--ghost btn--sm"
-                          disabled={!r.selected || isDuplicate}
+                          disabled={!r.selected || isBlocked}
                           onClick={() => addSplit(i)}
                         >
                           Teil hinzufügen
                         </button>
                         <button
                           className="btn btn--ghost btn--sm"
-                          disabled={!r.selected || isDuplicate}
+                          disabled={!r.selected || isBlocked}
                           onClick={() => setRow(i, { splits: undefined })}
                         >
                           Split entfernen

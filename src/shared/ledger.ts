@@ -1,5 +1,5 @@
 import { formatEur } from './money'
-import { rowHash } from './csv'
+import { IMPORT_HASH_VERSION, rowHash } from './csv'
 import { receiptAvailable, receiptStatus } from './receipt'
 import type {
   Booking,
@@ -268,7 +268,7 @@ export function migrateExistingImportHashes(
 ): { bookings: Booking[]; migratedCount: number } {
   const groups = new Map<string, Booking[]>()
   for (const booking of bookings) {
-    if (!booking.importHash || booking.importHashVersion === 2) continue
+    if (!booking.importHash || booking.importHashVersion === IMPORT_HASH_VERSION) continue
     const group = groups.get(booking.importHash) ?? []
     groups.set(booking.importHash, [...group, booking])
   }
@@ -285,7 +285,7 @@ export function migrateExistingImportHashes(
   let migratedCount = 0
   const next = bookings.map((booking) => {
     if (!booking.importHash) return booking
-    if (booking.importHashVersion === 2) {
+    if (booking.importHashVersion === IMPORT_HASH_VERSION) {
       if (booking.source === 'import') return booking
       migratedCount++
       return { ...booking, source: 'import' as const }
@@ -293,7 +293,17 @@ export function migrateExistingImportHashes(
     const hash = migrationByHash.get(booking.importHash)
     if (!hash) return booking
     migratedCount++
-    return { ...booking, source: 'import' as const, importHash: hash, importHashVersion: 2 as const }
+    const legacyImportHashes = [
+      ...(booking.legacyImportHashes ?? []),
+      booking.importHash,
+    ].filter((candidate, index, all) => candidate !== hash && all.indexOf(candidate) === index)
+    return {
+      ...booking,
+      source: 'import' as const,
+      importHash: hash,
+      legacyImportHashes,
+      importHashVersion: IMPORT_HASH_VERSION,
+    }
   })
   return { bookings: next, migratedCount }
 }
@@ -301,6 +311,8 @@ export function migrateExistingImportHashes(
 export interface DraftDuplicateInput {
   /** Stabiler Import-Hash der Auszugszeile */
   hash: string
+  /** Frühere Hashvarianten der Auszugszeile */
+  legacyHashes?: readonly string[]
   /** ISO-Datum YYYY-MM-DD */
   date: string
   /** Vorzeichenbehafteter Betrag in Cent wie im Auszug (negativ = Ausgabe) */
@@ -325,8 +337,13 @@ export interface DraftDuplicateInput {
 export function classifyDraftDuplicates(
   bookings: Booking[],
   rows: readonly DraftDuplicateInput[],
-): { hard: boolean[]; soft: boolean[] } {
-  const importHashes = new Set(bookings.map((b) => b.importHash).filter(Boolean))
+): { hard: boolean[]; soft: boolean[]; repeated: boolean[] } {
+  const importHashes = new Set(
+    bookings.flatMap((booking) => [
+      ...(booking.importHash ? [booking.importHash] : []),
+      ...(booking.legacyImportHashes ?? []),
+    ]),
+  )
 
   // Fingerabdruck-Vorrat nur aus MANUELLEN Buchungen – Importe deckt der
   // Hash-Abgleich bereits exakt ab.
@@ -339,10 +356,21 @@ export function classifyDraftDuplicates(
 
   const hard: boolean[] = []
   const soft: boolean[] = []
+  const repeated: boolean[] = []
+  const seenIdentities = new Set<string>()
   for (const r of rows) {
-    if (importHashes.has(r.hash)) {
+    const identities = [r.hash, ...(r.legacyHashes ?? [])]
+    if (identities.some((hash) => seenIdentities.has(hash))) {
+      hard.push(false)
+      soft.push(false)
+      repeated.push(true)
+      continue
+    }
+    identities.forEach((hash) => seenIdentities.add(hash))
+    if (identities.some((hash) => importHashes.has(hash))) {
       hard.push(true)
       soft.push(false)
+      repeated.push(false)
       continue
     }
     const fp = `${r.date}|${r.amount}`
@@ -351,12 +379,14 @@ export function classifyDraftDuplicates(
       pool.set(fp, left - 1)
       hard.push(false)
       soft.push(true)
+      repeated.push(false)
     } else {
       hard.push(false)
       soft.push(false)
+      repeated.push(false)
     }
   }
-  return { hard, soft }
+  return { hard, soft, repeated }
 }
 
 interface ImportedStatementIdentity {
@@ -385,25 +415,33 @@ export function reconcileImportedBookings(
   let migratedHashCount = 0
   const next = bookings.map((booking) => {
     if (!booking.importHash) return booking
-    const row = rowsByHash.get(booking.importHash)
+    const matchedHash = [booking.importHash, ...(booking.legacyImportHashes ?? [])]
+      .find((hash) => rowsByHash.has(hash))
+    const row = matchedHash ? rowsByHash.get(matchedHash) : undefined
     if (!row) return booking
 
     const name = row.name.trim()
     const shouldUpdateName = !(booking.name ?? '').trim() && Boolean(name)
     const shouldMigrateHash = booking.importHash !== row.hash
     const shouldCorrectSource = booking.source !== 'import'
-    const shouldSetVersion = booking.importHashVersion !== 2
+    const shouldSetVersion = booking.importHashVersion !== IMPORT_HASH_VERSION
     if (!shouldUpdateName && !shouldMigrateHash && !shouldCorrectSource && !shouldSetVersion) {
       return booking
     }
 
     if (shouldUpdateName) updatedNameCount++
     if (shouldMigrateHash) migratedHashCount++
+    const legacyImportHashes = [
+      ...(booking.legacyImportHashes ?? []),
+      booking.importHash,
+      ...(row.legacyHashes ?? []),
+    ].filter((candidate, index, all) => candidate !== row.hash && all.indexOf(candidate) === index)
     return {
       ...booking,
       source: 'import' as const,
       importHash: row.hash,
-      importHashVersion: 2 as const,
+      legacyImportHashes,
+      importHashVersion: IMPORT_HASH_VERSION,
       ...(shouldUpdateName ? { name } : {}),
     }
   })

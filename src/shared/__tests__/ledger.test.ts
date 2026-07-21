@@ -14,7 +14,7 @@ import {
   reconcileImportedBookings,
   yearTotals,
 } from '../ledger'
-import { rowHash } from '../csv'
+import { bankDescription, rowHash } from '../csv'
 import type { Booking, YearFile } from '../types'
 
 function booking(partial: Partial<Booking> & Pick<Booking, 'seq' | 'date' | 'categoryId' | 'type' | 'amount'>): Booking {
@@ -316,7 +316,6 @@ describe('Auswertung', () => {
 
   test('migriert Version-2-Hashes verlustfrei auf den vereinheitlichten Banktext', () => {
     const csvText = 'Nina Pöpsel, M, Nina – Überweisungsgutschr.'
-    const onlineText = 'Überweisungsgutschr. · Nina Pöpsel, M, Nina'
     const existing = booking({
       seq: 8,
       date: '2026-06-25',
@@ -341,11 +340,40 @@ describe('Auswertung', () => {
       note: existing.note,
       amount: existing.amount,
       categoryId: existing.categoryId,
-      importHash: rowHash(existing.date, 4000, onlineText),
+      importHash: rowHash(
+        existing.date,
+        4000,
+        bankDescription('Nina Pöpsel, M, Nina', 'Überweisungsgutschr.'),
+      ),
       importHashVersion: 3,
     })
     expect(existing.importHash).toBe('j8ud73-1n')
     expect(existing.importHashVersion).toBe(2)
+  })
+
+  test('behält den alten Hash, wenn die Banknotiz vor der Migration bearbeitet wurde', () => {
+    const existing = booking({
+      seq: 8,
+      date: '2026-06-25',
+      categoryId: 'm',
+      type: 'einnahme',
+      amount: 4000,
+      note: 'Eigene Notiz nach dem Import',
+      source: 'import',
+      importHash: 'alter-bank-hash',
+      importHashVersion: 2,
+    })
+
+    const migrated = migrateExistingImportHashes([existing]).bookings
+    const reconciled = reconcileImportedBookings(migrated, [{
+      hash: 'korrekter-neuer-hash',
+      legacyHashes: ['alter-bank-hash'],
+      name: 'Nina Pöpsel',
+    }])
+
+    expect(migrated[0].legacyImportHashes).toContain('alter-bank-hash')
+    expect(reconciled.bookings[0].importHash).toBe('korrekter-neuer-hash')
+    expect(reconciled.bookings[0].note).toBe('Eigene Notiz nach dem Import')
   })
 })
 
@@ -405,6 +433,30 @@ describe('classifyDraftDuplicates – Auszugszeilen gegen bestehende Buchungen',
     const { hard, soft } = classifyDraftDuplicates(bookings, [draft('h2', '2026-02-14', 10000)])
     expect(hard).toEqual([false])
     expect(soft).toEqual([false])
+  })
+
+  test('erkennt alte Hashvarianten und doppelte Zeilen innerhalb eines Entwurfs', () => {
+    const bookings = [
+      booking({
+        seq: 1,
+        date: '2026-06-25',
+        categoryId: 'm',
+        type: 'einnahme',
+        amount: 4000,
+        source: 'import',
+        importHash: 'v3-aus-eigener-notiz',
+        importHashVersion: 3,
+        legacyImportHashes: ['alter-bank-hash'],
+      }),
+    ]
+    const result = classifyDraftDuplicates(bookings, [
+      { hash: 'korrekter-v3-hash', legacyHashes: ['alter-bank-hash'], date: '2026-06-25', amount: 4000 },
+      { hash: 'v3-csv', legacyHashes: ['v2-csv', 'v2-online'], date: '2026-07-09', amount: 2500 },
+      { hash: 'v3-altes-fints', legacyHashes: ['v2-online'], date: '2026-07-09', amount: 2500 },
+    ])
+
+    expect(result.hard).toEqual([true, false, false])
+    expect(result.repeated).toEqual([false, false, true])
   })
 })
 

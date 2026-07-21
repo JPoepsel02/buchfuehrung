@@ -95,6 +95,68 @@ describe('validateBackup', () => {
     if (!result.ok) expect(result.errors.join(' ')).toContain('Beleg-Status')
   })
 
+  test('akzeptiert alte und neue Import-Hash-Versionen', () => {
+    const version2 = backup()
+    version2.years[0].bookings[0].importHash = 'alter-hash'
+    version2.years[0].bookings[0].importHashVersion = 2
+    expect(validateBackup(version2).ok).toBe(true)
+
+    const version3 = backup()
+    version3.years[0].bookings[0].importHash = 'neuer-hash'
+    version3.years[0].bookings[0].importHashVersion = 3
+    expect(validateBackup(version3).ok).toBe(true)
+
+    const invalid = backup()
+    invalid.years[0].bookings[0].importHashVersion = 4
+    expect(validateBackup(invalid).ok).toBe(false)
+  })
+
+  test('lehnt ungültige Hashlisten in offenen Importentwürfen ab', () => {
+    const invalid = backup()
+    invalid.years[0].importDraft = {
+      fileName: 'Kontoauszug.csv',
+      skipped: 0,
+      rows: [{
+        date: '2026-06-25',
+        bankText: 'Beitrag – Überweisungsgutschr.',
+        amount: 4000,
+        hash: 'aktueller-hash',
+        legacyHashes: 1,
+        name: 'Nina Pöpsel',
+        description: '',
+        selected: true,
+        categoryId: '',
+        isUmsatz: false,
+      }],
+    }
+
+    const result = validateBackup(invalid)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.join(' ')).toContain('Entwurf')
+  })
+
+  test('lehnt beschädigte Aufteilungen in offenen Importentwürfen ab', () => {
+    const invalid = backup()
+    invalid.years[0].importDraft = {
+      fileName: 'Kontoauszug.csv',
+      skipped: 0,
+      rows: [{
+        date: '2026-06-25',
+        bankText: 'Getränkerechnung',
+        amount: -100000,
+        hash: 'hash',
+        name: 'Getränkehandel',
+        description: '',
+        selected: true,
+        categoryId: '',
+        isUmsatz: false,
+        splits: [null],
+      }],
+    }
+
+    expect(validateBackup(invalid).ok).toBe(false)
+  })
+
   test('lehnt einen ungültigen Namen ab', () => {
     const b = backup()
     b.years[0].bookings[0].name = 123

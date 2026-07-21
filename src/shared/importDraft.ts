@@ -1,8 +1,40 @@
 import { inFiscalYear } from './fiscal'
 import { classifyDraftDuplicates, reconcileImportedBookings } from './ledger'
+import { legacyRowHashes, rowHash } from './csv'
 import { receiptAvailable, receiptStatus, withReceiptStatus } from './receipt'
 import type { StatementRow } from './csv'
 import type { ImportDraftRow, YearFile } from './types'
+
+/**
+ * Berechnet ausschließlich die technischen Kennungen offener Entwurfszeilen
+ * neu. Alle bereits vorgenommenen Zuweisungen bleiben unverändert erhalten.
+ */
+export function migrateImportDraftHashes(
+  file: YearFile,
+): { file: YearFile; migratedCount: number } {
+  if (!file.importDraft) return { file, migratedCount: 0 }
+  let migratedCount = 0
+  const rows = file.importDraft.rows.map((row) => {
+    const hash = rowHash(row.date, row.amount, row.bankText)
+    const legacyHashes = [
+      ...(row.legacyHashes ?? []),
+      row.hash,
+      ...legacyRowHashes(row.date, row.amount, row.bankText),
+    ].filter((candidate, index, all) => candidate !== hash && all.indexOf(candidate) === index)
+    if (
+      hash === row.hash &&
+      legacyHashes.length === (row.legacyHashes?.length ?? 0) &&
+      legacyHashes.every((candidate, index) => candidate === row.legacyHashes?.[index])
+    ) return row
+    migratedCount++
+    return { ...row, hash, legacyHashes }
+  })
+  if (migratedCount === 0) return { file, migratedCount: 0 }
+  return {
+    file: { ...file, importDraft: { ...file.importDraft, rows } },
+    migratedCount,
+  }
+}
 
 export function receiptAvailableForImport(row: { receiptStatus?: import('./types').ReceiptStatus; receiptAvailable?: boolean }): boolean {
   return receiptAvailable(receiptStatus(row, 'offen'))
@@ -26,33 +58,50 @@ export function appendToDraft(
   sourceName: string,
 ): { mutate: (f: YearFile) => YearFile; added: number } {
   const known = new Set<string>([
-    ...(file.importDraft?.rows.map((r) => r.hash) ?? []),
-    ...file.bookings.flatMap((b) => (b.importHash ? [b.importHash] : [])),
+    ...(file.importDraft?.rows.flatMap((r) => [r.hash, ...(r.legacyHashes ?? [])]) ?? []),
+    ...file.bookings.flatMap((b) => [
+      ...(b.importHash ? [b.importHash] : []),
+      ...(b.legacyImportHashes ?? []),
+    ]),
   ])
   const fresh = parsedRows
-    .filter((r) => !known.has(r.hash))
+    .filter((r) => ![r.hash, ...r.legacyHashes].some((hash) => known.has(hash)))
     .sort((a, b) => a.date.localeCompare(b.date))
   if (fresh.length === 0) return { mutate: (f) => f, added: 0 }
   const dupes = classifyDraftDuplicates(
     file.bookings,
-    fresh.map((r) => ({ hash: r.hash, date: r.date, amount: r.amount })),
+    fresh.map((r) => ({
+      hash: r.hash,
+      legacyHashes: r.legacyHashes,
+      date: r.date,
+      amount: r.amount,
+    })),
   )
   const newRows: ImportDraftRow[] = fresh.map((r, i) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
     amount: r.amount,
     hash: r.hash,
+    legacyHashes: r.legacyHashes,
     name: r.name,
     description: '',
-    selected: !dupes.hard[i] && !dupes.soft[i] && inFiscalYear(file, r.date),
+    selected:
+      !dupes.hard[i] &&
+      !dupes.soft[i] &&
+      !dupes.repeated[i] &&
+      inFiscalYear(file, r.date),
     categoryId: '',
     isUmsatz: false,
   }, 'offen'))
   return {
     added: newRows.length,
     mutate: (f) => {
-      const existingHashes = new Set(f.importDraft?.rows.map((r) => r.hash) ?? [])
-      const rows = newRows.filter((r) => !existingHashes.has(r.hash))
+      const existingHashes = new Set(
+        f.importDraft?.rows.flatMap((r) => [r.hash, ...(r.legacyHashes ?? [])]) ?? [],
+      )
+      const rows = newRows.filter(
+        (r) => ![r.hash, ...(r.legacyHashes ?? [])].some((hash) => existingHashes.has(hash)),
+      )
       if (rows.length === 0) return f
       return {
         ...f,
@@ -82,16 +131,26 @@ export function buildDraft(
   // Bereits vorhandene Zeilen (Import ODER manuell erfasst) vorab abwählen.
   const sortedDupes = classifyDraftDuplicates(
     preview.bookings,
-    sorted.map(({ r }) => ({ hash: r.hash, date: r.date, amount: r.amount })),
+    sorted.map(({ r }) => ({
+      hash: r.hash,
+      legacyHashes: r.legacyHashes,
+      date: r.date,
+      amount: r.amount,
+    })),
   )
   const rows: ImportDraftRow[] = sorted.map(({ r }, i) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
     amount: r.amount,
     hash: r.hash,
+    legacyHashes: r.legacyHashes,
     name: r.name,
     description: '',
-    selected: !sortedDupes.hard[i] && !sortedDupes.soft[i] && inFiscalYear(file, r.date),
+    selected:
+      !sortedDupes.hard[i] &&
+      !sortedDupes.soft[i] &&
+      !sortedDupes.repeated[i] &&
+      inFiscalYear(file, r.date),
     // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
     categoryId: '',
     isUmsatz: false,
