@@ -14,6 +14,7 @@ import {
   reconcileImportedBookings,
   yearTotals,
 } from '../ledger'
+import { rowHash } from '../csv'
 import type { Booking, YearFile } from '../types'
 
 function booking(partial: Partial<Booking> & Pick<Booking, 'seq' | 'date' | 'categoryId' | 'type' | 'amount'>): Booking {
@@ -311,6 +312,40 @@ describe('Auswertung', () => {
     const repeated = migrateExistingImportHashes(edited)
     expect(repeated.migratedCount).toBe(0)
     expect(repeated.bookings[0].importHash).toBe(result.bookings[0].importHash)
+  })
+
+  test('migriert Version-2-Hashes verlustfrei auf den vereinheitlichten Banktext', () => {
+    const csvText = 'Nina Pöpsel, M, Nina – Überweisungsgutschr.'
+    const onlineText = 'Überweisungsgutschr. · Nina Pöpsel, M, Nina'
+    const existing = booking({
+      seq: 8,
+      date: '2026-06-25',
+      categoryId: 'm',
+      type: 'einnahme',
+      amount: 4000,
+      name: 'Nina Pöpsel',
+      description: 'T-Shirt Nina',
+      note: csvText,
+      source: 'import',
+      importHash: 'j8ud73-1n',
+      importHashVersion: 2,
+    })
+
+    const result = migrateExistingImportHashes([existing])
+    const migrated = result.bookings[0]
+
+    expect(result.migratedCount).toBe(1)
+    expect(migrated).toMatchObject({
+      name: existing.name,
+      description: existing.description,
+      note: existing.note,
+      amount: existing.amount,
+      categoryId: existing.categoryId,
+      importHash: rowHash(existing.date, 4000, onlineText),
+      importHashVersion: 3,
+    })
+    expect(existing.importHash).toBe('j8ud73-1n')
+    expect(existing.importHashVersion).toBe(2)
   })
 })
 
