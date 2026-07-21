@@ -38,6 +38,21 @@ describe('splitCsvLine', () => {
 })
 
 describe('parseBankCsv', () => {
+  test('vereinheitlicht denselben Volksbank-Umsatz aus CSV und Online-Banking', () => {
+    const date = '2026-05-17'
+    const amount = 7300
+    const csvText = 'Testperson Beispiel, Referenz TEST-001 – Überweisungsgutschr.'
+    const onlineText = 'Überweisungsgutschr. · Testperson Beispiel, Referenz TEST-001'
+
+    expect(rowHash(date, amount, csvText)).toBe(rowHash(date, amount, onlineText))
+  })
+
+  test('unterscheidet weiterhin tatsächlich verschiedene Banktexte', () => {
+    expect(rowHash('2026-05-17', 7300, 'Testbeitrag TEST-001')).not.toBe(
+      rowHash('2026-05-17', 7300, 'Testartikel TEST-001'),
+    )
+  })
+
   test('parst Sparkassen-CSV (CAMT-Format)', () => {
     const csv = [
       '"Auftragskonto";"Buchungstag";"Valutadatum";"Buchungstext";"Verwendungszweck";"Beguenstigter/Zahlungspflichtiger";"Kontonummer";"BLZ";"Betrag";"Waehrung";"Info"',
