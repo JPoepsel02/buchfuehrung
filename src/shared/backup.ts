@@ -27,6 +27,16 @@ export type ValidationResult = { ok: true; backup: Backup } | { ok: false; error
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
+function positiveSafeInteger(value: unknown): boolean {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+function validReceiptReference(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const ref = value as Record<string, unknown>
+  return typeof ref.categoryId === 'string' && Boolean(ref.categoryId.trim()) && positiveSafeInteger(ref.refNo)
+}
+
 /** Prüft eine eingelesene Sicherung Feld für Feld. Sammelt maximal 12 Fehler. */
 export function validateBackup(data: unknown): ValidationResult {
   const errors: string[] = []
@@ -72,6 +82,13 @@ export function validateBackup(data: unknown): ValidationResult {
       err(`Kassenjahr ${yearNo}: ungültige Konto-Auswahl für den Prüfbericht.`)
     if (f.kontoName !== undefined && typeof f.kontoName !== 'string')
       err(`Kassenjahr ${yearNo}: Konto-Name ist kein Text.`)
+    if (f.refNoCounters !== undefined) {
+      const counters = f.refNoCounters
+      if (typeof counters !== 'object' || counters === null || Array.isArray(counters) ||
+        Object.entries(counters).some(([key, value]) => !key.trim() || !positiveSafeInteger(value))) {
+        err(`Kassenjahr ${yearNo}: gespeicherte Belegzähler sind ungültig.`)
+      }
+    }
     if (
       f.fiscalStartMonth !== undefined &&
       (!Number.isInteger(f.fiscalStartMonth) || (f.fiscalStartMonth as number) < 1 || (f.fiscalStartMonth as number) > 12)
@@ -198,6 +215,8 @@ export function validateBackup(data: unknown): ValidationResult {
             if (typeof row.selected !== 'boolean') err(`${rw}: Auswahl-Kennzeichen fehlt.`)
             if (typeof row.categoryId !== 'string') err(`${rw}: Kategorie ist kein Text.`)
             if (typeof row.isUmsatz !== 'boolean') err(`${rw}: Umsatz-Kennzeichen fehlt.`)
+            if (row.receiptRef !== undefined && !validReceiptReference(row.receiptRef))
+              err(`${rw}: reservierte Belegnummer ist ungültig.`)
             if (row.subcategory !== undefined && typeof row.subcategory !== 'string')
               err(`${rw}: Unterkategorie ist kein Text.`)
             if (row.receiptAvailable !== undefined && typeof row.receiptAvailable !== 'boolean')
@@ -227,6 +246,8 @@ export function validateBackup(data: unknown): ValidationResult {
                   if (!Number.isInteger(split.amount) || (split.amount as number) < 0)
                     err(`${sw}: Betrag ist kein gültiger Cent-Betrag.`)
                   if (typeof split.isUmsatz !== 'boolean') err(`${sw}: Umsatz-Kennzeichen fehlt.`)
+                  if (split.receiptRef !== undefined && !validReceiptReference(split.receiptRef))
+                    err(`${sw}: reservierte Belegnummer ist ungültig.`)
                 })
               }
             }

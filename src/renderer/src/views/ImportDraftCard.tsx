@@ -1,12 +1,12 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { CentsAmountInput } from '../components/AmountInput'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
-import { subcategorySuggestions } from '@shared/importDraft'
-import { classifyDraftDuplicates, nextRefNo, nextSeq } from '@shared/ledger'
-import { IMPORT_HASH_VERSION } from '@shared/csv'
+import { bookingParts, clearImportSelection, importSelectedRows, rowIsImportable, subcategorySuggestions, sumSplits } from '@shared/importDraft'
+import { importReceiptLabel } from '@shared/importReceipts'
+import { classifyDraftDuplicates } from '@shared/ledger'
 import { formatDate } from '@shared/money'
 import { receiptStatus, withReceiptStatus } from '@shared/receipt'
 import type { Booking, ImportDraftRow, ImportDraftSplit, ReceiptStatus } from '@shared/types'
@@ -49,8 +49,13 @@ const EMPTY_BULK: BulkPatch = { categoryId: '', subcategory: '', description: ''
 export function ImportDraftCard() {
   const { file, update } = useStore()
   const [toast, setToast] = useState('')
-  const [onlyNew, setOnlyNew] = useState(false)
+  const [onlyNew, setOnlyNew] = useState(true)
   const [bulk, setBulk] = useState<BulkPatch>(EMPTY_BULK)
+  const scope = file ? `${file.konto ?? 'haupt'}:${file.year}` : ''
+
+  useEffect(() => {
+    update((current) => `${current.konto ?? 'haupt'}:${current.year}` === scope ? clearImportSelection(current) : current)
+  }, [scope, update])
 
   const activeCats = useMemo(
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
@@ -102,6 +107,7 @@ export function ImportDraftCard() {
           categoryId: row.categoryId,
           amount: first,
           isUmsatz: row.isUmsatz,
+          receiptRef: row.receiptRef,
         },
         {
           id: makeId(),
@@ -139,6 +145,10 @@ export function ImportDraftCard() {
   }
 
   function setAllSelected(selected: boolean) {
+    if (!selected) {
+      update(clearImportSelection)
+      return
+    }
     update((f) => {
       if (!f.importDraft) return f
       const cls = classifyRows(f.bookings, f.importDraft.rows)
@@ -203,52 +213,11 @@ export function ImportDraftCard() {
       .map((r, i) => ({ row: r, index: i }))
       .filter(
         ({ row, index }) =>
-          row.selected && rowIsImportable(row) && !dupes.hard[index] && !dupes.repeated[index],
+          row.selected && rowIsImportable(row) && inFiscalYear(file!, row.date) && !dupes.hard[index] && !dupes.repeated[index],
       )
-    const selectedIdx = new Set(selectedRows.map(({ index }) => index))
-    if (selectedIdx.size === 0) return
+    if (selectedRows.length === 0) return
     const importedBookingsCount = selectedRows.reduce((count, { row }) => count + bookingParts(row).length, 0)
-    update((f) => {
-      if (!f.importDraft) return f
-      let seq = nextSeq(f)
-      // Feste Beleg-Nummern je Kategorie fortlaufend ab Maximum + 1 vergeben
-      const refCounters = new Map<string, number>()
-      const takeRefNo = (categoryId: string) => {
-        const n = refCounters.get(categoryId) ?? nextRefNo(f, categoryId)
-        refCounters.set(categoryId, n + 1)
-        return n
-      }
-      const added = f.importDraft.rows
-        .filter((_, i) => selectedIdx.has(i))
-        .flatMap((r) =>
-          bookingParts(r).map((part) => ({
-            id: makeId(),
-            seq: seq++,
-            refNo: takeRefNo(part.categoryId),
-            date: r.date,
-            categoryId: part.categoryId,
-            name: r.name.trim(),
-            description: part.description.trim(),
-            subcategory: r.splits?.length ? undefined : (r.subcategory ?? '').trim() || undefined,
-            type: r.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
-            amount: part.amount,
-            isUmsatz: part.isUmsatz,
-            ...withReceiptStatus({}, receiptStatus(r, 'offen')),
-            nonUmsatzAmount: 0,
-            note: r.bankText,
-            source: 'import' as const,
-            importHash: r.hash,
-            legacyImportHashes: r.legacyHashes,
-            importHashVersion: IMPORT_HASH_VERSION,
-          })),
-        )
-      const remaining = f.importDraft.rows.filter((_, i) => !selectedIdx.has(i))
-      return {
-        ...f,
-        bookings: [...f.bookings, ...added],
-        importDraft: remaining.length > 0 ? { ...f.importDraft, rows: remaining } : null,
-      }
-    })
+    update(importSelectedRows)
     setToast(`${importedBookingsCount} Buchungen aus ${selectedRows.length} Bankpositionen importiert.`)
     setTimeout(() => setToast(''), 4000)
   }
@@ -257,7 +226,7 @@ export function ImportDraftCard() {
     (r, i) => r.selected && !dupes.hard[i] && !dupes.repeated[i],
   )
   const invalidRows = selected.filter((r) => !rowIsImportable(r)).length
-  const readyRows = selected.filter(rowIsImportable)
+  const readyRows = selected.filter((row) => rowIsImportable(row) && inFiscalYear(file, row.date))
   const readyBookings = readyRows.reduce((count, r) => count + bookingParts(r).length, 0)
   // Bereits vorhandene Zeilen (Import oder manuell) – für Zähler und Filter
   const dupCount =
@@ -503,6 +472,13 @@ export function ImportDraftCard() {
                     <option value="offen">Noch prüfen</option>
                     <option value="nicht_erforderlich">Nicht erforderlich</option>
                   </select>
+                  {!isBlocked && receiptStatus(r, 'offen') === 'vorhanden' && (
+                    <div role="status" style={{ marginTop: 6, whiteSpace: 'nowrap' }}>
+                      {bookingParts(r).some((part) => importReceiptLabel(file, part)) && <>
+                        Beleg-Nr. <strong>{bookingParts(r).map((part) => importReceiptLabel(file, part)).filter(Boolean).join(' · ')}</strong>
+                      </>}
+                    </div>
+                  )}
                 </td>
                 <td>
                   <input
@@ -545,6 +521,9 @@ export function ImportDraftCard() {
                               </option>
                             ))}
                           </select>
+                          {!isBlocked && receiptStatus(r, 'offen') === 'vorhanden' && importReceiptLabel(file, split) && (
+                            <strong style={{ whiteSpace: 'nowrap' }}>{importReceiptLabel(file, split)}</strong>
+                          )}
                           <CentsAmountInput
                             cents={split.amount}
                             disabled={!r.selected || isBlocked}
@@ -615,29 +594,4 @@ export function ImportDraftCard() {
       {toast && <div className="toast">{toast}</div>}
     </section>
   )
-}
-
-function bookingParts(row: ImportDraftRow): ImportDraftSplit[] {
-  if (row.splits?.length) return row.splits
-  return [
-    {
-      id: row.hash,
-      description: row.description,
-      categoryId: row.categoryId,
-      amount: Math.abs(row.amount),
-      isUmsatz: row.isUmsatz,
-    },
-  ]
-}
-
-function rowIsImportable(row: ImportDraftRow): boolean {
-  const parts = bookingParts(row)
-  if (!(row.name ?? '').trim()) return false
-  if (parts.some((p) => !p.description.trim() || !p.categoryId || p.amount <= 0)) return false
-  if (!row.splits?.length) return true
-  return sumSplits(row.splits) === Math.abs(row.amount)
-}
-
-function sumSplits(splits: ImportDraftSplit[] | undefined): number {
-  return splits?.reduce((sum, split) => sum + split.amount, 0) ?? 0
 }

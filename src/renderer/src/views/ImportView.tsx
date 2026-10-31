@@ -52,7 +52,7 @@ export function ImportView() {
               <span>{draft.fileName} · Ordne die Umsätze zu und übernimm sie anschließend als Buchungen.</span>
             </span>
           </section>
-          <ImportDraftCard />
+          <ImportDraftCard key={`${file.konto ?? 'haupt'}:${file.year}`} />
         </>
       ) : (
         <>

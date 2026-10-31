@@ -9,5 +9,10 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/__tests__/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/shared/**/*.ts', 'src/renderer/src/bookingRow.ts', 'src/renderer/src/bookingSelection.ts', 'src/renderer/src/report.ts'],
+      thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
+    },
   },
 })

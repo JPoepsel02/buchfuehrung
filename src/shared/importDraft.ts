@@ -1,9 +1,11 @@
 import { inFiscalYear } from './fiscal'
-import { classifyDraftDuplicates, reconcileImportedBookings } from './ledger'
-import { legacyRowHashes, rowHash } from './csv'
+import { checkedRefNo, classifyDraftDuplicates, nextRefNo, nextSeq, reconcileImportedBookings } from './ledger'
+import { IMPORT_HASH_VERSION, legacyRowHashes, rowHash } from './csv'
 import { receiptAvailable, receiptStatus, withReceiptStatus } from './receipt'
+import { makeId } from './defaults'
+import { reserveImportReceiptNumbers } from './importReceipts'
 import type { StatementRow } from './csv'
-import type { ImportDraftRow, YearFile } from './types'
+import type { ImportDraftRow, ImportDraftSplit, YearFile } from './types'
 
 /**
  * Berechnet ausschließlich die technischen Kennungen offener Entwurfszeilen
@@ -68,16 +70,7 @@ export function appendToDraft(
     .filter((r) => ![r.hash, ...r.legacyHashes].some((hash) => known.has(hash)))
     .sort((a, b) => a.date.localeCompare(b.date))
   if (fresh.length === 0) return { mutate: (f) => f, added: 0 }
-  const dupes = classifyDraftDuplicates(
-    file.bookings,
-    fresh.map((r) => ({
-      hash: r.hash,
-      legacyHashes: r.legacyHashes,
-      date: r.date,
-      amount: r.amount,
-    })),
-  )
-  const newRows: ImportDraftRow[] = fresh.map((r, i) => withReceiptStatus({
+  const newRows: ImportDraftRow[] = fresh.map((r) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
     amount: r.amount,
@@ -85,11 +78,7 @@ export function appendToDraft(
     legacyHashes: r.legacyHashes,
     name: r.name,
     description: '',
-    selected:
-      !dupes.hard[i] &&
-      !dupes.soft[i] &&
-      !dupes.repeated[i] &&
-      inFiscalYear(file, r.date),
+    selected: false,
     categoryId: '',
     isUmsatz: false,
   }, 'offen'))
@@ -128,17 +117,7 @@ export function buildDraft(
     .map((r, idx) => ({ r, idx }))
     .sort((a, b) => a.r.date.localeCompare(b.r.date) || (newestFirst ? b.idx - a.idx : a.idx - b.idx))
   const preview = reconcileImportedBookings(file.bookings, parsedRows)
-  // Bereits vorhandene Zeilen (Import ODER manuell erfasst) vorab abwählen.
-  const sortedDupes = classifyDraftDuplicates(
-    preview.bookings,
-    sorted.map(({ r }) => ({
-      hash: r.hash,
-      legacyHashes: r.legacyHashes,
-      date: r.date,
-      amount: r.amount,
-    })),
-  )
-  const rows: ImportDraftRow[] = sorted.map(({ r }, i) => withReceiptStatus({
+  const rows: ImportDraftRow[] = sorted.map(({ r }) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
     amount: r.amount,
@@ -146,11 +125,7 @@ export function buildDraft(
     legacyHashes: r.legacyHashes,
     name: r.name,
     description: '',
-    selected:
-      !sortedDupes.hard[i] &&
-      !sortedDupes.soft[i] &&
-      !sortedDupes.repeated[i] &&
-      inFiscalYear(file, r.date),
+    selected: false,
     // Bewusst leer: Die Kategorie muss je Umsatz aktiv gewählt werden
     categoryId: '',
     isUmsatz: false,
@@ -189,4 +164,70 @@ export function subcategorySuggestions(
         .filter(Boolean),
     ),
   ].sort((a, b) => a.localeCompare(b, 'de'))
+}
+
+/** Auswahl ist beim erneuten Öffnen leer; die Zuweisungen bleiben erhalten. */
+export function clearImportSelection(file: YearFile): YearFile {
+  const draft = file.importDraft
+  if (!draft?.rows.some((row) => row.selected)) return file
+  return {
+    ...file,
+    importDraft: { ...draft, rows: draft.rows.map((row) => row.selected ? { ...row, selected: false } : row) },
+  }
+}
+
+export function bookingParts(row: ImportDraftRow): ImportDraftSplit[] {
+  if (row.splits?.length) return row.splits
+  return [{
+    id: row.hash, description: row.description, categoryId: row.categoryId,
+    amount: Math.abs(row.amount), isUmsatz: row.isUmsatz, receiptRef: row.receiptRef,
+  }]
+}
+
+export function sumSplits(splits: ImportDraftSplit[] | undefined): number {
+  return splits?.reduce((sum, split) => sum + split.amount, 0) ?? 0
+}
+
+export function rowIsImportable(row: ImportDraftRow): boolean {
+  const parts = bookingParts(row)
+  if (!(row.name ?? '').trim()) return false
+  if (parts.some((part) => !part.description.trim() || !part.categoryId || part.amount <= 0)) return false
+  return !row.splits?.length || sumSplits(row.splits) === Math.abs(row.amount)
+}
+
+/** Prüft den aktuellen Entwurf erneut und übernimmt reservierte Nummern unverändert. */
+export function importSelectedRows(file: YearFile): YearFile {
+  if (!file.importDraft) return file
+  const prepared = reserveImportReceiptNumbers(file)
+  const draft = prepared.importDraft!
+  const dupes = classifyDraftDuplicates(prepared.bookings, draft.rows)
+  const selected = new Set(draft.rows.flatMap((row, i) =>
+    row.selected && rowIsImportable(row) && inFiscalYear(prepared, row.date) && !dupes.hard[i] && !dupes.repeated[i] ? [i] : [],
+  ))
+  if (selected.size === 0) return prepared
+  let seq = nextSeq(prepared)
+  const counters = new Map<string, number>()
+  const takeRefNo = (part: ImportDraftSplit) => {
+    if (part.receiptRef?.categoryId === part.categoryId) return checkedRefNo(part.receiptRef.refNo)
+    const refNo = checkedRefNo(counters.get(part.categoryId) ?? nextRefNo(prepared, part.categoryId))
+    counters.set(part.categoryId, refNo + 1)
+    return refNo
+  }
+  const added = draft.rows.filter((_, i) => selected.has(i)).flatMap((row) =>
+    bookingParts(row).map((part) => ({
+      id: makeId(), seq: seq++, refNo: takeRefNo(part), date: row.date,
+      categoryId: part.categoryId, name: row.name.trim(), description: part.description.trim(),
+      subcategory: row.splits?.length ? undefined : (row.subcategory ?? '').trim() || undefined,
+      type: row.amount < 0 ? ('ausgabe' as const) : ('einnahme' as const),
+      amount: part.amount, isUmsatz: part.isUmsatz,
+      ...withReceiptStatus({}, receiptStatus(row, 'offen')),
+      nonUmsatzAmount: 0, note: row.bankText, source: 'import' as const,
+      importHash: row.hash, legacyImportHashes: row.legacyHashes, importHashVersion: IMPORT_HASH_VERSION,
+    })),
+  )
+  const remaining = draft.rows.filter((_, i) => !selected.has(i))
+  return reserveImportReceiptNumbers({
+    ...prepared, bookings: [...prepared.bookings, ...added],
+    importDraft: remaining.length > 0 ? { ...draft, rows: remaining } : null,
+  })
 }

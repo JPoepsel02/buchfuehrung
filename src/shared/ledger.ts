@@ -76,17 +76,30 @@ export function computeBookings(file: YearFile): ComputedBooking[] {
     })
 }
 
+export function checkedRefNo(refNo: number): number {
+  if (!Number.isSafeInteger(refNo) || refNo < 1) throw new Error('Keine weitere sichere Belegnummer verfügbar.')
+  return refNo
+}
+
 /**
  * Nächste freie Beleg-Nummer einer Kategorie: bisheriges Maximum + 1.
  * Nummern gelöschter Buchungen werden bewusst NICHT wiederverwendet, damit
  * einmal beschriftete Papier-Belege eindeutig bleiben.
  */
 export function nextRefNo(file: YearFile, categoryId: string): number {
-  let max = 0
+  const saved = file.refNoCounters?.[categoryId]
+  let max = Number.isSafeInteger(saved) && saved! > 0 ? saved! : 0
   for (const b of computeBookings(file)) {
     if (b.categoryId === categoryId && b.refNo > max) max = b.refNo
   }
-  return max + 1
+  for (const row of file.importDraft?.rows ?? []) {
+    for (const ref of [row.receiptRef, ...(row.splits?.map((part) => part.receiptRef) ?? [])]) {
+      if (ref?.categoryId === categoryId && Number.isSafeInteger(ref.refNo) && ref.refNo > max) {
+        max = ref.refNo
+      }
+    }
+  }
+  return checkedRefNo(max + 1)
 }
 
 /**

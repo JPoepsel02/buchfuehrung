@@ -42,9 +42,14 @@ erhalten).
 npm install
 npm run dev          # Electron mit Hot-Reload
 npm test             # Tests der Kernlogik (Vitest)
+npm run test:coverage # Kernlogik mit mindestens 80 % Testabdeckung
+npm run test:e2e     # Importablauf in einer separaten Electron-Test-App
 npm run typecheck    # TypeScript
 npm run preview:web  # Nur die Oberfläche im Browser (ohne Electron)
 ```
+
+Die E2E-Tests verwenden eigene temporäre Jahresdateien. Die vorhandenen
+Kassenbücher und Bankverbindungen werden dabei nicht geladen.
 
 ## Installer bauen
 

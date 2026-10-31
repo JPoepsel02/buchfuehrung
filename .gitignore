@@ -5,3 +5,6 @@ release/
 *.log
 .DS_Store
 *.local
+coverage/
+test-results/
+playwright-report/

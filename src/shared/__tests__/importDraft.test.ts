@@ -106,12 +106,12 @@ describe('buildDraft', () => {
     expect(next.importDraft?.fileName).toBe('Abruf')
   })
 
-  test('wählt denselben Umsatz innerhalb eines Entwurfs nur einmal aus', () => {
+  test('wählt auch neue und wiederholte Umsätze nicht automatisch aus', () => {
     const duplicate = row('2026-05-17', 4000, 'gleicher-hash')
     const { mutate } = buildDraft(fileWith(), [duplicate, { ...duplicate }], 'Abruf', 0)
 
     expect(mutate(fileWith()).importDraft?.rows.map((draftRow) => draftRow.selected)).toEqual([
-      true,
+      false,
       false,
     ])
   })
@@ -138,7 +138,7 @@ describe('buildDraft', () => {
     )
     const next = mutate(fileWith([manual]))
     const byHash = Object.fromEntries(next.importDraft!.rows.map((r) => [r.hash, r.selected]))
-    expect(byHash).toEqual({ h2: false, h1: true })
+    expect(byHash).toEqual({ h2: false, h1: false })
   })
 
   test('wählt Zeilen außerhalb des Kassenjahres ab', () => {
@@ -154,7 +154,7 @@ describe('buildDraft', () => {
         ...base,
         importDraft: {
           ...base.importDraft!,
-          rows: base.importDraft!.rows.map((r) => ({ ...r, description: 'Getränke', categoryId: 'c1' })),
+          rows: base.importDraft!.rows.map((r) => ({ ...r, selected: true, description: 'Getränke', categoryId: 'c1' })),
         },
       }
 
@@ -169,7 +169,9 @@ describe('buildDraft', () => {
       expect(next.importDraft?.rows).toHaveLength(2)
       expect(next.importDraft?.rows[0].description).toBe('Getränke')
       expect(next.importDraft?.rows[0].categoryId).toBe('c1')
+      expect(next.importDraft?.rows[0].selected).toBe(true)
       expect(next.importDraft?.rows[1].hash).toBe('h1')
+      expect(next.importDraft?.rows[1].selected).toBe(false)
       expect(next.importDraft?.fileName).toBe('Alt')
     })
 
@@ -179,6 +181,7 @@ describe('buildDraft', () => {
       const next = mutate(file)
       expect(added).toBe(1)
       expect(next.importDraft?.fileName).toBe('Startabruf')
+      expect(next.importDraft?.rows[0].selected).toBe(false)
     })
 
     test('überspringt bereits importierte Buchungen (Hash) und meldet 0', () => {

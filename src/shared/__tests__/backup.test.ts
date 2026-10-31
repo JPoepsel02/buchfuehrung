@@ -34,6 +34,82 @@ function backup(y: YearFile[] = [year()]) {
 }
 
 describe('validateBackup', () => {
+  test.each([
+    ['date', '01.06.2026'], ['bankText', null], ['hash', ''], ['name', 42],
+    ['description', null], ['selected', 'ja'], ['categoryId', null], ['isUmsatz', 'nein'],
+  ])('verhindert beschädigte Importzuweisungen vor dem Wiederherstellen: %s', (field, value) => {
+    const data = backup()
+    data.years[0].importDraft = { fileName: 'Test.csv', skipped: 0, rows: [{
+      date: '2026-06-01', amount: -1000, bankText: 'Test', hash: 'h', name: 'Test',
+      description: 'Rechnung', selected: false, categoryId: 'm', isUmsatz: false,
+      receiptRef: { categoryId: 'm', refNo: 8 }, [field]: value,
+    }] }
+    expect(validateBackup(data).ok).toBe(false)
+  })
+
+  test.each([0, -1, 1.5, 'M7'])('verhindert ungültige bestehende Belegnummern: %j', (refNo) => {
+    const data = backup()
+    data.years[0].bookings[0].refNo = refNo
+    expect(validateBackup(data).ok).toBe(false)
+  })
+
+  test.each(['haupt', 'zweit', 'k3', 'k10'])('erhält Nummern und Buchzuordnung beim Wiederherstellen: %s', (konto) => {
+    const data = backup()
+    data.years[0].konto = konto
+    data.years[0].bookings[0].refNo = 7
+    data.years[0].refNoCounters = { m: 9 }
+    const result = validateBackup(data)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.backup.years[0]).toEqual(data.years[0])
+  })
+
+  test.each([null, [], '7', { m: '7' }, { m: -1 }, { m: 1.5 }, { m: Number.MAX_SAFE_INTEGER + 1 }])(
+    'lehnt beschädigte gespeicherte Belegzähler ab: %j', (refNoCounters) => {
+      const data = backup()
+      data.years[0].refNoCounters = refNoCounters
+      expect(validateBackup(data).ok).toBe(false)
+    },
+  )
+
+  test('erhält Belegzähler auch für inzwischen entfernte Kategorien', () => {
+    const data = backup()
+    data.years[0].refNoCounters = { entfernt: 12, m: 7 }
+    const result = validateBackup(data)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.backup.years[0].refNoCounters).toEqual({ entfernt: 12, m: 7 })
+  })
+
+  test.each([null, [], 'M7', { categoryId: '', refNo: 7 }, { categoryId: 'm', refNo: '7' }, { categoryId: 'm', refNo: -1 }])(
+    'lehnt beschädigte Belegreservierungen in Zeilen und Aufteilungen ab: %j', (receiptRef) => {
+      const draftRow = {
+        date: '2026-06-01', amount: -1000, bankText: 'Test', hash: 'h', name: 'Test',
+        description: 'Rechnung', selected: false, categoryId: 'm', isUmsatz: false,
+      }
+      const data = backup()
+      data.years[0].importDraft = { fileName: 'Test.csv', skipped: 0, rows: [{ ...draftRow, receiptRef }] }
+      expect(validateBackup(data).ok).toBe(false)
+      data.years[0].importDraft.rows = [{ ...draftRow, splits: [{
+        id: 's', categoryId: 'm', description: 'Teil', amount: 1000, isUmsatz: false, receiptRef,
+      }] }]
+      expect(validateBackup(data).ok).toBe(false)
+    },
+  )
+
+  test('sichert und lädt feste Entwurfsnummern ohne Änderungen', () => {
+    const data = backup()
+    data.years[0].refNoCounters = { m: 8 }
+    data.years[0].importDraft = { fileName: 'Test.csv', skipped: 0, rows: [{
+      date: '2026-06-01', amount: -1000, bankText: 'Test', hash: 'h', name: 'Test',
+      description: 'Rechnung', selected: false, categoryId: 'm', isUmsatz: false,
+      receiptRef: { categoryId: 'm', refNo: 8 },
+      splits: [{ id: 's', categoryId: 'm', description: 'Teil', amount: 1000, isUmsatz: false,
+        receiptRef: { categoryId: 'm', refNo: 8 } }],
+    }] }
+    const result = validateBackup(data)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.backup).toEqual(data)
+  })
+
   test('akzeptiert eine gültige Sicherung', () => {
     const result = validateBackup(backup())
     expect(result.ok).toBe(true)

@@ -2,8 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import { api } from './api'
 import { emptyYearFile, makeId } from '@shared/defaults'
-import { assignMissingRefNos, migrateExistingImportHashes, nextRefNo, nextSeq } from '@shared/ledger'
-import { migrateImportDraftHashes } from '@shared/importDraft'
+import { assignMissingRefNos, checkedRefNo, migrateExistingImportHashes, nextRefNo, nextSeq } from '@shared/ledger'
+import { clearImportSelection, migrateImportDraftHashes } from '@shared/importDraft'
+import { reserveImportReceiptNumbers } from '@shared/importReceipts'
 import { migrateReceiptStatuses } from '@shared/receipt'
 import type { AppSettings, Booking, Category, KontoId, YearFile } from '@shared/types'
 
@@ -67,13 +68,15 @@ async function loadMigratedYear(konto: KontoId, year: number): Promise<YearFile 
   const draftHashes = migrateImportDraftHashes(withHashes)
   // Beleg-Nummern von Altdaten einmalig festschreiben – danach sind sie fix
   const refs = assignMissingRefNos(draftHashes.file)
+  const withRefs = { ...draftHashes.file, bookings: refs.bookings }
+  const next = clearImportSelection(reserveImportReceiptNumbers(withRefs))
   if (
     receipts.migratedCount === 0 &&
     hashes.migratedCount === 0 &&
     draftHashes.migratedCount === 0 &&
-    refs.migratedCount === 0
+    refs.migratedCount === 0 &&
+    next === withRefs
   ) return data
-  const next = { ...draftHashes.file, bookings: refs.bookings }
   await api.saveYear(konto, year, next)
   return next
 }
@@ -131,7 +134,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const update = useCallback((mutate: (f: YearFile) => YearFile) => {
     setFile((current) => {
       if (!current) return current
-      const next = mutate(current)
+      // Vorher sichern: Auch entfernte Buchungen und Entwürfe verbrauchen ihre Nummern.
+      const next = reserveImportReceiptNumbers(mutate(reserveImportReceiptNumbers(current)))
+      if (next === current) return current
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
         void api.saveYear(next.konto ?? 'haupt', next.year, next)
@@ -278,7 +283,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Nummern-Zähler je Kategorie, damit ein Stapel fortlaufend nummeriert
           const counters = new Map<string, number>()
           const takeRefNo = (categoryId: string) => {
-            const n = counters.get(categoryId) ?? nextRefNo(f, categoryId)
+            const n = checkedRefNo(counters.get(categoryId) ?? nextRefNo(f, categoryId))
             counters.set(categoryId, n + 1)
             return n
           }

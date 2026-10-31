@@ -119,12 +119,19 @@ export interface AppSettings {
   fintsProductId?: string | null
 }
 
+/** Fest reservierte Belegnummer, gebunden an die gewählte Kategorie. */
+export interface ImportReceiptReference {
+  categoryId: string
+  refNo: number
+}
+
 export interface ImportDraftSplit {
   id: string
   description: string
   categoryId: string
   amount: Cents
   isUmsatz: boolean
+  receiptRef?: ImportReceiptReference
 }
 
 /** Eine Zeile eines zwischengespeicherten Kontoauszug-Imports. */
@@ -153,6 +160,7 @@ export interface ImportDraftRow {
   /** Optionale Unterkategorie für die Veranstaltungs-Zusammenfassung */
   subcategory?: string
   splits?: ImportDraftSplit[]
+  receiptRef?: ImportReceiptReference
 }
 
 /**
@@ -219,6 +227,8 @@ export interface YearFile {
   treasurerName: string
   categories: Category[]
   bookings: Booking[]
+  /** Höchste vergebene oder im Import reservierte Nummer je Kategorie. */
+  refNoCounters?: Record<string, number>
   /** Nicht abgeschlossener Kontoauszug-Import */
   importDraft?: ImportDraft | null
   /** Angaben für den Kassenprüfbericht */
