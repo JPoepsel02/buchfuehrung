@@ -55,6 +55,8 @@ npm run preview:web  # Nur die Oberfläche im Browser (ohne Electron)
 
 Die E2E-Tests verwenden eigene temporäre Jahresdateien. Die vorhandenen
 Kassenbücher und Bankverbindungen werden dabei nicht geladen.
+Alle Testdaten müssen künstlich sein: keine echten Namen, Banktexte,
+Kontostände oder Referenzen aus produktiven Kassenbüchern übernehmen.
 
 ## Installer bauen
 
