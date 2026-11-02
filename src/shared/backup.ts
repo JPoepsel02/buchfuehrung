@@ -268,6 +268,8 @@ export function validateBackup(data: unknown): ValidationResult {
       }
       if (s.theme !== undefined && s.theme !== 'hell' && s.theme !== 'dunkel' && s.theme !== 'system')
         err('Einstellungen: ungültiges Farbschema.')
+      if (s.bookingsCleanMode !== undefined && typeof s.bookingsCleanMode !== 'boolean')
+        err('Einstellungen: Clean Mode ist kein Wahr/Falsch-Wert.')
     }
   }
 

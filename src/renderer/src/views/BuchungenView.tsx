@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
 import { BookingFilterBar } from '../components/BookingFilterBar'
+import { ChronologicalTable } from '../components/ChronologicalTable'
 import { bookingScope, createBookingFilters, filterBookings, hasBookingFilters } from '../bookingFilters'
 import type { BookingFilterRequest, BookingFilters } from '../bookingFilters'
 import { shouldStartBookingEdit } from '../bookingRow'
@@ -11,7 +12,7 @@ import { selectBookingRange } from '../bookingSelection'
 import { fiscalRange, inFiscalYear } from '@shared/fiscal'
 import { bookingsToCsv } from '@shared/bookingExport'
 import { subcategorySuggestions } from '@shared/importDraft'
-import { computeBookings, monthSummaries } from '@shared/ledger'
+import { chronological, monthSummaries } from '@shared/ledger'
 import { formatDate, MONTH_NAMES, parseAmountToCents } from '@shared/money'
 import { receiptAvailable, receiptStatus, receiptStatusLabel, withReceiptStatus } from '@shared/receipt'
 import type { Booking, BookingType, ReceiptStatus } from '@shared/types'
@@ -64,7 +65,8 @@ export function BuchungenView({
   preset?: BookingFilterRequest | null
   onPresetConsumed?: () => void
 }) {
-  const { file, addBooking, updateBooking, deleteBooking } = useStore()
+  const { file, settings, updateSettings, addBooking, updateBooking, deleteBooking } = useStore()
+  const [cleanMode, setCleanMode] = useState(settings.bookingsCleanMode === true)
   const activeCats = useMemo(
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
     [file],
@@ -106,6 +108,10 @@ export function BuchungenView({
     [file, selectionFilter.categoryId],
   )
 
+  useEffect(() => {
+    setCleanMode(settings.bookingsCleanMode === true)
+  }, [settings.bookingsCleanMode])
+
   // Suchbegriff aus der globalen Strg+F-Suche übernehmen
   useEffect(() => {
     if (externalFilter) {
@@ -125,8 +131,13 @@ export function BuchungenView({
     cancelEdit()
     setBulk({ categoryId: '', subcategory: '', name: '', receiptStatus: '', isUmsatz: '' })
     onPresetConsumed?.()
-    document.getElementById('bookings-list')?.scrollIntoView({ block: 'nearest' })
-    document.getElementById('booking-list-heading')?.focus({ preventScroll: true })
+    if (preset.edit) {
+      setCleanMode(false)
+      requestAnimationFrame(() => document.getElementById('b-date')?.focus())
+    } else {
+      document.getElementById('bookings-list')?.scrollIntoView({ block: 'nearest' })
+      document.getElementById('booking-list-heading')?.focus({ preventScroll: true })
+    }
   }, [preset, onPresetConsumed, file?.konto, file?.year])
 
   useEffect(() => {
@@ -148,7 +159,8 @@ export function BuchungenView({
   }, [bookingToOpenId, file])
 
   if (!file) return null
-  const allRows = computeBookings(file).sort((a, b) => b.seq - a.seq)
+  const chronology = chronological(file)
+  const allRows = cleanMode ? chronology : [...chronology].sort((a, b) => b.seq - a.seq)
   const parsedSelectionAmount = selectionFilter.amount.trim()
     ? parseAmountToCents(selectionFilter.amount)
     : null
@@ -176,6 +188,8 @@ export function BuchungenView({
   }
 
   function startEdit(b: Booking) {
+    // Ein gezielter Suchtreffer öffnet die Bearbeitung nur vorübergehend.
+    setCleanMode(false)
     setEditingId(b.id)
     setForm({
       date: b.date,
@@ -289,6 +303,18 @@ export function BuchungenView({
     selectionAnchorId.current = null
   }
 
+  async function toggleCleanMode() {
+    const next = !cleanMode
+    clearSelection()
+    setBulk({ categoryId: '', subcategory: '', name: '', receiptStatus: '', isUmsatz: '' })
+    setCleanMode(next)
+    try {
+      await updateSettings({ bookingsCleanMode: next })
+    } catch {
+      setToast('Ansicht gewechselt. Die Moduswahl konnte nicht gespeichert werden.')
+    }
+  }
+
   function clearSelectionFilter() {
     clearSelection()
     setFilter('')
@@ -329,15 +355,18 @@ export function BuchungenView({
   }
 
   return (
-    <div className="view bookings-view">
+    <div className={`view bookings-view${cleanMode ? ' bookings-view--clean' : ''}`}>
       <header className="view__header">
         <div>
           <h1 className="view__title">Buchungen</h1>
-          <p className="view__subtitle">Beleg-Nummern werden automatisch je Kategorie vergeben.</p>
+          <p className="view__subtitle">{cleanMode ? 'Leseansicht nach Datum mit laufendem Kassenstand.' : 'Beleg-Nummern werden automatisch je Kategorie vergeben.'}</p>
         </div>
+        <button type="button" className={`btn${cleanMode ? ' btn--primary' : ''}`} aria-pressed={cleanMode} onClick={() => void toggleCleanMode()}>
+          Clean Mode
+        </button>
       </header>
 
-      <form className="card" onSubmit={submit}>
+      {!cleanMode && <form className="card" onSubmit={submit}>
         <h2 className="card__title">{editingId ? 'Buchung bearbeiten' : 'Neue Buchung erfassen'}</h2>
         <div className="form-grid">
           <div className="field" style={{ gridColumn: 'span 3' }}>
@@ -469,7 +498,7 @@ export function BuchungenView({
             </div>
           )}
         </div>
-      </form>
+      </form>}
 
       <section className="card bookings-list" id="bookings-list">
         <div className="toolbar bookings-list__toolbar">
@@ -490,6 +519,8 @@ export function BuchungenView({
           </button>
         </div>
         <BookingFilterBar
+          compact={cleanMode}
+          query={filter}
           filter={selectionFilter}
           categories={file.categories}
           months={filterMonths}
@@ -503,7 +534,10 @@ export function BuchungenView({
           onSelectAll={selectFilteredRows}
           onClearSelection={clearSelection}
         />
-        {selectedRows.length > 1 && (
+        {cleanMode && (selectionFilterActive || filter.trim()) && (
+          <p className="hint clean-balance-hint">Der Kassenstand berücksichtigt auch ausgeblendete Buchungen.</p>
+        )}
+        {!cleanMode && selectedRows.length > 1 && (
           <div className="bulkbar">
             <strong className="bulkbar__count">{selectedRows.length} ausgewählt</strong>
             <select
@@ -555,7 +589,9 @@ export function BuchungenView({
           </div>
         )}
         <div className="bookings-list__scroll">
-          {rows.length === 0 ? (
+          {cleanMode ? (
+            <ChronologicalTable rows={rows} summaryFile={!selectionFilterActive && !filter.trim() ? file : undefined} />
+          ) : rows.length === 0 ? (
             <div className="empty">
               <h3>Keine Buchungen gefunden</h3>
             </div>

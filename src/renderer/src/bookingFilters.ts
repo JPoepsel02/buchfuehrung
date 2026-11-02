@@ -17,6 +17,8 @@ export type BookingFilterPreset = Partial<Pick<BookingFilters, 'categoryId' | 't
 export interface BookingFilterRequest {
   scope: string
   filters: BookingFilterPreset
+  /** Expliziter Erfassungsauftrag, ohne die gespeicherte Ansicht zu ändern. */
+  edit?: boolean
 }
 
 export function bookingScope(file: Pick<YearFile, 'konto' | 'year'>): string {
@@ -35,7 +37,7 @@ export function hasBookingFilters(filter: BookingFilters): boolean {
 }
 
 /** Dieselben sichtbaren Kriterien gelten für Liste, Mehrfachauswahl und CSV. */
-export function filterBookings(rows: readonly ComputedBooking[], query: string, filter: BookingFilters): ComputedBooking[] {
+export function filterBookings<T extends ComputedBooking>(rows: readonly T[], query: string, filter: BookingFilters): T[] {
   const amount = filter.amount.trim() ? parseAmountToCents(filter.amount) : null
   if (filter.amount.trim() && (amount === null || amount < 0)) return []
   return rows.filter((row) =>

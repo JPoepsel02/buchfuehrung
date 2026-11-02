@@ -155,7 +155,9 @@ export function App() {
 
   function openOverviewTarget(target: 'buchungen' | 'import', filters?: BookingFilterPreset) {
     setBookingToOpen(null)
-    setBookingPreset(target === 'buchungen' && filters ? { scope: bookingScope(file!), filters } : null)
+    setBookingPreset(target === 'buchungen'
+      ? { scope: bookingScope(file!), filters: filters ?? {}, edit: !filters }
+      : null)
     setView(target)
   }
 

@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react'
 import { AmountField } from './AmountInput'
 import type { Category } from '@shared/types'
 import type { BookingFilters } from '../bookingFilters'
 
 interface Props {
+  compact?: boolean
+  query?: string
   filter: BookingFilters
   categories: Category[]
   months: Array<{ value: string; label: string }>
@@ -17,9 +20,34 @@ interface Props {
   onClearSelection(): void
 }
 
+function filterSummary(props: Props): string {
+  const f = props.filter
+  return [
+    f.categoryId && (props.categories.find((c) => c.id === f.categoryId)?.name ?? 'Kategorie'),
+    f.type && (f.type === 'einnahme' ? 'Nur Einnahmen' : 'Nur Ausgaben'),
+    f.month && (props.months.find((m) => m.value === f.month)?.label ?? f.month),
+    f.amount.trim() && `Betrag: ${f.amount} €`,
+    f.subcategory,
+    f.umsatzOnly && 'Nur Umsatzbuchungen',
+    props.query?.trim() && `Suche: ${props.query.trim()}`,
+  ].filter(Boolean).join(' · ') || 'Alle Buchungen'
+}
+
 export function BookingFilterBar(props: Props) {
   const { filter, onChange } = props
+  const [expanded, setExpanded] = useState(false)
+  useEffect(() => {
+    if (props.compact) setExpanded(false)
+  }, [props.compact])
   return (
+    <>
+    {props.compact && <div className="booking-filter-summary">
+      <span className="booking-filter-summary__text">{filterSummary(props)}</span>
+      {props.active && <button className="btn btn--ghost btn--sm" type="button" onClick={props.onReset}>Filter zurücksetzen</button>}
+      <button type="button" className="btn btn--sm" aria-expanded={expanded} aria-controls="booking-filter-fields"
+        onClick={() => setExpanded((value) => !value)}>{expanded ? 'Filter ausblenden' : 'Filter anzeigen'}</button>
+    </div>}
+    <div id="booking-filter-fields" hidden={props.compact && !expanded}>
     <div className="booking-filterbar">
       <div className="field">
         <label htmlFor="booking-filter-category">Kategorie</label>
@@ -64,13 +92,15 @@ export function BookingFilterBar(props: Props) {
         <input type="checkbox" checked={filter.umsatzOnly} onChange={(event) => onChange({ umsatzOnly: event.target.checked })} />
         Nur Umsatzbuchungen
       </label>
-      <div className="booking-filterbar__actions">
+      {!props.compact && <div className="booking-filterbar__actions">
         {props.active && <button className="btn btn--ghost btn--sm" type="button" onClick={props.onReset}>Filter zurücksetzen</button>}
         <button className="btn btn--primary btn--sm" type="button" disabled={props.count === 0 || props.amountInvalid} onClick={props.onSelectAll}>
           {props.count} Treffer auswählen
         </button>
         {props.selectedCount > 0 && <button className="btn btn--ghost btn--sm" type="button" onClick={props.onClearSelection}>Auswahl aufheben</button>}
-      </div>
+      </div>}
     </div>
+    </div>
+    </>
   )
 }

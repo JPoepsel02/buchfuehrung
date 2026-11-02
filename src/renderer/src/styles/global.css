@@ -303,6 +303,37 @@ textarea {
   align-self: end;
 }
 
+.booking-filter-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.booking-filter-summary__text {
+  flex: 1;
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+}
+
+.clean-balance-hint {
+  margin: 0 0 var(--space-3);
+}
+
+.bookings-view--clean .bookings-list .ledger tbody tr {
+  cursor: default;
+}
+
+.bookings-view--clean .bookings-list .ledger tbody tr:hover {
+  box-shadow: none;
+}
+
+.bookings-view--clean .chronological-table td {
+  padding-block: var(--space-3);
+  line-height: 1.55;
+}
+
 .bookings-list__scroll {
   flex: 1;
   min-height: 0;

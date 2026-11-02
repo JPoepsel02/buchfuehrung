@@ -34,6 +34,20 @@ function backup(y: YearFile[] = [year()]) {
 }
 
 describe('validateBackup', () => {
+  test.each([true, false])('sichert die Clean-Mode-Einstellung ohne Buchungsänderungen: %j', (bookingsCleanMode) => {
+    const data = backup()
+    data.settings.bookingsCleanMode = bookingsCleanMode
+    const result = validateBackup(data)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.backup).toEqual(data)
+  })
+
+  test.each(['ja', null, 0])('lehnt eine beschädigte Clean-Mode-Einstellung ab: %j', (bookingsCleanMode) => {
+    const data = backup()
+    data.settings.bookingsCleanMode = bookingsCleanMode
+    expect(validateBackup(data).ok).toBe(false)
+  })
+
   test.each([
     ['date', '01.06.2026'], ['bankText', null], ['hash', ''], ['name', 42],
     ['description', null], ['selected', 'ja'], ['categoryId', null], ['isUmsatz', 'nein'],

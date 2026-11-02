@@ -109,6 +109,8 @@ export interface AppSettings {
   logoDataUrl?: string | null
   /** Farbschema der App (Standard: system) */
   theme?: ThemeSetting
+  /** Letzte ausdrücklich gewählte Leseansicht der Buchungsseite. */
+  bookingsCleanMode?: boolean
   /** Optionaler zusätzlicher Sicherungsordner, z. B. in iCloud Drive oder OneDrive */
   cloudBackupDir?: string | null
   /** Spiegelt Jahresdateien und Einstellungen zusätzlich in den Cloud-Ordner */

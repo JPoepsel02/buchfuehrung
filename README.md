@@ -14,6 +14,9 @@ im Prüfbericht und als Dock-Symbol.
 - **Buchungen erfassen** mit Datum, Veranstaltung/Kategorie, Verwendungszweck,
   Einnahme/Ausgabe und Betrag. Beleg-Nummern (z. B. `M1`, `M2`, `B1` …) werden
   automatisch je Kategorie vergeben – genau wie im Excel-Template.
+- **Clean Mode** auf der Buchungsseite: aufgeräumte Leseansicht nach Datum mit
+  laufendem Kassenstand, einklappbaren Filtern und CSV-Export. Die Ansichtswahl
+  wird gespeichert; ein erneuter Klick blendet die Bearbeitung wieder ein.
 - **Umsatz-Kennzeichnung** inkl. „davon kein Umsatz“ (z. B. Wechselgeld).
 - **Chronologisch**: alle Buchungen nach Datum mit laufendem Kassenstand und
   Abschlussblock (Abschlusssaldo Vorjahr → Gesamtsaldo → Abschlusssaldo).
@@ -45,7 +48,7 @@ npm install
 npm run dev          # Electron mit Hot-Reload
 npm test             # Tests der Kernlogik (Vitest)
 npm run test:coverage # Kernlogik mit mindestens 80 % Testabdeckung
-npm run test:e2e     # Importablauf in einer separaten Electron-Test-App
+npm run test:e2e     # Import, Filter und Clean Mode in separater Electron-Test-App
 npm run typecheck    # TypeScript
 npm run preview:web  # Nur die Oberfläche im Browser (ohne Electron)
 ```

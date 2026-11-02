@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { emptyYearFile } from '@shared/defaults'
-import { computeBookings, yearTotals } from '@shared/ledger'
+import { chronological, computeBookings, yearTotals } from '@shared/ledger'
 import { bookingScope, createBookingFilters, filterBookings, hasBookingFilters } from '../bookingFilters'
 import type { Booking, YearFile } from '@shared/types'
 
@@ -28,6 +28,17 @@ const file: YearFile = {
 const rows = computeBookings(file)
 
 describe('Vorausgefüllte Buchungsfilter aus der Übersicht', () => {
+  test('behält im Clean Mode echte Kassenstände einschließlich ausgeblendeter Buchungen', () => {
+    const history = chronological({ ...file, openingBalance: 10000, bookings: [
+      booking('alt', { categoryId: 'b', date: '2026-01-01', amount: 5000 }),
+      booking('ausgabe', { seq: 2, refNo: 2, type: 'ausgabe', date: '2026-01-02', amount: 2000 }),
+      booking('februar', { seq: 3, refNo: 3, date: '2026-02-01', amount: 3000 }),
+    ] })
+    const selected = filterBookings(history, '', createBookingFilters({ categoryId: 'm', month: '2026-02' }))
+    expect(selected.map((r) => [r.id, r.runningBalance])).toEqual([['februar', 16000]])
+    expect(history.map((r) => r.runningBalance)).toEqual([15000, 13000, 16000])
+  })
+
   test('startet ohne Einschränkungen und ersetzt andere Filter vollständig', () => {
     const filters = createBookingFilters()
     expect(hasBookingFilters(filters)).toBe(false)
