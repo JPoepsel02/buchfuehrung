@@ -277,7 +277,7 @@ textarea {
 
 .booking-filterbar {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(140px, 0.7fr) minmax(180px, 1fr) auto;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: var(--space-2) var(--space-3);
   align-items: end;
   margin-bottom: var(--space-3);
@@ -291,10 +291,16 @@ textarea {
 }
 
 .booking-filterbar__actions {
+  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.booking-filterbar__check {
+  min-height: 36px;
+  align-self: end;
 }
 
 .bookings-list__scroll {
@@ -329,7 +335,7 @@ textarea {
 
 @media (max-width: 1100px) {
   .booking-filterbar {
-    grid-template-columns: repeat(3, minmax(140px, 1fr));
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 
   .booking-filterbar__actions {
@@ -614,6 +620,14 @@ textarea {
   box-shadow: var(--shadow-pop), var(--glass-edge);
 }
 
+.stat--link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+}
+
 .stat--hero {
   background: var(--accent-grad);
   color: white;
@@ -657,6 +671,21 @@ table.ledger {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-sm);
+}
+
+.ledger-row-link {
+  cursor: pointer;
+}
+
+.ledger-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
 
 .ledger th {

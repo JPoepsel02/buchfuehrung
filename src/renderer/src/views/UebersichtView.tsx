@@ -4,10 +4,11 @@ import { fiscalLabel } from '@shared/fiscal'
 import { byCategory, monthSummaries, yearTotals } from '@shared/ledger'
 import { newImportRows } from '@shared/importRows'
 import { MONTH_NAMES, formatEur } from '@shared/money'
+import type { BookingFilterPreset } from '../bookingFilters'
 
 type OverviewTarget = 'buchungen' | 'import'
 
-export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTarget) => void }) {
+export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTarget, filters?: BookingFilterPreset) => void }) {
   const { file } = useStore()
   if (!file) return null
   const totals = yearTotals(file)
@@ -61,18 +62,21 @@ export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTar
           <div className="stat__value">{formatEur(totals.closingBalance)}</div>
           <div className="stat__hint">Anfangssaldo + Saldo aller Buchungen</div>
         </div>
-        <div className="stat">
-          <div className="stat__label">Einnahmen</div>
-          <div className="stat__value amount--in">{formatEur(totals.einnahmen)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat__label">Ausgaben</div>
-          <div className="stat__value amount--out">{formatEur(totals.ausgaben)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat__label">Umsatz</div>
-          <div className="stat__value">{formatEur(totals.umsatz)}</div>
-        </div>
+        <button type="button" className="stat stat--link" aria-label="Einnahmen: Buchungen anzeigen" aria-describedby="overview-income-total"
+          onClick={() => onNavigate?.('buchungen', { type: 'einnahme' })}>
+          <span className="stat__label">Einnahmen</span>
+          <span className="stat__value amount--in" id="overview-income-total">{formatEur(totals.einnahmen)}</span>
+        </button>
+        <button type="button" className="stat stat--link" aria-label="Ausgaben: Buchungen anzeigen" aria-describedby="overview-expense-total"
+          onClick={() => onNavigate?.('buchungen', { type: 'ausgabe' })}>
+          <span className="stat__label">Ausgaben</span>
+          <span className="stat__value amount--out" id="overview-expense-total">{formatEur(totals.ausgaben)}</span>
+        </button>
+        <button type="button" className="stat stat--link" aria-label="Umsatz: Buchungen anzeigen" aria-describedby="overview-turnover-total"
+          onClick={() => onNavigate?.('buchungen', { umsatzOnly: true })}>
+          <span className="stat__label">Umsatz</span>
+          <span className="stat__value" id="overview-turnover-total">{formatEur(totals.umsatz)}</span>
+        </button>
       </div>
 
       <section className="card">
@@ -96,10 +100,17 @@ export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTar
             </thead>
             <tbody>
               {activeMonths.map((m) => (
-                <tr key={`${m.year}-${m.month}`}>
+                <tr key={`${m.year}-${m.month}`} className="ledger-row-link"
+                  onClick={() => onNavigate?.('buchungen', { month: `${m.year}-${String(m.month).padStart(2, '0')}` })}>
                   <td>
-                    {MONTH_NAMES[m.month - 1]}
-                    {(file.fiscalStartMonth ?? 1) !== 1 && <span className="hint"> {m.year}</span>}
+                    <button type="button" className="ledger-link" aria-label={`Buchungen für ${MONTH_NAMES[m.month - 1]} ${m.year} anzeigen`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onNavigate?.('buchungen', { month: `${m.year}-${String(m.month).padStart(2, '0')}` })
+                      }}>
+                      {MONTH_NAMES[m.month - 1]}
+                      {(file.fiscalStartMonth ?? 1) !== 1 && <span className="hint"> {m.year}</span>}
+                    </button>
                   </td>
                   <td className="num"><Amount cents={m.einnahmen} /></td>
                   <td className="num"><Amount cents={-m.ausgaben} /></td>
@@ -129,8 +140,14 @@ export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTar
             </thead>
             <tbody>
               {groups.map((g) => (
-                <tr key={g.category.id}>
-                  <td>{g.category.name}</td>
+                <tr key={g.category.id} className="ledger-row-link" onClick={() => onNavigate?.('buchungen', { categoryId: g.category.id })}>
+                  <td>
+                    <button type="button" className="ledger-link" aria-label={`Buchungen für ${g.category.name} anzeigen`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onNavigate?.('buchungen', { categoryId: g.category.id })
+                      }}>{g.category.name}</button>
+                  </td>
                   <td className="num">{g.rows.length}</td>
                   <td className="num"><Amount cents={g.einnahmen} /></td>
                   <td className="num"><Amount cents={-g.ausgaben} /></td>

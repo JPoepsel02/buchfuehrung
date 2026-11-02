@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, isElectron } from './api'
 import { runStartupBankFetch } from './autoFetch'
 import { LogoMark } from './components/LogoMark'
@@ -15,6 +15,8 @@ import { EinstellungenView } from './views/EinstellungenView'
 import { fiscalLabel } from '@shared/fiscal'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { newImportRows } from '@shared/importRows'
+import { bookingScope } from './bookingFilters'
+import type { BookingFilterPreset, BookingFilterRequest } from './bookingFilters'
 import { formatDate, formatEur } from '@shared/money'
 import type { ComputedBooking, KontoId, YearFile } from '@shared/types'
 
@@ -51,7 +53,9 @@ export function App() {
   const [updateHint, setUpdateHint] = useState('')
   const [bankHint, setBankHint] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [bookingToOpenId, setBookingToOpenId] = useState<string | null>(null)
+  const [bookingToOpen, setBookingToOpen] = useState<{ scope: string; id: string } | null>(null)
+  const [bookingPreset, setBookingPreset] = useState<BookingFilterRequest | null>(null)
+  const consumeBookingPreset = useCallback(() => setBookingPreset(null), [])
   const autoFetchStarted = useRef(false)
 
   // Stiller Bank-Abruf beim Start: neue Umsätze landen im Import-Entwurf
@@ -130,6 +134,8 @@ export function App() {
   const navViews = VIEWS.filter((v) => konto === 'haupt' || v.id !== 'pruefbericht')
 
   async function switchKonto(target: string) {
+    setBookingPreset(null)
+    setBookingToOpen(null)
     if (target === '__neu__') {
       startKontoSetup()
       return
@@ -139,10 +145,18 @@ export function App() {
   }
 
   async function openSearchHit(hit: SearchHit) {
+    setBookingPreset(null)
+    setBookingToOpen(null)
     await selectKontoYear(hit.konto, hit.year)
-    setBookingToOpenId(hit.booking.id)
+    setBookingToOpen({ scope: `${hit.konto}:${hit.year}`, id: hit.booking.id })
     setView('buchungen')
     setSearchOpen(false)
+  }
+
+  function openOverviewTarget(target: 'buchungen' | 'import', filters?: BookingFilterPreset) {
+    setBookingToOpen(null)
+    setBookingPreset(target === 'buchungen' && filters ? { scope: bookingScope(file!), filters } : null)
+    setView(target)
   }
 
   const openImportRows = newImportRows(file).length
@@ -172,7 +186,11 @@ export function App() {
           <span>Kassenjahr</span>
           <select
             value={file.year}
-            onChange={(e) => void selectYear(Number(e.target.value))}
+            onChange={(e) => {
+              setBookingPreset(null)
+              setBookingToOpen(null)
+              void selectYear(Number(e.target.value))
+            }}
             aria-label="Jahr wählen"
           >
             {years.map((y) => (
@@ -187,7 +205,11 @@ export function App() {
             <button
               key={v.id}
               className={`navlink${view === v.id ? ' is-active' : ''}`}
-              onClick={() => setView(v.id)}
+              onClick={() => {
+                setBookingPreset(null)
+                setBookingToOpen(null)
+                setView(v.id)
+              }}
             >
               <span className="navlink__icon" aria-hidden>
                 {v.icon}
@@ -202,9 +224,15 @@ export function App() {
         </div>
       </aside>
       <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>
-        {view === 'uebersicht' && <UebersichtView onNavigate={(target) => setView(target)} />}
+        {view === 'uebersicht' && <UebersichtView onNavigate={openOverviewTarget} />}
         {view === 'buchungen' && (
-          <BuchungenView bookingToOpenId={bookingToOpenId} onBookingOpened={() => setBookingToOpenId(null)} />
+          <BuchungenView
+            key={bookingScope(file)}
+            preset={bookingPreset}
+            onPresetConsumed={consumeBookingPreset}
+            bookingToOpenId={bookingToOpen?.scope === bookingScope(file) ? bookingToOpen.id : null}
+            onBookingOpened={() => setBookingToOpen(null)}
+          />
         )}
         {view === 'chronologisch' && <ChronoView />}
         {view === 'veranstaltungen' && <VeranstaltungenView />}

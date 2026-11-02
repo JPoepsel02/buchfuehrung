@@ -3,13 +3,16 @@ import { api } from '../api'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
+import { BookingFilterBar } from '../components/BookingFilterBar'
+import { bookingScope, createBookingFilters, filterBookings, hasBookingFilters } from '../bookingFilters'
+import type { BookingFilterRequest, BookingFilters } from '../bookingFilters'
 import { shouldStartBookingEdit } from '../bookingRow'
-import { bookingMatchesSelectionFilter, selectBookingRange } from '../bookingSelection'
+import { selectBookingRange } from '../bookingSelection'
 import { fiscalRange, inFiscalYear } from '@shared/fiscal'
 import { bookingsToCsv } from '@shared/bookingExport'
 import { subcategorySuggestions } from '@shared/importDraft'
-import { bookingMatches, computeBookings } from '@shared/ledger'
-import { formatDate, parseAmountToCents } from '@shared/money'
+import { computeBookings, monthSummaries } from '@shared/ledger'
+import { formatDate, MONTH_NAMES, parseAmountToCents } from '@shared/money'
 import { receiptAvailable, receiptStatus, receiptStatusLabel, withReceiptStatus } from '@shared/receipt'
 import type { Booking, BookingType, ReceiptStatus } from '@shared/types'
 
@@ -49,6 +52,8 @@ export function BuchungenView({
   onFilterConsumed,
   bookingToOpenId,
   onBookingOpened,
+  preset,
+  onPresetConsumed,
 }: {
   /** Suchbegriff aus der globalen Strg+F-Suche */
   externalFilter?: string
@@ -56,6 +61,8 @@ export function BuchungenView({
   /** Konkreter Treffer aus der globalen Suche. */
   bookingToOpenId?: string | null
   onBookingOpened?: () => void
+  preset?: BookingFilterRequest | null
+  onPresetConsumed?: () => void
 }) {
   const { file, addBooking, updateBooking, deleteBooking } = useStore()
   const activeCats = useMemo(
@@ -67,11 +74,9 @@ export function BuchungenView({
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [filter, setFilter] = useState('')
-  const [selectionFilter, setSelectionFilter] = useState({
-    categoryId: '',
-    amount: '',
-    subcategory: '',
-  })
+  const [selectionFilter, setSelectionFilter] = useState<BookingFilters>(() =>
+    createBookingFilters(preset && file && preset.scope === bookingScope(file) ? preset.filters : undefined),
+  )
   const [advancedOpen, setAdvancedOpen] = useState(false)
   // Mehrfachauswahl für die Sammel-Bearbeitung
   const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set())
@@ -105,7 +110,7 @@ export function BuchungenView({
   useEffect(() => {
     if (externalFilter) {
       setFilter(externalFilter)
-      setSelectionFilter({ categoryId: '', amount: '', subcategory: '' })
+      setSelectionFilter(createBookingFilters())
       setCheckedIds(new Set())
       selectionAnchorId.current = null
       onFilterConsumed?.()
@@ -113,11 +118,23 @@ export function BuchungenView({
   }, [externalFilter, onFilterConsumed])
 
   useEffect(() => {
+    if (!preset || !file || preset.scope !== bookingScope(file)) return
+    setFilter('')
+    setSelectionFilter(createBookingFilters(preset.filters))
+    clearSelection()
+    cancelEdit()
+    setBulk({ categoryId: '', subcategory: '', name: '', receiptStatus: '', isUmsatz: '' })
+    onPresetConsumed?.()
+    document.getElementById('bookings-list')?.scrollIntoView({ block: 'nearest' })
+    document.getElementById('booking-list-heading')?.focus({ preventScroll: true })
+  }, [preset, onPresetConsumed, file?.konto, file?.year])
+
+  useEffect(() => {
     if (!bookingToOpenId || !file) return
     const booking = file.bookings.find((row) => row.id === bookingToOpenId)
     if (!booking) return
     setFilter('')
-    setSelectionFilter({ categoryId: '', amount: '', subcategory: '' })
+    setSelectionFilter(createBookingFilters())
     setCheckedIds(new Set([booking.id]))
     selectionAnchorId.current = booking.id
     startEdit(booking)
@@ -138,15 +155,11 @@ export function BuchungenView({
   const selectionAmountInvalid =
     Boolean(selectionFilter.amount.trim()) &&
     (parsedSelectionAmount === null || parsedSelectionAmount < 0)
-  const rows = allRows.filter((row) =>
-    bookingMatches(row, filter) &&
-    !selectionAmountInvalid &&
-    bookingMatchesSelectionFilter(row, {
-      categoryId: selectionFilter.categoryId,
-      amount: parsedSelectionAmount,
-      subcategory: selectionFilter.subcategory,
-    }),
-  )
+  const rows = filterBookings(allRows, filter, selectionFilter)
+  const filterMonths = monthSummaries(file).map((month) => ({
+    value: `${month.year}-${String(month.month).padStart(2, '0')}`,
+    label: `${MONTH_NAMES[month.month - 1]} ${month.year}`,
+  }))
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -278,12 +291,11 @@ export function BuchungenView({
 
   function clearSelectionFilter() {
     clearSelection()
-    setSelectionFilter({ categoryId: '', amount: '', subcategory: '' })
+    setFilter('')
+    setSelectionFilter(createBookingFilters())
   }
 
-  const selectionFilterActive = Boolean(
-    selectionFilter.categoryId || selectionFilter.amount.trim() || selectionFilter.subcategory,
-  )
+  const selectionFilterActive = hasBookingFilters(selectionFilter)
 
   const bulkHasValue =
     Boolean(bulk.categoryId || bulk.subcategory.trim() || bulk.name.trim()) ||
@@ -459,10 +471,10 @@ export function BuchungenView({
         </div>
       </form>
 
-      <section className="card bookings-list">
+      <section className="card bookings-list" id="bookings-list">
         <div className="toolbar bookings-list__toolbar">
-          <h2 className="card__title" style={{ marginBottom: 0 }}>
-            Alle Buchungen ({rows.length})
+          <h2 className="card__title" id="booking-list-heading" tabIndex={-1} style={{ marginBottom: 0 }}>
+            Buchungen ({rows.length})
           </h2>
           <div className="toolbar__spacer" />
           <div className="field">
@@ -477,67 +489,20 @@ export function BuchungenView({
             CSV exportieren …
           </button>
         </div>
-        <div className="booking-filterbar">
-          <div className="field">
-            <label htmlFor="booking-filter-category">Kategorie</label>
-            <select
-              id="booking-filter-category"
-              value={selectionFilter.categoryId}
-              onChange={(event) => changeSelectionFilter({
-                categoryId: event.target.value,
-                subcategory: '',
-              })}
-            >
-              <option value="">Alle Kategorien</option>
-              {[...file.categories].sort((a, b) => a.sortOrder - b.sortOrder).map((category) => (
-                <option key={category.id} value={category.id}>{category.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="booking-filter-amount">Betragshöhe exakt (€)</label>
-            <AmountField
-              id="booking-filter-amount"
-              value={selectionFilter.amount}
-              onChange={(amount) => changeSelectionFilter({ amount })}
-              invalid={selectionAmountInvalid}
-              placeholder="z. B. 70,00"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="booking-filter-subcategory">Unterkategorie</label>
-            <select
-              id="booking-filter-subcategory"
-              value={selectionFilter.subcategory}
-              onChange={(event) => changeSelectionFilter({ subcategory: event.target.value })}
-            >
-              <option value="">Alle Unterkategorien</option>
-              {filterSubcategories.map((subcategory) => (
-                <option key={subcategory} value={subcategory}>{subcategory}</option>
-              ))}
-            </select>
-          </div>
-          <div className="booking-filterbar__actions">
-            {selectionFilterActive && (
-              <button className="btn btn--ghost btn--sm" type="button" onClick={clearSelectionFilter}>
-                Filter zurücksetzen
-              </button>
-            )}
-            <button
-              className="btn btn--primary btn--sm"
-              type="button"
-              disabled={rows.length === 0 || selectionAmountInvalid}
-              onClick={selectFilteredRows}
-            >
-              {rows.length} Treffer auswählen
-            </button>
-            {selectedRows.length > 0 && (
-              <button className="btn btn--ghost btn--sm" type="button" onClick={clearSelection}>
-                Auswahl aufheben
-              </button>
-            )}
-          </div>
-        </div>
+        <BookingFilterBar
+          filter={selectionFilter}
+          categories={file.categories}
+          months={filterMonths}
+          subcategories={filterSubcategories}
+          amountInvalid={selectionAmountInvalid}
+          active={selectionFilterActive || Boolean(filter.trim())}
+          count={rows.length}
+          selectedCount={selectedRows.length}
+          onChange={changeSelectionFilter}
+          onReset={clearSelectionFilter}
+          onSelectAll={selectFilteredRows}
+          onClearSelection={clearSelection}
+        />
         {selectedRows.length > 1 && (
           <div className="bulkbar">
             <strong className="bulkbar__count">{selectedRows.length} ausgewählt</strong>

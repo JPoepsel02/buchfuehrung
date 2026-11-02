@@ -19,7 +19,8 @@ im Prüfbericht und als Dock-Symbol.
   Abschlussblock (Abschlusssaldo Vorjahr → Gesamtsaldo → Abschlusssaldo).
 - **Veranstaltungen**: Buchungen je Veranstaltung gruppiert mit Zwischensummen.
 - **Übersicht**: Kassenstand, Einnahmen, Ausgaben, Umsatz sowie Monats- und
-  Kategorien-Auswertung.
+  Kategorien-Auswertung. Ein Klick auf Einnahmen, Ausgaben, Umsatz, eine
+  Veranstaltung oder einen Monat öffnet die passend vorgefilterten Buchungen.
 - **Umsatz-Import**: CSV-Exporte aus dem Online-Banking (Sparkasse,
   Volksbank, ING, DKB u. a.) einlesen oder Umsätze direkt per FinTS abrufen. Datum, Verwendungszweck und Betrag
   werden automatisch erkannt. Listen und offene Import-Zähler zeigen ausschließlich
