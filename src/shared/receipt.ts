@@ -24,9 +24,9 @@ export function receiptAvailable(status: ReceiptStatus): boolean {
 export function receiptStatusLabel(status: ReceiptStatus): string {
   switch (status) {
     case 'vorhanden':
-      return 'Beleg im Ordner vorhanden'
+      return 'Beleg vorhanden'
     case 'offen':
-      return 'Beleg noch prüfen'
+      return 'Beleg prüfen'
     case 'nicht_erforderlich':
       return 'Kein Beleg erforderlich'
   }

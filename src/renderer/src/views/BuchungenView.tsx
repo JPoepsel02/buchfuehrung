@@ -12,8 +12,8 @@ import { selectBookingRange } from '../bookingSelection'
 import { fiscalRange, inFiscalYear } from '@shared/fiscal'
 import { bookingsToCsv } from '@shared/bookingExport'
 import { subcategorySuggestions } from '@shared/importDraft'
-import { chronological, monthSummaries } from '@shared/ledger'
-import { formatDate, MONTH_NAMES, parseAmountToCents } from '@shared/money'
+import { chronological } from '@shared/ledger'
+import { formatDate, parseAmountToCents } from '@shared/money'
 import { receiptAvailable, receiptStatus, receiptStatusLabel, withReceiptStatus } from '@shared/receipt'
 import type { Booking, BookingType, ReceiptStatus } from '@shared/types'
 
@@ -168,10 +168,6 @@ export function BuchungenView({
     Boolean(selectionFilter.amount.trim()) &&
     (parsedSelectionAmount === null || parsedSelectionAmount < 0)
   const rows = filterBookings(allRows, filter, selectionFilter)
-  const filterMonths = monthSummaries(file).map((month) => ({
-    value: `${month.year}-${String(month.month).padStart(2, '0')}`,
-    label: `${MONTH_NAMES[month.month - 1]} ${month.year}`,
-  }))
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -359,14 +355,13 @@ export function BuchungenView({
       <header className="view__header">
         <div>
           <h1 className="view__title">Buchungen</h1>
-          <p className="view__subtitle">{cleanMode ? 'Leseansicht nach Datum mit laufendem Kassenstand.' : 'Beleg-Nummern werden automatisch je Kategorie vergeben.'}</p>
         </div>
         <button type="button" className={`btn${cleanMode ? ' btn--primary' : ''}`} aria-pressed={cleanMode} onClick={() => void toggleCleanMode()}>
           Clean Mode
         </button>
       </header>
 
-      {!cleanMode && <form className="card" onSubmit={submit}>
+      {!cleanMode && <form className="card booking-form" onSubmit={submit}>
         <h2 className="card__title">{editingId ? 'Buchung bearbeiten' : 'Neue Buchung erfassen'}</h2>
         <div className="form-grid">
           <div className="field" style={{ gridColumn: 'span 3' }}>
@@ -424,12 +419,6 @@ export function BuchungenView({
               placeholder="Verwendungszweck"
             />
           </div>
-          <div className="form-advanced-toggle" style={{ gridColumn: 'span 12' }}>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setAdvancedOpen((open) => !open)}>
-              {advancedOpen ? 'Weniger Angaben' : 'Weitere Angaben'}
-            </button>
-            <span className="hint">Unterkategorie, Belegstatus, Umsatz und Notiz</span>
-          </div>
           {advancedOpen && (
             <>
               <div className="field" style={{ gridColumn: 'span 3' }}>
@@ -450,8 +439,8 @@ export function BuchungenView({
               <div className="field" style={{ gridColumn: 'span 3' }}>
                 <label htmlFor="b-receipt">Belegstatus</label>
                 <select id="b-receipt" value={form.receiptStatus} onChange={(e) => set('receiptStatus', e.target.value as ReceiptStatus)}>
-                  <option value="vorhanden">Beleg im Ordner vorhanden</option>
-                  <option value="offen">Beleg noch prüfen</option>
+                  <option value="vorhanden">Beleg vorhanden</option>
+                  <option value="offen">Beleg prüfen</option>
                   <option value="nicht_erforderlich">Kein Beleg erforderlich</option>
                 </select>
               </div>
@@ -482,7 +471,12 @@ export function BuchungenView({
               </div>
             </>
           )}
-          <div style={{ gridColumn: 'span 12', display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+          <div className="booking-form__actions" style={{ gridColumn: '1 / -1' }}>
+            <div className="form-advanced-toggle">
+              <button type="button" className="btn btn--ghost btn--sm" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((open) => !open)}>
+                {advancedOpen ? 'Weniger Angaben' : 'Weitere Angaben'}
+              </button>
+            </div>
             {editingId && (
               <button type="button" className="btn" onClick={cancelEdit}>
                 Abbrechen
@@ -523,7 +517,6 @@ export function BuchungenView({
           query={filter}
           filter={selectionFilter}
           categories={file.categories}
-          months={filterMonths}
           subcategories={filterSubcategories}
           amountInvalid={selectionAmountInvalid}
           active={selectionFilterActive || Boolean(filter.trim())}
@@ -570,8 +563,8 @@ export function BuchungenView({
               aria-label="Beleg für Auswahl"
             >
               <option value="">Beleg unverändert</option>
-              <option value="vorhanden">Beleg: vorhanden</option>
-              <option value="offen">Beleg: noch prüfen</option>
+              <option value="vorhanden">Beleg vorhanden</option>
+              <option value="offen">Beleg prüfen</option>
               <option value="nicht_erforderlich">Beleg: nicht erforderlich</option>
             </select>
             <select

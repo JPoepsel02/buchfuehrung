@@ -15,7 +15,6 @@ export function VeranstaltungenView() {
       <header className="view__header">
         <div>
           <h1 className="view__title">Veranstaltungen {fiscalLabel(file)}</h1>
-          <p className="view__subtitle">Buchungen nach Veranstaltung sortiert, mit Saldo je Veranstaltung.</p>
         </div>
       </header>
 

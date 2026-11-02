@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
+import { shouldStartBookingEdit } from '../bookingRow'
 import { Amount } from '../components/Amount'
 import { CentsAmountInput } from '../components/AmountInput'
 import { inFiscalYear } from '@shared/fiscal'
@@ -60,6 +61,19 @@ export function ImportDraftCard() {
           }
         : f,
     )
+  }
+
+  function toggleRowSelection(index: number, hash: string) {
+    update((current) => {
+      if (!current.importDraft || `${current.konto ?? 'haupt'}:${current.year}` !== scope || current.importDraft.rows[index]?.hash !== hash) return current
+      return {
+        ...current,
+        importDraft: {
+          ...current.importDraft,
+          rows: current.importDraft.rows.map((row, i) => i === index ? { ...row, selected: !row.selected } : row),
+        },
+      }
+    })
   }
 
   function setSplit(rowIndex: number, splitId: string, patch: Partial<ImportDraftSplit>) {
@@ -261,8 +275,8 @@ export function ImportDraftCard() {
             aria-label="Beleg für Auswahl"
           >
             <option value="">Beleg unverändert</option>
-            <option value="vorhanden">Beleg: vorhanden</option>
-            <option value="offen">Beleg: noch prüfen</option>
+            <option value="vorhanden">Beleg vorhanden</option>
+            <option value="offen">Beleg prüfen</option>
             <option value="nicht_erforderlich">Beleg: nicht erforderlich</option>
           </select>
           <select
@@ -307,7 +321,11 @@ export function ImportDraftCard() {
             const splitDiff = Math.abs(r.amount) - splitTotal
             return (
               <Fragment key={`${r.hash}-${i}`}>
-              <tr style={!inYear ? { opacity: 0.5 } : undefined}>
+              <tr className="import-row" aria-selected={r.selected}
+                style={!inYear ? { opacity: 0.5 } : undefined}
+                onClick={(event) => {
+                  if (shouldStartBookingEdit(event.target as HTMLElement)) toggleRowSelection(i, r.hash)
+                }}>
                 <td>
                   <input
                     type="checkbox"
@@ -404,8 +422,8 @@ export function ImportDraftCard() {
                     aria-label="Belegstatus"
                     style={{ maxWidth: 178 }}
                   >
-                    <option value="vorhanden">Vorhanden</option>
-                    <option value="offen">Noch prüfen</option>
+                    <option value="vorhanden">Beleg vorhanden</option>
+                    <option value="offen">Beleg prüfen</option>
                     <option value="nicht_erforderlich">Nicht erforderlich</option>
                   </select>
                   {receiptStatus(r, 'offen') === 'vorhanden' && (

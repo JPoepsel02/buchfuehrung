@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { emptyYearFile } from '@shared/defaults'
 import { chronological, computeBookings, yearTotals } from '@shared/ledger'
-import { bookingScope, createBookingFilters, filterBookings, hasBookingFilters } from '../bookingFilters'
+import { bookingScope, calendarMonthFilters, createBookingFilters, filterBookings, hasBookingFilters } from '../bookingFilters'
 import type { Booking, YearFile } from '@shared/types'
 
 const booking = (id: string, patch: Partial<Booking> = {}): Booking => ({
@@ -34,7 +34,7 @@ describe('Vorausgefüllte Buchungsfilter aus der Übersicht', () => {
       booking('ausgabe', { seq: 2, refNo: 2, type: 'ausgabe', date: '2026-01-02', amount: 2000 }),
       booking('februar', { seq: 3, refNo: 3, date: '2026-02-01', amount: 3000 }),
     ] })
-    const selected = filterBookings(history, '', createBookingFilters({ categoryId: 'm', month: '2026-02' }))
+    const selected = filterBookings(history, '', createBookingFilters({ categoryId: 'm', ...calendarMonthFilters(2026, 2) }))
     expect(selected.map((r) => [r.id, r.runningBalance])).toEqual([['februar', 16000]])
     expect(history.map((r) => r.runningBalance)).toEqual([15000, 13000, 16000])
   })
@@ -44,7 +44,7 @@ describe('Vorausgefüllte Buchungsfilter aus der Übersicht', () => {
     expect(hasBookingFilters(filters)).toBe(false)
     expect(filterBookings(rows, '', filters)).toEqual(rows)
     expect(createBookingFilters({ type: 'ausgabe' })).toEqual({
-      categoryId: '', amount: '', subcategory: '', type: 'ausgabe', month: '', umsatzOnly: false,
+      categoryId: '', amount: '', subcategory: '', type: 'ausgabe', dateFrom: '', dateTo: '', umsatzOnly: false,
     })
   })
 
@@ -72,13 +72,13 @@ describe('Vorausgefüllte Buchungsfilter aus der Übersicht', () => {
   })
 
   test('unterscheidet denselben Monat in unterschiedlichen Kalenderjahren', () => {
-    expect(filterBookings(rows, '', createBookingFilters({ month: '2026-01' })).map((r) => r.id))
+    expect(filterBookings(rows, '', createBookingFilters({ ...calendarMonthFilters(2026, 1) })).map((r) => r.id))
       .toEqual(['eintritt', 'getränke', 'voll-ausgenommen'])
-    expect(filterBookings(rows, '', createBookingFilters({ month: '2027-01' })).map((r) => r.id)).toEqual(['folgejahr'])
+    expect(filterBookings(rows, '', createBookingFilters({ ...calendarMonthFilters(2027, 1) })).map((r) => r.id)).toEqual(['folgejahr'])
   })
 
   test('kombiniert Vorauswahl mit Suche, Betrag und Unterkategorie', () => {
-    const filters = { ...createBookingFilters({ categoryId: 'm', type: 'ausgabe', month: '2026-02', umsatzOnly: true }),
+    const filters = { ...createBookingFilters({ categoryId: 'm', type: 'ausgabe', ...calendarMonthFilters(2026, 2), umsatzOnly: true }),
       amount: '70,00', subcategory: ' getränke ' }
     expect(filterBookings(rows, 'Lieferant', filters).map((r) => r.id)).toEqual(['rechnung-februar'])
     expect(filterBookings(rows, 'anderer Name', filters)).toEqual([])
@@ -89,8 +89,8 @@ describe('Vorausgefüllte Buchungsfilter aus der Übersicht', () => {
   })
 
   test.each([
-    { type: 'einnahme' as const }, { categoryId: 'm' }, { month: '2026-01' },
-    { umsatzOnly: true }, { amount: '0' }, { subcategory: 'Getränke' },
+    { type: 'einnahme' as const }, { categoryId: 'm' }, { ...calendarMonthFilters(2026, 1) },
+    { dateFrom: '2026-01-01' }, { dateTo: '2026-01-31' }, { umsatzOnly: true }, { amount: '0' }, { subcategory: 'Getränke' },
   ])('erkennt jeden aktiven Filter zum Zurücksetzen und Exportieren: %j', (patch) => {
     expect(hasBookingFilters({ ...createBookingFilters(), ...patch })).toBe(true)
   })
@@ -98,5 +98,43 @@ describe('Vorausgefüllte Buchungsfilter aus der Übersicht', () => {
   test('bindet Navigationsfilter an Buch und Kassenjahr', () => {
     expect(bookingScope({ year: 2026 })).toBe('haupt:2026')
     expect(bookingScope({ konto: 'zweit', year: 2025 })).toBe('zweit:2025')
+  })
+})
+
+
+describe('Kalenderfilter von–bis', () => {
+  test.each([
+    [2026, 2, '2026-02-01', '2026-02-28'],
+    [2024, 2, '2024-02-01', '2024-02-29'],
+    [2026, 4, '2026-04-01', '2026-04-30'],
+    [2025, 12, '2025-12-01', '2025-12-31'],
+  ])('verwendet tatsächliche Monatsgrenzen für %i/%i', (year, month, dateFrom, dateTo) => {
+    expect(calendarMonthFilters(year, month)).toEqual({ dateFrom, dateTo })
+  })
+
+  test('schließt beide Grenztage ein und unterstützt einen Zeitraum über den Jahreswechsel', () => {
+    expect(filterBookings(rows, '', createBookingFilters({ dateFrom: '2026-02-01', dateTo: '2026-02-10' })).map((r) => r.id))
+      .toEqual(['wechselgeld', 'rechnung-februar'])
+    expect(filterBookings(rows, '', createBookingFilters({ dateFrom: '2026-02-10', dateTo: '2027-01-05' })).map((r) => r.id))
+      .toEqual(['rechnung-februar', 'folgejahr'])
+  })
+
+  test('erlaubt einseitig offene Zeiträume', () => {
+    expect(filterBookings(rows, '', createBookingFilters({ dateFrom: '2026-02-10' })).map((r) => r.id))
+      .toEqual(['rechnung-februar', 'folgejahr'])
+    expect(filterBookings(rows, '', createBookingFilters({ dateTo: '2026-01-10' })).map((r) => r.id))
+      .toEqual(['eintritt', 'getränke', 'voll-ausgenommen'])
+  })
+
+  test.each([
+    { dateFrom: '2026-02-11', dateTo: '2026-02-10' },
+    { dateFrom: '2026-02-29' }, { dateTo: '2026-04-31' },
+    { dateFrom: '01.02.2026' }, { dateTo: '2026-13-01' },
+  ])('liefert bei beschädigtem oder umgekehrtem Zeitraum keine Treffer: %j', (range) => {
+    expect(filterBookings(rows, '', createBookingFilters(range))).toEqual([])
+  })
+
+  test.each([[2026, 0], [2026, 13], [2026, 1.5], [NaN, 1], [999, 1], [10000, 1]])('lehnt ungültige Monatsvorgaben ab: %s/%s', (year, month) => {
+    expect(() => calendarMonthFilters(year, month)).toThrow(RangeError)
   })
 })

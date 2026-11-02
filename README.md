@@ -24,11 +24,14 @@ im Prüfbericht und als Dock-Symbol.
 - **Übersicht**: Kassenstand, Einnahmen, Ausgaben, Umsatz sowie Monats- und
   Kategorien-Auswertung. Ein Klick auf Einnahmen, Ausgaben, Umsatz, eine
   Veranstaltung oder einen Monat öffnet die passend vorgefilterten Buchungen.
+  Der Kalenderfilter „Von“/„Bis“ umfasst beide Grenztage; Monatsklicks füllen
+  den ersten und letzten Kalendertag vor.
 - **Umsatz-Import**: CSV-Exporte aus dem Online-Banking (Sparkasse,
   Volksbank, ING, DKB u. a.) einlesen oder Umsätze direkt per FinTS abrufen. Datum, Verwendungszweck und Betrag
   werden automatisch erkannt. Listen und offene Import-Zähler zeigen ausschließlich
   neue Umsätze; bereits erfasste Umsätze werden ausgeblendet. Je Umsatz wird die
-  Kategorie zugeordnet.
+  Kategorie zugeordnet. Ein Klick auf die freie Zeilenfläche wählt den Umsatz
+  aus oder ab; Eingabefelder und andere Bedienelemente bleiben unabhängig davon.
 - **Prüfbericht als PDF**: druckfertiger Kassenbericht mit Abhak-Kästchen je
   Beleg, Prüf-Checkliste und Unterschriftsfeldern für die Kassenprüfer.
 - **Jahresabschluss**: legt das Folgejahr an und übernimmt den Abschlusssaldo

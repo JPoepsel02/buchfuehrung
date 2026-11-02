@@ -4,6 +4,7 @@ import { fiscalLabel } from '@shared/fiscal'
 import { byCategory, monthSummaries, yearTotals } from '@shared/ledger'
 import { newImportRows } from '@shared/importRows'
 import { MONTH_NAMES, formatEur } from '@shared/money'
+import { calendarMonthFilters } from '../bookingFilters'
 import type { BookingFilterPreset } from '../bookingFilters'
 
 type OverviewTarget = 'buchungen' | 'import'
@@ -101,12 +102,12 @@ export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTar
             <tbody>
               {activeMonths.map((m) => (
                 <tr key={`${m.year}-${m.month}`} className="ledger-row-link"
-                  onClick={() => onNavigate?.('buchungen', { month: `${m.year}-${String(m.month).padStart(2, '0')}` })}>
+                  onClick={() => onNavigate?.('buchungen', calendarMonthFilters(m.year, m.month))}>
                   <td>
                     <button type="button" className="ledger-link" aria-label={`Buchungen für ${MONTH_NAMES[m.month - 1]} ${m.year} anzeigen`}
                       onClick={(event) => {
                         event.stopPropagation()
-                        onNavigate?.('buchungen', { month: `${m.year}-${String(m.month).padStart(2, '0')}` })
+                        onNavigate?.('buchungen', calendarMonthFilters(m.year, m.month))
                       }}>
                       {MONTH_NAMES[m.month - 1]}
                       {(file.fiscalStartMonth ?? 1) !== 1 && <span className="hint"> {m.year}</span>}

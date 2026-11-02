@@ -1,7 +1,7 @@
 import { Amount } from './Amount'
 import { fiscalEndLabel, fiscalLabel, prevFiscalEndLabel } from '@shared/fiscal'
 import { yearTotals } from '@shared/ledger'
-import { formatDate, formatEur } from '@shared/money'
+import { formatAmount, formatDate, formatEur } from '@shared/money'
 import type { ChronoRow, YearFile } from '@shared/types'
 
 function AnnualSummary({ file }: { file: YearFile }) {
@@ -45,7 +45,7 @@ export function ChronologicalTable({ rows, summaryFile, emptyMessage = 'Keine Bu
           <td className="num">{row.type === 'ausgabe' ? <Amount cents={-row.amount} /> : ''}</td>
           <td className="num">{row.type === 'einnahme' ? <Amount cents={row.amount} /> : ''}</td>
           <td className="num">{row.isUmsatz ? <Amount cents={row.umsatzAmount} /> : ''}</td>
-          <td className="num">{formatEur(row.runningBalance)}</td>
+          <td className="num">{formatAmount(row.runningBalance)}</td>
         </tr>)}
         {summaryFile && <AnnualSummary file={summaryFile} />}
       </tbody>

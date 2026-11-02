@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { AmountField } from './AmountInput'
 import type { Category } from '@shared/types'
-import type { BookingFilters } from '../bookingFilters'
+import { invalidBookingDateRange, type BookingFilters } from '../bookingFilters'
+import { formatDate } from '@shared/money'
 
 interface Props {
   compact?: boolean
   query?: string
   filter: BookingFilters
   categories: Category[]
-  months: Array<{ value: string; label: string }>
   subcategories: string[]
   amountInvalid: boolean
   active: boolean
@@ -25,7 +25,8 @@ function filterSummary(props: Props): string {
   return [
     f.categoryId && (props.categories.find((c) => c.id === f.categoryId)?.name ?? 'Kategorie'),
     f.type && (f.type === 'einnahme' ? 'Nur Einnahmen' : 'Nur Ausgaben'),
-    f.month && (props.months.find((m) => m.value === f.month)?.label ?? f.month),
+    f.dateFrom && `Von ${formatDate(f.dateFrom)}`,
+    f.dateTo && `Bis ${formatDate(f.dateTo)}`,
     f.amount.trim() && `Betrag: ${f.amount} €`,
     f.subcategory,
     f.umsatzOnly && 'Nur Umsatzbuchungen',
@@ -36,6 +37,7 @@ function filterSummary(props: Props): string {
 export function BookingFilterBar(props: Props) {
   const { filter, onChange } = props
   const [expanded, setExpanded] = useState(false)
+  const datesInvalid = invalidBookingDateRange(filter)
   useEffect(() => {
     if (props.compact) setExpanded(false)
   }, [props.compact])
@@ -69,11 +71,16 @@ export function BookingFilterBar(props: Props) {
         </select>
       </div>
       <div className="field">
-        <label htmlFor="booking-filter-month">Monat</label>
-        <select id="booking-filter-month" value={filter.month} onChange={(event) => onChange({ month: event.target.value })}>
-          <option value="">Alle Monate</option>
-          {props.months.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}
-        </select>
+        <label htmlFor="booking-filter-from">Von</label>
+        <input id="booking-filter-from" type="date" value={filter.dateFrom}
+          aria-invalid={datesInvalid} aria-describedby={datesInvalid ? 'booking-date-error' : undefined}
+          onChange={(event) => onChange({ dateFrom: event.target.value })} />
+      </div>
+      <div className="field">
+        <label htmlFor="booking-filter-to">Bis</label>
+        <input id="booking-filter-to" type="date" value={filter.dateTo}
+          aria-invalid={datesInvalid} aria-describedby={datesInvalid ? 'booking-date-error' : undefined}
+          onChange={(event) => onChange({ dateTo: event.target.value })} />
       </div>
       <div className="field">
         <label htmlFor="booking-filter-amount">Betragshöhe exakt (€)</label>
@@ -100,6 +107,7 @@ export function BookingFilterBar(props: Props) {
         {props.selectedCount > 0 && <button className="btn btn--ghost btn--sm" type="button" onClick={props.onClearSelection}>Auswahl aufheben</button>}
       </div>}
     </div>
+    {datesInvalid && <p id="booking-date-error" className="hint" role="alert">Bitte einen gültigen Zeitraum wählen: Von darf nicht nach Bis liegen.</p>}
     </div>
     </>
   )

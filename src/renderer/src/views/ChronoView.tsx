@@ -12,7 +12,6 @@ export function ChronoView() {
       <header className="view__header">
         <div>
           <h1 className="view__title">Chronologisch {fiscalLabel(file)}</h1>
-          <p className="view__subtitle">Alle Buchungen nach Datum sortiert mit laufendem Kassenstand.</p>
         </div>
       </header>
       <section className="card">
