@@ -1,5 +1,6 @@
 import { inFiscalYear } from './fiscal'
-import { checkedRefNo, classifyDraftDuplicates, computeBookings } from './ledger'
+import { checkedRefNo, computeBookings } from './ledger'
+import { newImportRows } from './importRows'
 import { receiptStatus } from './receipt'
 import type { ImportDraftRow, ImportDraftSplit, ImportReceiptReference, YearFile } from './types'
 
@@ -65,10 +66,10 @@ export function reserveImportReceiptNumbers(file: YearFile): YearFile {
   const kept = existingReferences(file)
   const categoryIds = new Set(file.categories.map((c) => c.id))
   const draft = file.importDraft
-  const duplicates = classifyDraftDuplicates(file.bookings, draft?.rows ?? [])
+  const freshIndices = new Set(newImportRows(file).map(({ index }) => index))
   const rows = draft?.rows.map((row, index) => {
     const canReserve = receiptStatus(row, 'offen') === 'vorhanden' &&
-      !duplicates.hard[index] && !duplicates.repeated[index] && inFiscalYear(file, row.date)
+      freshIndices.has(index) && inFiscalYear(file, row.date)
     const assign = <T extends ReceiptPart>(part: T): T => {
       let receiptRef = kept.get(part)
       if (!receiptRef && canReserve && categoryIds.has(part.categoryId)) {

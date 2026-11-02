@@ -14,6 +14,7 @@ import { PruefberichtView } from './views/PruefberichtView'
 import { EinstellungenView } from './views/EinstellungenView'
 import { fiscalLabel } from '@shared/fiscal'
 import { bookingMatches, computeBookings } from '@shared/ledger'
+import { newImportRows } from '@shared/importRows'
 import { formatDate, formatEur } from '@shared/money'
 import type { ComputedBooking, KontoId, YearFile } from '@shared/types'
 
@@ -144,7 +145,7 @@ export function App() {
     setSearchOpen(false)
   }
 
-  const openImportRows = file.importDraft?.rows.length ?? 0
+  const openImportRows = newImportRows(file).length
 
   return (
     <div className="app">

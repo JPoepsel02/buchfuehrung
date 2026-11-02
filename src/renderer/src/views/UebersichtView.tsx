@@ -2,6 +2,7 @@ import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { fiscalLabel } from '@shared/fiscal'
 import { byCategory, monthSummaries, yearTotals } from '@shared/ledger'
+import { newImportRows } from '@shared/importRows'
 import { MONTH_NAMES, formatEur } from '@shared/money'
 
 type OverviewTarget = 'buchungen' | 'import'
@@ -15,7 +16,7 @@ export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTar
   const activeMonths = months.filter((m) => m.count > 0)
 
   // Offene Arbeit: noch nicht übernommene Import-Umsätze
-  const openImportRows = file.importDraft?.rows.length ?? 0
+  const openImportRows = newImportRows(file).length
 
   return (
     <div className="view">

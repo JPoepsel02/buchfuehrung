@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useStore } from '../store'
 import { parseBankCsv } from '@shared/csv'
 import { buildDraft } from '@shared/importDraft'
+import { newImportRows } from '@shared/importRows'
 import { BankImportPanel } from './BankView'
 import { ImportDraftCard } from './ImportDraftCard'
 
@@ -18,17 +19,22 @@ export function ImportView() {
   const [toast, setToast] = useState('')
 
   if (!file) return null
-  const draft = file.importDraft ?? null
+  const draft = newImportRows(file).length > 0 ? file.importDraft : null
+
+  function showToast(message: string) {
+    setToast(message)
+    setTimeout(() => setToast(''), 5000)
+  }
 
   async function openFile() {
     const result = await api.openCsv()
     if (!result) return
     const parsed = parseBankCsv(result.content)
     const { mutate, messages } = buildDraft(file!, parsed.rows, result.name, parsed.skipped)
+    const freshCount = newImportRows(mutate(file!)).length
     update(mutate)
-    if (messages.length > 0) {
-      setToast(`${messages.join(', ')}.`)
-      setTimeout(() => setToast(''), 5000)
+    if (messages.length > 0 || freshCount === 0) {
+      showToast([...(freshCount === 0 ? ['Keine neuen Umsätze gefunden'] : []), ...messages].join('. ') + '.')
     }
   }
 
@@ -81,7 +87,7 @@ export function ImportView() {
             </button>
           </section>
 
-          {source === 'bank' && <BankImportPanel />}
+          {source === 'bank' && <BankImportPanel onFetchResult={showToast} />}
           {source !== 'bank' && (
             <p className="hint import-source-hint">
               Unterstützt CSV-Exporte von Sparkasse, Volksbank, ING, DKB und weiteren Banken.

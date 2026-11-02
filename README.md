@@ -22,8 +22,9 @@ im Prüfbericht und als Dock-Symbol.
   Kategorien-Auswertung.
 - **Umsatz-Import**: CSV-Exporte aus dem Online-Banking (Sparkasse,
   Volksbank, ING, DKB u. a.) einlesen oder Umsätze direkt per FinTS abrufen. Datum, Verwendungszweck und Betrag
-  werden automatisch erkannt, Duplikate markiert; je Umsatz wird die Kategorie
-  zugeordnet.
+  werden automatisch erkannt. Listen und offene Import-Zähler zeigen ausschließlich
+  neue Umsätze; bereits erfasste Umsätze werden ausgeblendet. Je Umsatz wird die
+  Kategorie zugeordnet.
 - **Prüfbericht als PDF**: druckfertiger Kassenbericht mit Abhak-Kästchen je
   Beleg, Prüf-Checkliste und Unterschriftsfeldern für die Kassenprüfer.
 - **Jahresabschluss**: legt das Folgejahr an und übernimmt den Abschlusssaldo

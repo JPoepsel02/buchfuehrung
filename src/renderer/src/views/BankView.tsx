@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
 import { buildDraft } from '@shared/importDraft'
+import { newImportRows } from '@shared/importRows'
 import { makeId } from '@shared/defaults'
 import { legacyRowHashes, rowHash } from '@shared/csv'
 import { formatDate } from '@shared/money'
@@ -43,7 +44,7 @@ function isoDaysAgo(days: number): string {
  * CSV-Kontoauszug.
  */
 /** Eingebetteter Online-Banking-Weg innerhalb von „Umsätze importieren“. */
-export function BankImportPanel() {
+export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: string) => void }) {
   const { file, update, settings, updateSettings } = useStore()
   const accounts = settings.bankAccounts ?? []
   const [editing, setEditing] = useState<BankAccountConfig | null>(null)
@@ -52,7 +53,6 @@ export function BankImportPanel() {
   const [flow, setFlow] = useState<Flow | null>(null)
   const [days, setDays] = useState(30)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
   const continuing = useRef(false)
 
   if (!file) return null
@@ -63,11 +63,6 @@ export function BankImportPanel() {
   const account = accounts.find((a) => (a.konto ?? 'haupt') === bankKonto) ?? null
   const kontoLabel = bankKonto === 'haupt' ? 'Hauptkonto' : file.kontoName || 'dieses Konto'
 
-  function showToast(text: string) {
-    setToast(text)
-    setTimeout(() => setToast(''), 6000)
-  }
-
   function endFlow() {
     setFlow(null)
     setBusyId(null)
@@ -75,7 +70,7 @@ export function BankImportPanel() {
 
   /** Vor dem ersten Abruf-Schritt: offenen Entwurf nicht ungefragt ersetzen. */
   function confirmDraftReplace(): boolean {
-    if (!file!.importDraft || file!.importDraft.rows.length === 0) return true
+    if (newImportRows(file!).length === 0) return true
     return confirm('Es gibt bereits einen offenen Import-Entwurf. Der Abruf ersetzt ihn – fortfahren?')
   }
 
@@ -149,7 +144,7 @@ export function BankImportPanel() {
 
   function applyRows(account: BankAccountConfig, rows: BankFetchedRow[]) {
     if (rows.length === 0) {
-      showToast('Die Bank hat für den gewählten Zeitraum keine Umsätze gemeldet.')
+      onFetchResult('Die Bank hat für den gewählten Zeitraum keine Umsätze gemeldet.')
       return
     }
     const statementRows: StatementRow[] = rows.map((r) => ({
@@ -159,9 +154,12 @@ export function BankImportPanel() {
     }))
     const sourceName = `${account.label} · Abruf vom ${formatDate(new Date().toISOString().slice(0, 10))}`
     const { mutate, messages } = buildDraft(file!, statementRows, sourceName, 0)
+    const freshCount = newImportRows(mutate(file!)).length
     update(mutate)
     const extra = messages.length > 0 ? ` ${messages.join(', ')}.` : ''
-    showToast(`${rows.length} Umsätze abgerufen – unten zuweisen und übernehmen.${extra}`)
+    onFetchResult(freshCount > 0
+      ? `${freshCount} neue Umsätze abgerufen – unten zuweisen und übernehmen.${extra}`
+      : `Keine neuen Umsätze vorhanden.${extra}`)
   }
 
   async function cancelFlow() {
@@ -329,7 +327,6 @@ export function BankImportPanel() {
           onCancel={() => void cancelFlow()}
         />
       )}
-      {toast && <div className="toast">{toast}</div>}
     </>
   )
 }

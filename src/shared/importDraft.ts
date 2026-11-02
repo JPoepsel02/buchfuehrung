@@ -1,9 +1,10 @@
 import { inFiscalYear } from './fiscal'
-import { checkedRefNo, classifyDraftDuplicates, nextRefNo, nextSeq, reconcileImportedBookings } from './ledger'
+import { checkedRefNo, nextRefNo, nextSeq, reconcileImportedBookings } from './ledger'
 import { IMPORT_HASH_VERSION, legacyRowHashes, rowHash } from './csv'
 import { receiptAvailable, receiptStatus, withReceiptStatus } from './receipt'
 import { makeId } from './defaults'
 import { reserveImportReceiptNumbers } from './importReceipts'
+import { newImportRows } from './importRows'
 import type { StatementRow } from './csv'
 import type { ImportDraftRow, ImportDraftSplit, YearFile } from './types'
 
@@ -82,8 +83,10 @@ export function appendToDraft(
     categoryId: '',
     isUmsatz: false,
   }, 'offen'))
+  const existingRows = file.importDraft?.rows ?? []
+  const combined = { ...file, importDraft: { fileName: sourceName, skipped: 0, rows: [...existingRows, ...newRows] } }
   return {
-    added: newRows.length,
+    added: newImportRows(combined).filter(({ index }) => index >= existingRows.length).length,
     mutate: (f) => {
       const existingHashes = new Set(
         f.importDraft?.rows.flatMap((r) => [r.hash, ...(r.legacyHashes ?? [])]) ?? [],
@@ -200,9 +203,8 @@ export function importSelectedRows(file: YearFile): YearFile {
   if (!file.importDraft) return file
   const prepared = reserveImportReceiptNumbers(file)
   const draft = prepared.importDraft!
-  const dupes = classifyDraftDuplicates(prepared.bookings, draft.rows)
-  const selected = new Set(draft.rows.flatMap((row, i) =>
-    row.selected && rowIsImportable(row) && inFiscalYear(prepared, row.date) && !dupes.hard[i] && !dupes.repeated[i] ? [i] : [],
+  const selected = new Set(newImportRows(prepared).flatMap(({ row, index }) =>
+    row.selected && rowIsImportable(row) && inFiscalYear(prepared, row.date) ? [index] : [],
   ))
   if (selected.size === 0) return prepared
   let seq = nextSeq(prepared)
