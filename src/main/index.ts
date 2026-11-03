@@ -1,4 +1,4 @@
-import { BrowserWindow, app, shell } from 'electron'
+import { BrowserWindow, Menu, app, shell } from 'electron'
 import { join } from 'node:path'
 import { applyLogo, currentLogo, registerIpc } from './ipc'
 
@@ -14,7 +14,7 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 640,
     title: 'Buchführung',
-    backgroundColor: '#eef2ee',
+    backgroundColor: '#f5f6f8',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -37,6 +37,16 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    { label: 'Bearbeiten', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+    { label: 'Ansicht', submenu: [
+      { id: 'toggle-sidebar', label: 'Seitenleiste ein-/ausblenden', accelerator: 'CmdOrCtrl+Shift+L', click: () => BrowserWindow.getFocusedWindow()?.webContents.send('view:sidebar') },
+      { id: 'search-bookings', label: 'Buchungen suchen', accelerator: 'CmdOrCtrl+F', click: () => BrowserWindow.getFocusedWindow()?.webContents.send('view:search') },
+      { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
+    ] },
+    { role: 'windowMenu' },
+  ]))
   registerIpc()
   createWindow()
   applyLogo(currentLogo())

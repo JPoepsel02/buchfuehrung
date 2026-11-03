@@ -11,6 +11,13 @@ im Prüfbericht und als Dock-Symbol.
 
 ## Funktionen
 
+- **Einheitliche Oberfläche** mit klaren Tabellen, systemabhängigem Hell-/Dunkelmodus
+  und einblendbarer Seitenleiste (Ansicht → Seitenleiste ein-/ausblenden).
+- **Jahresübersicht** mit Monatsdiagramm und zuletzt erfassten Buchungen, die sich
+  direkt zur Bearbeitung öffnen lassen.
+- **Globale Suche** über die sichtbare Suchschaltfläche oder Strg/Cmd+F; durchsucht
+  alle Konten und Kassenjahre. Die Suche lässt sich per Escape schließen.
+
 - **Buchungen erfassen** mit Datum, Veranstaltung/Kategorie, Verwendungszweck,
   Einnahme/Ausgabe und Betrag. Beleg-Nummern (z. B. `M1`, `M2`, `B1` …) werden
   automatisch je Kategorie vergeben – genau wie im Excel-Template.
@@ -51,7 +58,7 @@ npm install
 npm run dev          # Electron mit Hot-Reload
 npm test             # Tests der Kernlogik (Vitest)
 npm run test:coverage # Kernlogik mit mindestens 80 % Testabdeckung
-npm run test:e2e     # Import, Filter und Clean Mode in separater Electron-Test-App
+npm run test:e2e     # UI, Import und Einstellungen in separater Electron-Test-App
 npm run typecheck    # TypeScript
 npm run preview:web  # Nur die Oberfläche im Browser (ohne Electron)
 ```

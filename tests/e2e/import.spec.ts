@@ -259,8 +259,9 @@ test('wählt Umsätze über freie Zeilenflächen und lässt Eingaben und feste N
     await expect(selected).not.toBeChecked()
     await first.getByRole('cell').nth(5).click()
     await expect(selected).toBeChecked()
+    // Rendering is immediate; the local file is deliberately saved after a short debounce.
+    await expect.poll(() => readYear(data).importDraft!.rows[1].receiptRef).toEqual({ categoryId: 'm', refNo: 8 })
     expect(readYear(data).bookings).toEqual(fixture().bookings)
     expect(readYear(data).importDraft!.rows[0].selected).toBe(false)
-    expect(readYear(data).importDraft!.rows[1].receiptRef).toEqual({ categoryId: 'm', refNo: 8 })
   } finally { await app.close() }
 })

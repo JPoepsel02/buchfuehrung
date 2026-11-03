@@ -238,101 +238,117 @@ export function EinstellungenView() {
 
       <section className="card">
         <h2 className="card__title">Veranstaltungen / Kategorien</h2>
-        <table className="ledger">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Kürzel</th>
-              <th>Aktiv</th>
-              <th>Präsentation</th>
-              <th>Reihenfolge</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {cats.map((c, i) => (
-              <tr key={c.id}>
-                <td>
-                  <input
-                    value={c.name}
-                    onChange={(e) => updateCategory(c.id, { name: e.target.value })}
-                    style={{ border: 'none', background: 'transparent', width: '100%', font: 'inherit' }}
-                    aria-label="Kategoriename"
-                  />
-                </td>
-                <td className="ref">{c.code}</td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={c.active}
-                    onChange={(e) => updateCategory(c.id, { active: e.target.checked })}
-                    aria-label="Kategorie aktiv"
-                  />
-                </td>
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  <select
-                    value={praesentationsModus(c)}
-                    onChange={(e) =>
-                      updateCategory(c.id, {
-                        praesentation: e.target.value as Category['praesentation'],
-                      })
-                    }
-                    aria-label="Darstellung in der Jahres-Präsentation"
-                  >
-                    <option value="monat">Im Jahresverlauf</option>
-                    <option value="sammel">Sammel-Folie</option>
-                    <option value="aus">Nicht in Präsentation</option>
-                  </select>
-                  {praesentationsModus(c) === 'monat' && (
-                    <select
-                      value={c.praesentationMonat ?? 0}
-                      onChange={(e) =>
-                        updateCategory(c.id, {
-                          praesentationMonat: Number(e.target.value) || undefined,
-                        })
-                      }
-                      aria-label="Monat im Jahresverlauf"
-                      style={{ marginLeft: 6 }}
-                    >
-                      <option value={0}>Erste Buchung</option>
-                      {MONTH_NAMES.map((m, idx) => (
-                        <option key={m} value={idx + 1}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </td>
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn btn--ghost btn--sm" disabled={i === 0} onClick={() => move(c.id, -1)} aria-label="Nach oben">
-                    ↑
-                  </button>
-                  <button
-                    className="btn btn--ghost btn--sm"
-                    disabled={i === cats.length - 1}
-                    onClick={() => move(c.id, 1)}
-                    aria-label="Nach unten"
-                  >
-                    ↓
-                  </button>
-                </td>
-                <td className="num">
-                  <button
-                    className="btn btn--ghost btn--sm btn--danger"
-                    onClick={() => {
-                      if (!deleteCategory(c.id))
-                        notify('Kategorie hat Buchungen und kann nicht gelöscht werden. Stattdessen deaktivieren.')
-                    }}
-                  >
-                    Löschen
-                  </button>
-                </td>
+        <div className="table-scroll">
+          <table className="ledger category-table" aria-label="Veranstaltungen und Kategorien">
+            <colgroup>
+              <col />
+              <col className="category-table__code" />
+              <col className="category-table__active" />
+              <col className="category-table__presentation" />
+              <col className="category-table__order" />
+              <col className="category-table__actions" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Kürzel</th>
+                <th className="category-table__active">Aktiv</th>
+                <th>Präsentation</th>
+                <th>Reihenfolge</th>
+                <th>Aktionen</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <form className="toolbar" style={{ marginTop: 'var(--space-4)' }} onSubmit={addNewCategory}>
-          <div className="field">
+            </thead>
+            <tbody>
+              {cats.map((c, i) => (
+                <tr key={c.id}>
+                  <td>
+                    <input
+                      value={c.name}
+                      title={c.name}
+                      onChange={(e) => updateCategory(c.id, { name: e.target.value })}
+                      style={{ border: 'none', background: 'transparent', width: '100%', font: 'inherit' }}
+                      aria-label="Kategoriename"
+                    />
+                  </td>
+                  <td className="ref">{c.code}</td>
+                  <td className="category-table__active">
+                    <label className="category-active-toggle">
+                      <input
+                        type="checkbox"
+                        checked={c.active}
+                        onChange={(e) => updateCategory(c.id, { active: e.target.checked })}
+                        aria-label="Kategorie aktiv"
+                      />
+                    </label>
+                  </td>
+                  <td>
+                    <div className="category-presentation">
+                      <select
+                        value={praesentationsModus(c)}
+                        onChange={(e) =>
+                          updateCategory(c.id, {
+                            praesentation: e.target.value as Category['praesentation'],
+                          })
+                        }
+                        aria-label="Darstellung in der Jahres-Präsentation"
+                      >
+                        <option value="monat">Im Jahresverlauf</option>
+                        <option value="sammel">Sammel-Folie</option>
+                        <option value="aus">Nicht in Präsentation</option>
+                      </select>
+                      {praesentationsModus(c) === 'monat' && (
+                        <select
+                          value={c.praesentationMonat ?? 0}
+                          onChange={(e) =>
+                            updateCategory(c.id, {
+                              praesentationMonat: Number(e.target.value) || undefined,
+                            })
+                          }
+                          aria-label="Monat im Jahresverlauf"
+                        >
+                          <option value={0}>Erste Buchung</option>
+                          {MONTH_NAMES.map((m, idx) => (
+                            <option key={m} value={idx + 1}>
+                              {m}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="category-order-actions">
+                      <button className="btn btn--ghost btn--sm" disabled={i === 0} onClick={() => move(c.id, -1)} aria-label="Nach oben">
+                        ↑
+                      </button>
+                      <button
+                        className="btn btn--ghost btn--sm"
+                        disabled={i === cats.length - 1}
+                        onClick={() => move(c.id, 1)}
+                        aria-label="Nach unten"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </td>
+                  <td className="num">
+                    <button
+                      className="btn btn--ghost btn--sm btn--danger"
+                      onClick={() => {
+                        if (!deleteCategory(c.id))
+                          notify('Kategorie hat Buchungen und kann nicht gelöscht werden. Stattdessen deaktivieren.')
+                      }}
+                    >
+                      Löschen
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <form className="toolbar category-create" style={{ marginTop: 'var(--space-4)' }} onSubmit={addNewCategory}>
+          <div className="field category-create__name">
             <input
               value={newCat.name}
               onChange={(e) => setNewCat((s) => ({ ...s, name: e.target.value }))}
@@ -340,7 +356,7 @@ export function EinstellungenView() {
               aria-label="Name der neuen Kategorie"
             />
           </div>
-          <div className="field" style={{ width: 90 }}>
+          <div className="field category-create__code">
             <input
               value={newCat.code}
               onChange={(e) => setNewCat((s) => ({ ...s, code: e.target.value }))}

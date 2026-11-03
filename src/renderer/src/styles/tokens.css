@@ -1,70 +1,99 @@
 :root {
-  /* ---------- Liquid-Glass-Thema (hell) ----------
-     Lichtdurchlässige Flächen über einem farbigen Aurora-Hintergrund.
-     Token-Namen sind historisch ("paper"/"pine"), die Werte bilden das
-     Glas-Thema ab. */
-
-  /* Grundflächen & Tinte */
-  --color-paper: #eef2ee;
-  --color-paper-raised: rgb(255 255 255 / 0.62);
-  --color-paper-sunken: rgb(255 255 255 / 0.45);
-  --color-ink: #122019;
-  --color-ink-soft: #3d4f45;
-  --color-ink-faint: #6b7a71;
-  --color-line: rgb(18 32 25 / 0.08);
-  --color-line-strong: rgb(18 32 25 / 0.16);
-
-  /* Markengrün (tief) + lebendige Akzente */
-  --color-pine: #0e3b26;
-  --color-pine-raised: #14532f;
-  --color-pine-text: #0e3b26;
-  --color-pine-muted: #51725f;
-
-  --color-accent: #0fa968;
-  --color-accent-soft: rgb(15 169 104 / 0.14);
-  --color-income: #0c8f58;
-  --color-expense: #d5503a;
-  --color-expense-soft: rgb(213 80 58 / 0.14);
-  --color-warn: #d99a25;
-  --color-focus: #0fa968;
-  --color-field: rgb(255 255 255 / 0.66);
+  color-scheme: light dark;
+  /* Semantic roles: quiet paper, readable ink, one book-green accent. */
+  --color-paper: #f5f6f8;
+  --color-paper-raised: #ffffff;
+  --color-paper-sunken: #edf0f3;
+  --color-sidebar: #edf0f2;
+  --color-ink: #202b33;
+  --color-ink-soft: #57636f;
+  --color-ink-faint: #626e79;
+  --color-line: #e5e9ed;
+  --color-line-strong: #cbd2d9;
+  --color-pine: #246b53;
+  --color-pine-raised: #1b5743;
+  --color-pine-text: #246b53;
+  --color-pine-muted: #526a60;
+  --color-accent: #246b53;
+  --color-accent-soft: #e5f1eb;
+  --color-income: #246b53;
+  --color-expense: #ad453b;
+  --color-expense-soft: #faecea;
+  --color-warn: #805a12;
+  --color-warn-soft: #fbf2de;
+  --color-focus: #246b53;
+  --color-field: #ffffff;
   --color-on-accent: #ffffff;
-
-  /* Glas-Effekte */
-  --glass-bg: rgb(255 255 255 / 0.55);
-  --glass-bg-strong: rgb(255 255 255 / 0.72);
-  --glass-border: rgb(255 255 255 / 0.65);
-  --glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.85);
-  --glass-blur: blur(22px) saturate(1.5);
-  --accent-grad: linear-gradient(135deg, #16c07c 0%, #0a9e63 55%, #0c7d52 100%);
-  --accent-glow: 0 6px 22px rgb(15 169 104 / 0.35);
-
-  --font-display: 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
-  --font-body: 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
-
+  --color-hero: #215b49;
+  --color-hero-ink: #ffffff;
+  --color-hero-soft: #d1e6db;
+  /* Legacy aliases keep every existing view on the same solid surface system. */
+  --glass-bg: var(--color-paper-raised);
+  --glass-bg-strong: var(--color-paper-raised);
+  --glass-border: var(--color-line);
+  --glass-edge: 0 0 transparent;
+  --glass-blur: none;
+  --accent-grad: var(--color-accent);
+  --accent-glow: none;
+  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-data: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --text-xs: 0.75rem;
-  --text-sm: 0.85rem;
-  --text-base: 0.95rem;
-  --text-lg: 1.15rem;
-  --text-xl: 1.5rem;
-  --text-display: clamp(1.7rem, 1.4rem + 1vw, 2.2rem);
-
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --text-display: clamp(1.625rem, 1.4rem + 0.5vw, 2rem);
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-5: 1.5rem;
   --space-6: 2rem;
-  --space-7: 3rem;
+  --space-7: 2.5rem;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --shadow-card: 0 1px 2px rgb(20 35 45 / 0.025);
+  --shadow-pop: 0 16px 56px rgb(20 35 45 / 0.18);
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --ease-out: ease-out;
+}
 
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 22px;
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #171b20;
+    --color-paper-raised: #22282f;
+    --color-paper-sunken: #1b2026;
+    --color-sidebar: #1d2329;
+    --color-ink: #edf1f5;
+    --color-ink-soft: #b3bec9;
+    --color-ink-faint: #a8b3be;
+    --color-line: #343c45;
+    --color-line-strong: #505d6a;
+    --color-pine: #88ceb0;
+    --color-pine-raised: #a8dfc5;
+    --color-pine-text: #88ceb0;
+    --color-pine-muted: #b0c9be;
+    --color-accent: #88ceb0;
+    --color-accent-soft: #293e35;
+    --color-income: #88ceb0;
+    --color-expense: #f39b92;
+    --color-expense-soft: #452c2d;
+    --color-warn: #efcb85;
+    --color-warn-soft: #403625;
+    --color-focus: #88ceb0;
+    --color-field: #1b2026;
+    --color-on-accent: #152b21;
+    --color-hero: #234b3e;
+    --color-hero-ink: #edf8f2;
+    --color-hero-soft: #c1dfd0;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.12);
+    --shadow-pop: 0 16px 56px rgb(0 0 0 / 0.4);
+  }
+}
 
-  --shadow-card: 0 1px 1px rgb(14 40 26 / 0.04), 0 10px 30px rgb(14 40 26 / 0.08);
-  --shadow-pop: 0 8px 24px rgb(14 40 26 / 0.16), 0 24px 70px rgb(14 40 26 / 0.18);
-
-  --duration-fast: 140ms;
-  --duration-normal: 280ms;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+@media (prefers-contrast: more) {
+  :root { --color-line: #8d98a3; --color-line-strong: #6c7883; }
 }

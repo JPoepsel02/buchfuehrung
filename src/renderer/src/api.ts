@@ -20,6 +20,7 @@ export interface CloudSyncStatus {
 }
 
 export interface Api {
+  onAppCommand(cb: (command: 'search' | 'sidebar') => void): () => void
   listKontos(): Promise<string[]>
   listYears(konto: string): Promise<number[]>
   loadYear(konto: string, year: number): Promise<unknown | null>
@@ -65,6 +66,7 @@ const keyFor = (konto: string) => {
 }
 
 const webFallback: Api = {
+  onAppCommand() { return () => {} },
   async listKontos() {
     const found = new Set<string>(['haupt'])
     for (const key of Object.keys(localStorage)) {

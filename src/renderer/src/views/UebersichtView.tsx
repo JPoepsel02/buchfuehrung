@@ -1,85 +1,100 @@
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
+import { Icon } from '../components/Icon'
+import { CashflowChart } from '../components/CashflowChart'
 import { fiscalLabel } from '@shared/fiscal'
-import { byCategory, monthSummaries, yearTotals } from '@shared/ledger'
+import { byCategory, computeBookings, monthSummaries, yearTotals } from '@shared/ledger'
 import { newImportRows } from '@shared/importRows'
-import { MONTH_NAMES, formatEur } from '@shared/money'
+import { MONTH_NAMES, formatDate, formatEur } from '@shared/money'
 import { calendarMonthFilters } from '../bookingFilters'
 import type { BookingFilterPreset } from '../bookingFilters'
 
 type OverviewTarget = 'buchungen' | 'import'
 
-export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTarget, filters?: BookingFilterPreset) => void }) {
+export function UebersichtView({ onNavigate, onOpenBooking }: {
+  onNavigate?: (view: OverviewTarget, filters?: BookingFilterPreset) => void
+  onOpenBooking?: (id: string) => void
+}) {
   const { file } = useStore()
   if (!file) return null
   const totals = yearTotals(file)
   const months = monthSummaries(file)
   const groups = byCategory(file)
   const activeMonths = months.filter((m) => m.count > 0)
-
-  // Offene Arbeit: noch nicht übernommene Import-Umsätze
+  const recent = computeBookings(file).sort((a, b) => b.date.localeCompare(a.date) || b.seq - a.seq).slice(0, 4)
   const openImportRows = newImportRows(file).length
 
   return (
-    <div className="view">
-      <header className="view__header">
+    <div className="view overview-view">
+      <header className="view__header overview-heading">
         <div>
+          <span className="overview-kicker">Dein Verein. Alles im Blick.</span>
           <h1 className="view__title">Übersicht {fiscalLabel(file)}</h1>
-          <p className="view__subtitle">
-            {totals.count} Buchungen · Anfangssaldo {formatEur(file.openingBalance)}
-          </p>
+          <p className="view__subtitle">Dein Kassenjahr auf einen Blick · {totals.count} Buchungen</p>
+        </div>
+        <div className="overview-actions">
+          <button className="btn" onClick={() => onNavigate?.('import')}>
+            <Icon name="import" size={16} />
+            <span className="import-action__text"><span>{openImportRows > 0 ? 'Import weiterführen' : 'Umsätze importieren'}</span>
+              {openImportRows > 0 && <small>{openImportRows} {openImportRows === 1 ? 'Umsatz wartet' : 'Umsätze warten'} auf Zuweisung</small>}
+            </span>
+          </button>
+          <button className="btn btn--primary" onClick={() => onNavigate?.('buchungen')}>
+            <Icon name="plus" size={17} /> Neue Buchung
+          </button>
         </div>
       </header>
 
-      <section className="workbench" aria-label="Schnell starten">
-        <button className="workbench-tile workbench-tile--primary" onClick={() => onNavigate?.('buchungen')}>
-          <span className="workbench-tile__icon" aria-hidden>✎</span>
-          <span className="workbench-tile__content">
-            <strong>Neue Buchung</strong>
-            <span>Ausgabe oder Einnahme direkt erfassen</span>
-          </span>
-          <span className="workbench-tile__arrow" aria-hidden>→</span>
-        </button>
-        <button
-          className={`workbench-tile${openImportRows > 0 ? ' workbench-tile--attention' : ''}`}
-          onClick={() => onNavigate?.('import')}
-        >
-          <span className="workbench-tile__icon" aria-hidden>⇲</span>
-          <span className="workbench-tile__content">
-            <strong>{openImportRows > 0 ? 'Import weiterführen' : 'Umsätze importieren'}</strong>
-            <span>
-              {openImportRows > 0
-                ? `${openImportRows} ${openImportRows === 1 ? 'Umsatz wartet' : 'Umsätze warten'} auf Zuweisung`
-                : 'CSV-Datei wählen oder Online-Banking nutzen'}
-            </span>
-          </span>
-          {openImportRows > 0 ? <span className="workbench-tile__count">{openImportRows}</span> : <span className="workbench-tile__arrow" aria-hidden>→</span>}
-        </button>
-      </section>
-
-      <div className="stats">
+      <section className="stats" aria-label="Kennzahlen des Kassenjahres">
         <div className="stat stat--hero">
-          <div className="stat__label">Kassenstand</div>
+          <div className="stat__top"><span className="stat__label">Kassenstand</span><Icon name="wallet" size={19} /></div>
           <div className="stat__value">{formatEur(totals.closingBalance)}</div>
-          <div className="stat__hint">Anfangssaldo + Saldo aller Buchungen</div>
+          <div className="stat__foot">Anfangssaldo {formatEur(file.openingBalance)}</div>
         </div>
         <button type="button" className="stat stat--link" aria-label="Einnahmen: Buchungen anzeigen" aria-describedby="overview-income-total"
           onClick={() => onNavigate?.('buchungen', { type: 'einnahme' })}>
-          <span className="stat__label">Einnahmen</span>
+          <span className="stat__top"><span className="stat__label">Einnahmen</span><Icon name="income" size={19} /></span>
           <span className="stat__value amount--in" id="overview-income-total">{formatEur(totals.einnahmen)}</span>
+          <span className="stat__foot">Alle Einnahmen <Icon name="arrow" size={13} /></span>
         </button>
         <button type="button" className="stat stat--link" aria-label="Ausgaben: Buchungen anzeigen" aria-describedby="overview-expense-total"
           onClick={() => onNavigate?.('buchungen', { type: 'ausgabe' })}>
-          <span className="stat__label">Ausgaben</span>
+          <span className="stat__top"><span className="stat__label">Ausgaben</span><Icon name="expense" size={19} /></span>
           <span className="stat__value amount--out" id="overview-expense-total">{formatEur(totals.ausgaben)}</span>
+          <span className="stat__foot">Alle Ausgaben <Icon name="arrow" size={13} /></span>
         </button>
         <button type="button" className="stat stat--link" aria-label="Umsatz: Buchungen anzeigen" aria-describedby="overview-turnover-total"
           onClick={() => onNavigate?.('buchungen', { umsatzOnly: true })}>
-          <span className="stat__label">Umsatz</span>
+          <span className="stat__top"><span className="stat__label">Umsatz</span><Icon name="turnover" size={19} /></span>
           <span className="stat__value" id="overview-turnover-total">{formatEur(totals.umsatz)}</span>
+          <span className="stat__foot">Umsatzwirksame Buchungen <Icon name="arrow" size={13} /></span>
         </button>
-      </div>
+      </section>
 
+      <div className="overview-grid">
+        <section className="card cashflow-card" aria-labelledby="cashflow-heading">
+          <div className="section-heading">
+            <div><h2 id="cashflow-heading">Einnahmen &amp; Ausgaben</h2><span className="section-heading__detail">Monatsvergleich · {fiscalLabel(file)}</span></div>
+            <div className="chart-legend"><span><i className="legend-dot" />Einnahmen</span><span><i className="legend-dot legend-dot--expense" />Ausgaben</span></div>
+          </div>
+          <div className="table-scroll"><CashflowChart months={months} /></div>
+          <p className="hint" style={{ margin: '10px 0 0' }}>Alle Beträge und Monatsdetails findest du in der Monatsübersicht.</p>
+        </section>
+        <section className="card activity-card" aria-labelledby="recent-heading">
+          <div className="section-heading"><h2 id="recent-heading">Zuletzt gebucht</h2>
+            <button className="btn btn--ghost btn--sm" onClick={() => onNavigate?.('buchungen', {})}>Alle anzeigen <Icon name="arrow" size={14} /></button>
+          </div>
+          <div className="activity-list">
+            {recent.map((booking) => <button key={booking.id} className="activity-row" onClick={() => onOpenBooking?.(booking.id)}>
+              <span className={`activity-row__icon ${booking.type === 'einnahme' ? 'is-income' : 'is-expense'}`}><Icon name={booking.type === 'einnahme' ? 'income' : 'expense'} size={16} /></span>
+              <span className="activity-row__body"><strong>{booking.description}</strong><span className="activity-row__meta">{formatDate(booking.date)} · {booking.ref}</span></span>
+              <span className="activity-row__amount"><Amount cents={booking.signedAmount} withSign currency /></span>
+            </button>)}
+            {recent.length === 0 && <div className="empty"><h3>Platz für dein Vereinsjahr</h3><p>Erfasse deine erste Buchung oder importiere einen Kontoauszug.</p></div>}
+          </div>
+        </section>
+      </div>
+      <div className="overview-tables">
       <section className="card">
         <h2 className="card__title">Monatsübersicht</h2>
         {activeMonths.length === 0 ? (
@@ -168,6 +183,7 @@ export function UebersichtView({ onNavigate }: { onNavigate?: (view: OverviewTar
           </table>
         </section>
       )}
+      </div>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
+import { Icon } from '../components/Icon'
 import { parseBankCsv } from '@shared/csv'
 import { buildDraft } from '@shared/importDraft'
 import { newImportRows } from '@shared/importRows'
@@ -52,7 +53,7 @@ export function ImportView() {
       {draft ? (
         <>
           <section className="import-draft-note">
-            <span className="import-draft-note__icon" aria-hidden>⇲</span>
+            <span className="import-draft-note__icon"><Icon name="import" size={20} /></span>
             <span>
               <strong>Importentwurf geöffnet</strong>
               <span>{draft.fileName} · Ordne die Umsätze zu und übernimm sie anschließend als Buchungen.</span>
@@ -70,20 +71,20 @@ export function ImportView() {
                 void openFile()
               }}
             >
-              <span className="import-source__icon" aria-hidden>⇲</span>
+              <span className="import-source__icon"><Icon name="import" size={22} /></span>
               <span className="import-source__content">
                 <strong>CSV-Kontoauszug</strong>
                 <span>Datei aus dem Online-Banking auswählen</span>
               </span>
-              <span className="import-source__arrow" aria-hidden>→</span>
+              <span className="import-source__arrow"><Icon name="arrow" size={18} /></span>
             </button>
             <button className={`import-source${source === 'bank' ? ' is-active' : ''}`} onClick={() => setSource('bank')}>
-              <span className="import-source__icon" aria-hidden>⇄</span>
+              <span className="import-source__icon"><Icon name="turnover" size={22} /></span>
               <span className="import-source__content">
                 <strong>Online-Banking</strong>
                 <span>Umsätze direkt über FinTS abrufen</span>
               </span>
-              <span className="import-source__arrow" aria-hidden>→</span>
+              <span className="import-source__arrow"><Icon name="arrow" size={18} /></span>
             </button>
           </section>
 

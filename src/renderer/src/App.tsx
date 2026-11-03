@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, isElectron } from './api'
 import { runStartupBankFetch } from './autoFetch'
 import { LogoMark } from './components/LogoMark'
+import { Icon } from './components/Icon'
 import { useStore } from './store'
 import { SetupView } from './views/SetupView'
 import { KontoSetupView } from './views/KontoSetupView'
@@ -21,13 +22,13 @@ import { formatDate, formatEur } from '@shared/money'
 import type { ComputedBooking, KontoId, YearFile } from '@shared/types'
 
 const VIEWS = [
-  { id: 'uebersicht', label: 'Übersicht', icon: '◫' },
-  { id: 'buchungen', label: 'Buchungen', icon: '✎' },
-  { id: 'chronologisch', label: 'Chronologisch', icon: '☰' },
-  { id: 'veranstaltungen', label: 'Veranstaltungen', icon: '⊞' },
-  { id: 'import', label: 'Umsätze importieren', icon: '⇲' },
-  { id: 'pruefbericht', label: 'Prüfbericht', icon: '✓' },
-  { id: 'einstellungen', label: 'Einstellungen', icon: '⚙' },
+  { id: 'uebersicht', label: 'Übersicht', icon: 'overview' },
+  { id: 'buchungen', label: 'Buchungen', icon: 'book' },
+  { id: 'chronologisch', label: 'Chronologisch', icon: 'list' },
+  { id: 'veranstaltungen', label: 'Veranstaltungen', icon: 'calendar' },
+  { id: 'import', label: 'Umsätze importieren', icon: 'import' },
+  { id: 'pruefbericht', label: 'Prüfbericht', icon: 'report' },
+  { id: 'einstellungen', label: 'Einstellungen', icon: 'settings' },
 ] as const
 
 type ViewId = (typeof VIEWS)[number]['id']
@@ -53,10 +54,16 @@ export function App() {
   const [updateHint, setUpdateHint] = useState('')
   const [bankHint, setBankHint] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
   const [bookingToOpen, setBookingToOpen] = useState<{ scope: string; id: string } | null>(null)
   const [bookingPreset, setBookingPreset] = useState<BookingFilterRequest | null>(null)
   const consumeBookingPreset = useCallback(() => setBookingPreset(null), [])
   const autoFetchStarted = useRef(false)
+
+  useEffect(() => api.onAppCommand((command) => {
+    if (command === 'search') setSearchOpen(true)
+    else setSidebarVisible((visible) => !visible)
+  }), [])
 
   // Stiller Bank-Abruf beim Start: neue Umsätze landen im Import-Entwurf
   // des jeweiligen Kontos; alles mit nötiger Interaktion wird übersprungen.
@@ -85,6 +92,10 @@ export function App() {
         setSearchOpen(true)
       }
       if (e.key === 'Escape') setSearchOpen(false)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault()
+        setSidebarVisible((visible) => !visible)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -113,7 +124,7 @@ export function App() {
   // Bei ausgeblendeter Titelleiste (macOS) bleibt oben eine Greif-Leiste zum Verschieben
   const dragStrip = isElectron && isMac ? <div className="titlebar-drag" aria-hidden /> : null
 
-  if (loading) return null
+  if (loading) return <div className="setup" role="status">Kassenbuch wird geöffnet …</div>
   if (creatingKonto)
     return (
       <>
@@ -164,15 +175,16 @@ export function App() {
   const openImportRows = newImportRows(file).length
 
   return (
-    <div className="app">
+    <div className={`app${sidebarVisible ? '' : ' app--sidebar-hidden'}${isElectron && isMac ? ' app--electron' : ''}`}>
       {dragStrip}
-      <aside className="sidebar">
+      <aside className="sidebar" id="app-sidebar" hidden={!sidebarVisible}>
         <div className="sidebar__brand">
           <span className="sidebar__logo">
-            <LogoMark logo={settings.logoDataUrl} size={30} />
+            <LogoMark logo={settings.logoDataUrl} size={28} />
           </span>
           Buchführung
         </div>
+        <div className="sidebar__section-label">Dein Kassenbuch</div>
         <div className="sidebar__year">
           <span>Konto</span>
           <select value={konto} onChange={(e) => void switchKonto(e.target.value)} aria-label="Konto wählen">
@@ -204,9 +216,13 @@ export function App() {
         </div>
         <nav aria-label="Hauptnavigation">
           {navViews.map((v) => (
+            <Fragment key={v.id}>
+            {v.id === 'uebersicht' && <div className="sidebar__section-label">Finanzen</div>}
+            {v.id === 'import' && <div className="sidebar__section-label">Werkzeuge</div>}
+            {v.id === 'einstellungen' && <div className="sidebar__section-label">Verwaltung</div>}
             <button
-              key={v.id}
               className={`navlink${view === v.id ? ' is-active' : ''}`}
+              aria-current={view === v.id ? 'page' : undefined}
               onClick={() => {
                 setBookingPreset(null)
                 setBookingToOpen(null)
@@ -214,19 +230,44 @@ export function App() {
               }}
             >
               <span className="navlink__icon" aria-hidden>
-                {v.icon}
+                <Icon name={v.icon} />
               </span>
               {v.label}
               {v.id === 'import' && openImportRows > 0 && <span className="navlink__badge">{openImportRows}</span>}
             </button>
+            </Fragment>
           ))}
         </nav>
         <div className="sidebar__footer">
-          {konto !== 'haupt' ? file.kontoName || 'Konto' : file.clubName || 'Verein'} · {fiscalLabel(file)}
+          <div className="sidebar__identity"><Icon name="book" size={16} /><strong>{file.clubName || 'Vereinskasse'}</strong></div>
+          <span>{kontos.find((entry) => entry.id === konto)?.name ?? 'Kassenbuch'} · {fiscalLabel(file)}</span>
         </div>
       </aside>
+      <div className="workspace">
+        <div className="app-toolbar">
+          <div className="app-toolbar__context">
+            <button type="button" className="icon-button" onClick={() => setSidebarVisible((visible) => !visible)}
+              aria-label={sidebarVisible ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'}
+              aria-expanded={sidebarVisible} aria-controls="app-sidebar" title="Seitenleiste ein-/ausblenden">
+              <Icon name="sidebar" size={20} />
+            </button>
+            <span>{kontos.find((entry) => entry.id === konto)?.name ?? 'Kassenbuch'}</span>
+            <span aria-hidden="true" className="hint">/</span>
+            <strong>{VIEWS.find((entry) => entry.id === view)?.label}</strong>
+          </div>
+          <div className="app-toolbar__actions">
+            <button type="button" className="sidebar-search" aria-label="Buchungen suchen" onClick={() => setSearchOpen(true)}>
+              <Icon name="search" size={16} /><span>Suchen</span><kbd>{isMac ? '⌘' : 'Strg'} F</kbd>
+            </button>
+            <span className="pill">{fiscalLabel(file)}</span>
+          </div>
+        </div>
       <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>
-        {view === 'uebersicht' && <UebersichtView onNavigate={openOverviewTarget} />}
+        {view === 'uebersicht' && <UebersichtView onNavigate={openOverviewTarget} onOpenBooking={(id) => {
+          setBookingPreset(null)
+          setBookingToOpen({ scope: bookingScope(file), id })
+          setView('buchungen')
+        }} />}
         {view === 'buchungen' && (
           <BuchungenView
             key={bookingScope(file)}
@@ -242,6 +283,7 @@ export function App() {
         {view === 'pruefbericht' && <PruefberichtView />}
         {view === 'einstellungen' && <EinstellungenView />}
       </main>
+      </div>
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} onSelect={openSearchHit} />}
       {updateHint && <div className="toast">{updateHint}</div>}
       {bankHint && <div className="toast">{bankHint}</div>}
@@ -270,13 +312,20 @@ function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (
   const [scope, setScope] = useState<'all' | 'current'>('all')
   const [allFiles, setAllFiles] = useState<SearchFile[] | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [error, setError] = useState('')
 
-  useEffect(() => inputRef.current?.focus(), [])
+  useEffect(() => {
+    const previous = document.activeElement
+    inputRef.current?.focus()
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus() }
+  }, [])
 
   useEffect(() => {
     if (scope !== 'all') return
     let cancelled = false
     setAllFiles(null)
+    setError('')
     void (async () => {
       const loaded = await Promise.all(
         kontos.map(async (entry) => {
@@ -288,7 +337,9 @@ function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (
         }),
       )
       if (!cancelled) setAllFiles(loaded.flat())
-    })()
+    })().catch(() => {
+      if (!cancelled) setError('Die Suche konnte nicht alle Kassenbücher laden. Versuche es erneut oder suche in diesem Kassenjahr.')
+    })
     return () => {
       cancelled = true
     }
@@ -320,7 +371,16 @@ function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (
 
   return (
     <div className="search-overlay" onClick={onClose}>
-      <div className="search-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Buchungen durchsuchen">
+      <div className="search-panel" ref={panelRef} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Buchungen durchsuchen"
+        onKeyDown={(event) => {
+          if (event.key !== 'Tab') return
+          const controls = panelRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, [tabindex="0"]')
+          if (!controls?.length) return
+          const first = controls[0], last = controls[controls.length - 1]
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+        }}>
+        <button type="button" className="icon-button search-close" aria-label="Suche schließen" onClick={onClose}><Icon name="close" /></button>
         <input
           ref={inputRef}
           value={query}
@@ -339,6 +399,7 @@ function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (
             Dieses Kassenjahr
           </button>
         </div>
+        {error && <p className="search-empty" role="alert">{error}</p>}
         {query.trim() && (
           <div className="search-results">
             {scope === 'all' && !allFiles && <div className="search-empty">Durchsuche Konten und Kassenjahre …</div>}

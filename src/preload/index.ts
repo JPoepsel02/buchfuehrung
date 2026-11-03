@@ -11,6 +11,16 @@ interface UpdateInfo {
 
 /** Schmale, typisierte Brücke zwischen Renderer und Main-Prozess. */
 const api = {
+  onAppCommand: (cb: (command: 'search' | 'sidebar') => void): (() => void) => {
+    const search = () => cb('search')
+    const sidebar = () => cb('sidebar')
+    ipcRenderer.on('view:search', search)
+    ipcRenderer.on('view:sidebar', sidebar)
+    return () => {
+      ipcRenderer.removeListener('view:search', search)
+      ipcRenderer.removeListener('view:sidebar', sidebar)
+    }
+  },
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   checkForUpdate: (): Promise<UpdateInfo> => ipcRenderer.invoke('update:check'),
   installUpdate: (info: UpdateInfo): Promise<{ ok: boolean; error?: string }> =>
