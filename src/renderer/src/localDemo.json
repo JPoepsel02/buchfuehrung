@@ -1,0 +1,880 @@
+{
+  "files": [
+    {
+      "schemaVersion": 1,
+      "year": 2026,
+      "konto": "haupt",
+      "kontoName": "Hauptkonto",
+      "fiscalStartMonth": 1,
+      "openingBalance": 1000000,
+      "clubName": "KLJB Herzfeld · Beispiel",
+      "treasurerName": "Kassenführung",
+      "categories": [
+        {
+          "id": "beitrag",
+          "name": "Mitgliedsbeiträge",
+          "code": "B",
+          "sortOrder": 10,
+          "active": true
+        },
+        {
+          "id": "spenden",
+          "name": "Spenden & Zuschüsse",
+          "code": "S",
+          "sortOrder": 20,
+          "active": true
+        },
+        {
+          "id": "allgemein",
+          "name": "Allgemein",
+          "code": "A",
+          "sortOrder": 30,
+          "active": true
+        },
+        {
+          "id": "freizeit",
+          "name": "Ferienfreizeit",
+          "code": "F",
+          "sortOrder": 40,
+          "active": true
+        },
+        {
+          "id": "karneval",
+          "name": "Karneval",
+          "code": "K",
+          "sortOrder": 50,
+          "active": true
+        }
+      ],
+      "bookings": [
+        {
+          "id": "b01",
+          "date": "2026-01-15",
+          "categoryId": "beitrag",
+          "name": "",
+          "description": "Mitgliedsbeiträge",
+          "type": "einnahme",
+          "amount": 960000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Mitgliedsbeiträge",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 1,
+          "refNo": 1,
+          "source": "manuell"
+        },
+        {
+          "id": "b02",
+          "date": "2026-02-10",
+          "categoryId": "spenden",
+          "name": "",
+          "description": "Spenden",
+          "type": "einnahme",
+          "amount": 320000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Spenden",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 2,
+          "refNo": 1,
+          "source": "manuell"
+        },
+        {
+          "id": "b03",
+          "date": "2026-03-20",
+          "categoryId": "spenden",
+          "name": "",
+          "description": "Zuschüsse",
+          "type": "einnahme",
+          "amount": 450000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Zuschüsse",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 3,
+          "refNo": 2,
+          "source": "manuell"
+        },
+        {
+          "id": "b04",
+          "date": "2026-01-20",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Versicherung",
+          "type": "ausgabe",
+          "amount": 120000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Versicherung",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 4,
+          "refNo": 1,
+          "source": "manuell"
+        },
+        {
+          "id": "b05",
+          "date": "2026-10-31",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Bankgebühren",
+          "type": "ausgabe",
+          "amount": 12000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Bankgebühren",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 5,
+          "refNo": 2,
+          "source": "manuell"
+        },
+        {
+          "id": "b06",
+          "date": "2026-10-31",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Zinsen",
+          "type": "einnahme",
+          "amount": 18000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Zinsen",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 6,
+          "refNo": 3,
+          "source": "manuell"
+        },
+        {
+          "id": "b07",
+          "date": "2026-06-12",
+          "categoryId": "freizeit",
+          "name": "",
+          "description": "Teilnehmendenbeiträge",
+          "type": "einnahme",
+          "amount": 1250000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Teilnehmendenbeiträge",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 7,
+          "refNo": 1,
+          "source": "manuell"
+        },
+        {
+          "id": "b08",
+          "date": "2026-07-28",
+          "categoryId": "freizeit",
+          "name": "",
+          "description": "Unterkunft",
+          "type": "ausgabe",
+          "amount": 1060000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Unterkunft",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 8,
+          "refNo": 2,
+          "source": "manuell"
+        },
+        {
+          "id": "b09",
+          "date": "2026-10-24",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Gemeinschaftliche Anschaffung",
+          "type": "ausgabe",
+          "amount": 240000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Gemeinschaftliche Anschaffung",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 9,
+          "refNo": 4,
+          "source": "manuell"
+        },
+        {
+          "id": "b15",
+          "date": "2026-10-28",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Erstattung",
+          "type": "einnahme",
+          "amount": 18000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Erstattung",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 15,
+          "refNo": 5,
+          "source": "manuell"
+        },
+        {
+          "id": "b16",
+          "date": "2026-11-02",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Software",
+          "type": "ausgabe",
+          "amount": 36000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Software",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 16,
+          "refNo": 6,
+          "source": "manuell"
+        },
+        {
+          "id": "b17",
+          "date": "2026-02-01",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Umbuchung Karnevalskonto",
+          "type": "ausgabe",
+          "amount": 200000,
+          "isUmsatz": false,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Umbuchung Karnevalskonto",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 17,
+          "refNo": 7,
+          "source": "manuell"
+        },
+        {
+          "id": "b19",
+          "date": "2026-02-15",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Bargeldabhebung",
+          "type": "ausgabe",
+          "amount": 50000,
+          "isUmsatz": false,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Bargeldabhebung",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 19,
+          "refNo": 8,
+          "source": "manuell"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "year": 2025,
+      "konto": "zweit",
+      "kontoName": "Karnevalskonto",
+      "fiscalStartMonth": 11,
+      "openingBalance": 250000,
+      "clubName": "KLJB Herzfeld · Beispiel",
+      "treasurerName": "Kassenführung",
+      "categories": [
+        {
+          "id": "beitrag",
+          "name": "Mitgliedsbeiträge",
+          "code": "B",
+          "sortOrder": 10,
+          "active": true
+        },
+        {
+          "id": "spenden",
+          "name": "Spenden & Zuschüsse",
+          "code": "S",
+          "sortOrder": 20,
+          "active": true
+        },
+        {
+          "id": "allgemein",
+          "name": "Allgemein",
+          "code": "A",
+          "sortOrder": 30,
+          "active": true
+        },
+        {
+          "id": "freizeit",
+          "name": "Ferienfreizeit",
+          "code": "F",
+          "sortOrder": 40,
+          "active": true
+        },
+        {
+          "id": "karneval",
+          "name": "Karneval",
+          "code": "K",
+          "sortOrder": 50,
+          "active": true
+        }
+      ],
+      "bookings": [
+        {
+          "id": "b10",
+          "date": "2026-02-17",
+          "categoryId": "karneval",
+          "name": "",
+          "description": "Eintritt",
+          "type": "einnahme",
+          "amount": 1860000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Eintritt",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 10,
+          "refNo": 1,
+          "source": "manuell"
+        },
+        {
+          "id": "b11",
+          "date": "2026-02-20",
+          "categoryId": "karneval",
+          "name": "",
+          "description": "Saalmiete",
+          "type": "ausgabe",
+          "amount": 420000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Saalmiete",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 11,
+          "refNo": 2,
+          "source": "manuell"
+        },
+        {
+          "id": "b12",
+          "date": "2026-02-21",
+          "categoryId": "karneval",
+          "name": "",
+          "description": "Verpflegung",
+          "type": "ausgabe",
+          "amount": 680000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Verpflegung",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 12,
+          "refNo": 3,
+          "source": "manuell"
+        },
+        {
+          "id": "b18",
+          "date": "2026-02-01",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Umbuchung vom Hauptkonto",
+          "type": "einnahme",
+          "amount": 200000,
+          "isUmsatz": false,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Umbuchung vom Hauptkonto",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 18,
+          "refNo": 1,
+          "source": "manuell"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "year": 2026,
+      "konto": "zweit",
+      "kontoName": "Karnevalskonto",
+      "fiscalStartMonth": 11,
+      "openingBalance": 1210000,
+      "clubName": "KLJB Herzfeld · Beispiel",
+      "treasurerName": "Kassenführung",
+      "categories": [
+        {
+          "id": "beitrag",
+          "name": "Mitgliedsbeiträge",
+          "code": "B",
+          "sortOrder": 10,
+          "active": true
+        },
+        {
+          "id": "spenden",
+          "name": "Spenden & Zuschüsse",
+          "code": "S",
+          "sortOrder": 20,
+          "active": true
+        },
+        {
+          "id": "allgemein",
+          "name": "Allgemein",
+          "code": "A",
+          "sortOrder": 30,
+          "active": true
+        },
+        {
+          "id": "freizeit",
+          "name": "Ferienfreizeit",
+          "code": "F",
+          "sortOrder": 40,
+          "active": true
+        },
+        {
+          "id": "karneval",
+          "name": "Karneval",
+          "code": "K",
+          "sortOrder": 50,
+          "active": true
+        }
+      ],
+      "bookings": []
+    },
+    {
+      "schemaVersion": 1,
+      "year": 2026,
+      "konto": "k3",
+      "kontoName": "Barkasse",
+      "fiscalStartMonth": 1,
+      "openingBalance": 50000,
+      "clubName": "KLJB Herzfeld · Beispiel",
+      "treasurerName": "Kassenführung",
+      "categories": [
+        {
+          "id": "beitrag",
+          "name": "Mitgliedsbeiträge",
+          "code": "B",
+          "sortOrder": 10,
+          "active": true
+        },
+        {
+          "id": "spenden",
+          "name": "Spenden & Zuschüsse",
+          "code": "S",
+          "sortOrder": 20,
+          "active": true
+        },
+        {
+          "id": "allgemein",
+          "name": "Allgemein",
+          "code": "A",
+          "sortOrder": 30,
+          "active": true
+        },
+        {
+          "id": "freizeit",
+          "name": "Ferienfreizeit",
+          "code": "F",
+          "sortOrder": 40,
+          "active": true
+        },
+        {
+          "id": "karneval",
+          "name": "Karneval",
+          "code": "K",
+          "sortOrder": 50,
+          "active": true
+        }
+      ],
+      "bookings": [
+        {
+          "id": "b13",
+          "date": "2026-02-17",
+          "categoryId": "karneval",
+          "name": "",
+          "description": "Getränkeverkauf",
+          "type": "einnahme",
+          "amount": 94000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Getränkeverkauf",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 13,
+          "refNo": 1,
+          "source": "manuell"
+        },
+        {
+          "id": "b14",
+          "date": "2026-02-19",
+          "categoryId": "karneval",
+          "name": "",
+          "description": "Material",
+          "type": "ausgabe",
+          "amount": 32000,
+          "isUmsatz": true,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Material",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 14,
+          "refNo": 2,
+          "source": "manuell"
+        },
+        {
+          "id": "b20",
+          "date": "2026-02-15",
+          "categoryId": "allgemein",
+          "name": "",
+          "description": "Einzahlung vom Hauptkonto",
+          "type": "einnahme",
+          "amount": 50000,
+          "isUmsatz": false,
+          "nonUmsatzAmount": 0,
+          "subcategory": "Einzahlung vom Hauptkonto",
+          "receiptStatus": "vorhanden",
+          "receiptAvailable": true,
+          "note": "",
+          "seq": 20,
+          "refNo": 1,
+          "source": "manuell"
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "theme": "system",
+    "organization": {
+      "name": "KLJB Herzfeld · Beispiel",
+      "treasurerName": "Kassenführung",
+      "rules": [
+        {
+          "id": "rule-beitrag",
+          "konto": "haupt",
+          "categoryId": "beitrag",
+          "area": "I"
+        },
+        {
+          "id": "rule-spenden",
+          "konto": "haupt",
+          "categoryId": "spenden",
+          "area": "I"
+        },
+        {
+          "id": "rule-freizeit",
+          "konto": "haupt",
+          "categoryId": "freizeit",
+          "area": "Z"
+        }
+      ],
+      "assignments": {
+        "[\"haupt\",2026,\"b01\"]": {
+          "amount": 960000,
+          "type": "einnahme",
+          "date": "2026-01-15",
+          "categoryId": "beitrag",
+          "allocations": [
+            {
+              "area": "I",
+              "amount": 960000
+            }
+          ]
+        },
+        "[\"haupt\",2026,\"b02\"]": {
+          "amount": 320000,
+          "type": "einnahme",
+          "date": "2026-02-10",
+          "categoryId": "spenden",
+          "allocations": [
+            {
+              "area": "I",
+              "amount": 320000
+            }
+          ]
+        },
+        "[\"haupt\",2026,\"b03\"]": {
+          "amount": 450000,
+          "type": "einnahme",
+          "date": "2026-03-20",
+          "categoryId": "spenden",
+          "allocations": [
+            {
+              "area": "I",
+              "amount": 450000
+            }
+          ]
+        },
+        "[\"haupt\",2026,\"b04\"]": {
+          "amount": 120000,
+          "type": "ausgabe",
+          "date": "2026-01-20",
+          "categoryId": "allgemein",
+          "allocations": [
+            {
+              "area": "I",
+              "amount": 120000
+            }
+          ]
+        },
+        "[\"haupt\",2026,\"b05\"]": {
+          "amount": 12000,
+          "type": "ausgabe",
+          "date": "2026-10-31",
+          "categoryId": "allgemein",
+          "allocations": [
+            {
+              "area": "I",
+              "amount": 12000
+            }
+          ]
+        },
+        "[\"haupt\",2026,\"b06\"]": {
+          "amount": 18000,
+          "type": "einnahme",
+          "date": "2026-10-31",
+          "categoryId": "allgemein",
+          "allocations": [
+            {
+              "area": "V",
+              "amount": 18000
+            }
+          ]
+        },
+        "[\"haupt\",2026,\"b07\"]": {
+          "amount": 1250000,
+          "type": "einnahme",
+          "date": "2026-06-12",
+          "categoryId": "freizeit",
+          "allocations": [
+            {
+              "area": "Z",
+              "amount": 1250000
+            }
+          ]
+        },
+        "[\"haupt\",2026,\"b08\"]": {
+          "amount": 1060000,
+          "type": "ausgabe",
+          "date": "2026-07-28",
+          "categoryId": "freizeit",
+          "allocations": [
+            {
+              "area": "Z",
+              "amount": 1060000
+            }
+          ]
+        },
+        "[\"zweit\",2025,\"b10\"]": {
+          "amount": 1860000,
+          "type": "einnahme",
+          "date": "2026-02-17",
+          "categoryId": "karneval",
+          "allocations": [
+            {
+              "area": "W",
+              "amount": 1860000
+            }
+          ]
+        },
+        "[\"zweit\",2025,\"b11\"]": {
+          "amount": 420000,
+          "type": "ausgabe",
+          "date": "2026-02-20",
+          "categoryId": "karneval",
+          "allocations": [
+            {
+              "area": "W",
+              "amount": 420000
+            }
+          ]
+        },
+        "[\"zweit\",2025,\"b12\"]": {
+          "amount": 680000,
+          "type": "ausgabe",
+          "date": "2026-02-21",
+          "categoryId": "karneval",
+          "allocations": [
+            {
+              "area": "W",
+              "amount": 680000
+            }
+          ]
+        },
+        "[\"k3\",2026,\"b13\"]": {
+          "amount": 94000,
+          "type": "einnahme",
+          "date": "2026-02-17",
+          "categoryId": "karneval",
+          "allocations": [
+            {
+              "area": "W",
+              "amount": 94000
+            }
+          ]
+        },
+        "[\"k3\",2026,\"b14\"]": {
+          "amount": 32000,
+          "type": "ausgabe",
+          "date": "2026-02-19",
+          "categoryId": "karneval",
+          "allocations": [
+            {
+              "area": "W",
+              "amount": 32000
+            }
+          ]
+        }
+      },
+      "transfers": [
+        {
+          "id": "t1",
+          "from": {
+            "konto": "haupt",
+            "year": 2026,
+            "bookingId": "b17"
+          },
+          "to": {
+            "konto": "zweit",
+            "year": 2025,
+            "bookingId": "b18"
+          },
+          "amount": 200000,
+          "fromDate": "2026-02-01",
+          "toDate": "2026-02-01"
+        },
+        {
+          "id": "t2",
+          "from": {
+            "konto": "haupt",
+            "year": 2026,
+            "bookingId": "b19"
+          },
+          "to": {
+            "konto": "k3",
+            "year": 2026,
+            "bookingId": "b20"
+          },
+          "amount": 50000,
+          "fromDate": "2026-02-15",
+          "toDate": "2026-02-15"
+        }
+      ]
+    }
+  },
+  "references": {
+    "b01": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b01"
+    },
+    "b02": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b02"
+    },
+    "b03": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b03"
+    },
+    "b04": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b04"
+    },
+    "b05": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b05"
+    },
+    "b06": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b06"
+    },
+    "b07": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b07"
+    },
+    "b08": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b08"
+    },
+    "b09": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b09"
+    },
+    "b10": {
+      "konto": "zweit",
+      "year": 2025,
+      "bookingId": "b10"
+    },
+    "b11": {
+      "konto": "zweit",
+      "year": 2025,
+      "bookingId": "b11"
+    },
+    "b12": {
+      "konto": "zweit",
+      "year": 2025,
+      "bookingId": "b12"
+    },
+    "b13": {
+      "konto": "k3",
+      "year": 2026,
+      "bookingId": "b13"
+    },
+    "b14": {
+      "konto": "k3",
+      "year": 2026,
+      "bookingId": "b14"
+    },
+    "b15": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b15"
+    },
+    "b16": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b16"
+    },
+    "b17": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b17"
+    },
+    "b18": {
+      "konto": "zweit",
+      "year": 2025,
+      "bookingId": "b18"
+    },
+    "b19": {
+      "konto": "haupt",
+      "year": 2026,
+      "bookingId": "b19"
+    },
+    "b20": {
+      "konto": "k3",
+      "year": 2026,
+      "bookingId": "b20"
+    }
+  }
+}

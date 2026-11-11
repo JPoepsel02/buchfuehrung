@@ -8,6 +8,8 @@ import { loadSettings } from './storage'
 import { bankDescription } from '../shared/csv'
 import type { BankAccountChoice, BankFetchOptions, BankFetchResult, BankFetchedRow } from '../shared/bank'
 import type { BankAccountConfig } from '../shared/types'
+import { assertBankAccountConfig, assertBankAccountId, assertBankFetchOptions, assertBankSessionId, assertBankTan, bankInfoFilename } from '../shared/bankValidation'
+import { bankConnectionIdentity, sameBankEndpoint } from './bankIdentity'
 
 /**
  * Online-Banking-Abruf über FinTS 3.0 (PIN/TAN) im Main-Prozess.
@@ -28,6 +30,8 @@ import type { BankAccountConfig } from '../shared/types'
 const DEFAULT_PRODUCT_ID = 'Buchfuehrung'
 
 interface StoredBankInfo {
+  version: 1
+  connection: string
   bankingInformation: BankingInformation
   tanMethodId?: number
   tanMediaName?: string
@@ -57,76 +61,95 @@ function pinsFile(): string {
   return join(bankDir(), 'pins.json')
 }
 
-function loadPins(): Record<string, string> {
+function loadPins(): Record<string, unknown> {
   if (!existsSync(pinsFile())) return {}
   try {
-    return JSON.parse(readFileSync(pinsFile(), 'utf-8'))
+    const value: unknown = JSON.parse(readFileSync(pinsFile(), 'utf-8'))
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
   } catch {
     return {}
   }
 }
 
-function writePins(pins: Record<string, string>): void {
-  const tmp = pinsFile() + '.tmp'
+function writePins(pins: Record<string, unknown>): void {
+  const tmp = `${pinsFile()}.${randomUUID()}.tmp`
   writeFileSync(tmp, JSON.stringify(pins), { encoding: 'utf-8', mode: 0o600 })
   renameSync(tmp, pinsFile())
 }
 
-function savePin(accountId: string, pin: string): void {
+function savePin(account: BankAccountConfig, pin: string): void {
+  assertBankAccountId(account.id)
   if (!safeStorage.isEncryptionAvailable()) return
-  const pins = loadPins()
-  pins[accountId] = safeStorage.encryptString(pin).toString('base64')
-  writePins(pins)
+  const payload = JSON.stringify({ version: 1, connection: bankConnectionIdentity(account), pin })
+  const encrypted = safeStorage.encryptString(payload).toString('base64')
+  writePins({ ...loadPins(), [account.id]: { version: 1, encrypted } })
 }
 
-function loadPin(accountId: string): string | null {
-  const encrypted = loadPins()[accountId]
-  if (!encrypted || !safeStorage.isEncryptionAvailable()) return null
+function loadPin(account: BankAccountConfig): string | null {
+  assertBankAccountId(account.id)
+  const entry = loadPins()[account.id] as { version?: unknown; encrypted?: unknown } | undefined
+  // Old PIN-only ciphertext has no provable login identity and requires re-entry.
+  if (!entry || typeof entry !== 'object' || entry.version !== 1 || typeof entry.encrypted !== 'string'
+    || !entry.encrypted || !safeStorage.isEncryptionAvailable()) return null
   try {
-    return safeStorage.decryptString(Buffer.from(encrypted, 'base64'))
+    const value = JSON.parse(safeStorage.decryptString(Buffer.from(entry.encrypted, 'base64')))
+    return value?.version === 1 && value.connection === bankConnectionIdentity(account)
+      && typeof value.pin === 'string' && value.pin.length > 0 && value.pin.length <= 1024 ? value.pin : null
   } catch {
     return null
   }
 }
 
 function deletePin(accountId: string): void {
+  assertBankAccountId(accountId)
   const pins = loadPins()
   if (accountId in pins) {
-    delete pins[accountId]
-    writePins(pins)
+    writePins(Object.fromEntries(Object.entries(pins).filter(([id]) => id !== accountId)))
   }
 }
 
 // ---------- Bank-Stammdaten (BPD/UPD/systemId) je Konto ----------
 
 function infoFile(accountId: string): string {
-  return join(bankDir(), `fints-${accountId}.json`)
+  return join(bankDir(), bankInfoFilename(accountId))
 }
 
-function loadBankInfo(accountId: string): StoredBankInfo | null {
-  if (!existsSync(infoFile(accountId))) return null
+function loadBankInfo(account: BankAccountConfig): StoredBankInfo | null {
+  if (!existsSync(infoFile(account.id))) return null
   try {
-    const parsed = JSON.parse(readFileSync(infoFile(accountId), 'utf-8')) as StoredBankInfo
-    return parsed?.bankingInformation ? parsed : null
+    const parsed = JSON.parse(readFileSync(infoFile(account.id), 'utf-8')) as StoredBankInfo
+    return parsed?.version === 1 && parsed.connection === bankConnectionIdentity(account)
+      && sameBankEndpoint(account, parsed.bankingInformation?.bpd?.url, parsed.bankingInformation?.bpd?.bankId) ? parsed : null
   } catch {
     return null
   }
 }
 
-function persistBankInfo(accountId: string, client: FinTSClient): void {
+function persistBankInfo(account: BankAccountConfig, client: FinTSClient): void {
+  assertClientConnection(account, client)
   const info: StoredBankInfo = {
+    version: 1,
+    connection: bankConnectionIdentity(account),
     bankingInformation: client.config.bankingInformation,
     tanMethodId: client.config.tanMethodId,
     tanMediaName: client.config.tanMediaName,
   }
-  const tmp = infoFile(accountId) + '.tmp'
+  const tmp = `${infoFile(account.id)}.${randomUUID()}.tmp`
   writeFileSync(tmp, JSON.stringify(info), 'utf-8')
-  renameSync(tmp, infoFile(accountId))
+  renameSync(tmp, infoFile(account.id))
 }
 
 function forgetAccount(accountId: string): void {
   deletePin(accountId)
   rmSync(infoFile(accountId), { force: true })
+  for (const [id, session] of sessions) if (session.account.id === accountId) sessions.delete(id)
+}
+
+function assertClientConnection(account: BankAccountConfig, client: FinTSClient): void {
+  if (!sameBankEndpoint(account, client.config.bankingUrl, client.config.bankId)
+    || client.config.userId !== account.userId) {
+    throw new Error('Die Verbindungsdaten der Bank haben sich geändert. Bitte die FinTS-Adresse und den Anmeldenamen prüfen und erneut abrufen.')
+  }
 }
 
 // ---------- FinTS-Abruf ----------
@@ -208,6 +231,7 @@ function mapStatements(response: StatementResponse): BankFetchedRow[] {
 /** Nach erfolgreicher Synchronisation: Kontoauswahl prüfen, dann Umsätze abrufen. */
 async function fetchStatements(session: BankSession): Promise<BankFetchResult> {
   const { account, client } = session
+  assertClientConnection(account, client)
   if (!account.accountNumber) {
     const accounts = client.config.bankingInformation.upd?.bankAccounts ?? []
     const choices: BankAccountChoice[] = accounts
@@ -219,7 +243,7 @@ async function fetchStatements(session: BankSession): Promise<BankFetchResult> {
         message: 'Die Bank hat keine Konten mit Umsatzabruf gemeldet. Bitte Zugangsdaten prüfen.',
       }
     }
-    persistBankInfo(account.id, client)
+    persistBankInfo(account, client)
     return { status: 'chooseAccount', accounts: choices }
   }
   session.phase = 'statements'
@@ -228,9 +252,10 @@ async function fetchStatements(session: BankSession): Promise<BankFetchResult> {
 }
 
 function handleStatementsResponse(session: BankSession, response: StatementResponse): BankFetchResult {
+  assertClientConnection(session.account, session.client)
   if (response.requiresTan) return tanResult(session, response, false)
   if (!response.success) return errorFromResponse(response, 'Der Umsatzabruf ist fehlgeschlagen.')
-  persistBankInfo(session.account.id, session.client)
+  persistBankInfo(session.account, session.client)
   cleanupSession(session)
   return { status: 'ok', rows: mapStatements(response) }
 }
@@ -241,11 +266,11 @@ function cleanupSession(session: BankSession): void {
 }
 
 async function startFetch(account: BankAccountConfig, opts: BankFetchOptions): Promise<BankFetchResult> {
-  const pin = opts.pin?.trim() || loadPin(account.id)
+  const pin = opts.pin?.trim() || loadPin(account)
   if (!pin) return { status: 'needPin' }
-  if (opts.pin?.trim() && opts.savePin) savePin(account.id, opts.pin.trim())
+  if (opts.pin?.trim() && opts.savePin) savePin(account, opts.pin.trim())
 
-  const stored = loadBankInfo(account.id)
+  const stored = loadBankInfo(account)
   const config = stored
     ? FinTSConfig.fromBankingInformation(
         productId(),
@@ -258,8 +283,9 @@ async function startFetch(account: BankAccountConfig, opts: BankFetchOptions): P
       )
     : FinTSConfig.forFirstTimeUse(productId(), productVersion(), account.fintsUrl, account.blz, account.userId, pin)
   const client = new FinTSClient(config)
+  assertClientConnection(account, client)
   const session: BankSession = {
-    account,
+    account: { ...account },
     client,
     phase: 'sync',
     tanReference: '',
@@ -271,14 +297,16 @@ async function startFetch(account: BankAccountConfig, opts: BankFetchOptions): P
   if (!stored) {
     // Erstkontakt: Erst Bank-Parameter holen, dann mit TAN-Methode synchronisieren
     const first = await client.synchronize()
+    assertClientConnection(account, client)
     if (!pickTanMethod(client)) {
       return errorFromResponse(first, 'Die Bank hat keine TAN-Verfahren gemeldet. Bitte Zugangsdaten prüfen.')
     }
     session.decoupled = client.config.selectedTanMethod?.isDecoupled ?? false
     const second = await client.synchronize()
+    assertClientConnection(account, client)
     if (second.requiresTan) return tanResult(session, second, false)
     if (!second.success) return errorFromResponse(second, 'Die Anmeldung bei der Bank ist fehlgeschlagen.')
-    persistBankInfo(account.id, client)
+    persistBankInfo(account, client)
   } else {
     session.decoupled = client.config.selectedTanMethod?.isDecoupled ?? false
   }
@@ -290,17 +318,20 @@ async function continueFetch(sessionId: string, tan?: string): Promise<BankFetch
   const session = sessions.get(sessionId)
   if (!session) return { status: 'error', message: 'Die Abruf-Sitzung ist abgelaufen. Bitte erneut abrufen.' }
   const { client } = session
+  assertClientConnection(session.account, client)
   if (session.phase === 'sync') {
     const response = await client.synchronizeWithTan(session.tanReference, tan)
+    assertClientConnection(session.account, client)
     if (response.requiresTan) return tanResult(session, response, true)
     if (!response.success) {
       cleanupSession(session)
       return errorFromResponse(response, 'Die Anmeldung bei der Bank ist fehlgeschlagen.')
     }
-    persistBankInfo(session.account.id, client)
+    persistBankInfo(session.account, client)
     return fetchStatements(session)
   }
   const response = await client.getAccountStatementsWithTan(session.tanReference, tan)
+  assertClientConnection(session.account, client)
   if (response.requiresTan) return tanResult(session, response, true)
   if (!response.success) {
     cleanupSession(session)
@@ -320,14 +351,33 @@ async function guarded(run: () => Promise<BankFetchResult>): Promise<BankFetchRe
 }
 
 export function registerBankIpc(): void {
-  ipcMain.handle('bank:fetch', (_e, account: BankAccountConfig, opts: BankFetchOptions) =>
-    guarded(() => startFetch(account, opts ?? {})),
-  )
-  ipcMain.handle('bank:continue', (_e, sessionId: string, tan?: string) => guarded(() => continueFetch(sessionId, tan)))
-  ipcMain.handle('bank:cancel', (_e, sessionId: string) => {
+  ipcMain.handle('bank:fetch', (_e, account: unknown, opts: unknown) => guarded(async () => {
+    assertBankAccountConfig(account)
+    const options = opts ?? {}
+    assertBankFetchOptions(options)
+    return startFetch(account, options)
+  }))
+  ipcMain.handle('bank:continue', (_e, sessionId: unknown, tan?: unknown) => guarded(async () => {
+    assertBankSessionId(sessionId)
+    assertBankTan(tan)
+    return continueFetch(sessionId, tan)
+  }))
+  ipcMain.handle('bank:cancel', (_e, sessionId: unknown) => {
+    assertBankSessionId(sessionId)
     sessions.delete(sessionId)
   })
-  ipcMain.handle('bank:pin:has', (_e, accountId: string) => loadPin(accountId) !== null)
-  ipcMain.handle('bank:pin:delete', (_e, accountId: string) => deletePin(accountId))
-  ipcMain.handle('bank:forget', (_e, accountId: string) => forgetAccount(accountId))
+  ipcMain.handle('bank:pin:has', (_e, accountId: unknown) => {
+    assertBankAccountId(accountId)
+    const settings = loadSettings() as { bankAccounts?: BankAccountConfig[] }
+    const account = settings.bankAccounts?.find((entry) => entry.id === accountId)
+    return account !== undefined && loadPin(account) !== null
+  })
+  ipcMain.handle('bank:pin:delete', (_e, accountId: unknown) => {
+    assertBankAccountId(accountId)
+    deletePin(accountId)
+  })
+  ipcMain.handle('bank:forget', (_e, accountId: unknown) => {
+    assertBankAccountId(accountId)
+    forgetAccount(accountId)
+  })
 }

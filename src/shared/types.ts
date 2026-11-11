@@ -1,3 +1,5 @@
+import type { ActivityAllocation, OrganizationConfig } from './organization'
+
 /** Beträge werden durchgängig in Cent (ganzzahlig) gespeichert. */
 export type Cents = number
 
@@ -105,6 +107,9 @@ export interface BankAccountConfig {
 
 /** Jahresübergreifende App-Einstellungen (eigene Datei neben den Jahresdateien). */
 export interface AppSettings {
+  /** Höchste bisher vergebene Kontokennung; gelöschte Kennungen werden nicht erneut verwendet. */
+  kontoSequence?: number
+  organization?: OrganizationConfig
   /** Eigenes Vereinslogo als Data-URL (PNG/JPEG); erscheint in Seitenleiste, Prüfbericht und Dock */
   logoDataUrl?: string | null
   /** Farbschema der App (Standard: system) */
@@ -117,6 +122,8 @@ export interface AppSettings {
   cloudBackupEnabled?: boolean
   /** Hinterlegte Online-Banking-Konten (beliebig viele) */
   bankAccounts?: BankAccountConfig[]
+  /** Jahresübergreifende IBAN oder Kontonummer je Kassenbuch. */
+  accountNumbers?: Record<KontoId, string>
   /** FinTS-Produktkennung (kostenlose Registrierung bei der Deutschen Kreditwirtschaft) */
   fintsProductId?: string | null
 }
@@ -128,6 +135,7 @@ export interface ImportReceiptReference {
 }
 
 export interface ImportDraftSplit {
+  allocations?: ActivityAllocation[]
   id: string
   description: string
   categoryId: string
@@ -138,6 +146,8 @@ export interface ImportDraftSplit {
 
 /** Eine Zeile eines zwischengespeicherten Kontoauszug-Imports. */
 export interface ImportDraftRow {
+  allocations?: ActivityAllocation[]
+  bankName?: string
   /** ISO-Datum YYYY-MM-DD */
   date: string
   /** Original-Verwendungszweck aus dem Kontoauszug (nur zur Anzeige) */
@@ -205,7 +215,8 @@ export type KontoId = string
 
 /** Prüft, ob eine Konto-Kennung gültig ist ('haupt', 'zweit' oder 'k<Nr>'). */
 export function isKontoId(value: unknown): value is KontoId {
-  return value === 'haupt' || value === 'zweit' || (typeof value === 'string' && /^k(?:[3-9]|[1-9]\d+)$/.test(value))
+  return value === 'haupt' || value === 'zweit' || (typeof value === 'string' && /^k(?:[3-9]|[1-9]\d+)$/.test(value)
+    && Number.isSafeInteger(Number(value.slice(1))))
 }
 
 export interface YearFile {

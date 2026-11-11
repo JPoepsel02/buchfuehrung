@@ -6,9 +6,12 @@ import { LogoMark } from '../components/LogoMark'
 import { useStore } from '../store'
 import { praesentationsModus } from '../presentation'
 import { fiscalLabel } from '@shared/fiscal'
+import { accountNumberFor } from '@shared/accountDetails'
 import { buildBackup, validateBackup } from '@shared/backup'
 import { yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatEur, parseAmountToCents } from '@shared/money'
+import { AREA_DEFINITIONS, suggestedArea } from '@shared/organization'
+import type { ActivityAreaId } from '@shared/organization'
 import type { Category, YearFile } from '@shared/types'
 
 const LOGO_MAX_PX = 512
@@ -40,21 +43,27 @@ export function EinstellungenView() {
     file,
     years,
     konto,
-    kontos,
-    startKontoSetup,
+    settings,
+    organization,
+    updateSettings,
     update,
     createYear,
     deleteYear,
     selectYear,
     addCategory,
+    setCategoryArea,
     updateCategory,
     deleteCategory,
   } = useStore()
   const [toast, setToast] = useState('')
-  const [newCat, setNewCat] = useState({ name: '', code: '' })
+  const [newCat, setNewCat] = useState({ name: '', code: '', area: '' as '' | ActivityAreaId })
+  const [addingCategory, setAddingCategory] = useState(false)
   const [balanceInput, setBalanceInput] = useState(() =>
     file ? (file.openingBalance / 100).toFixed(2).replace('.', ',') : '0,00',
   )
+  const savedAccountNumber = accountNumberFor(konto, settings)
+  const [accountNumberInput, setAccountNumberInput] = useState(savedAccountNumber)
+  useEffect(() => setAccountNumberInput(savedAccountNumber), [konto, savedAccountNumber])
 
   // Anfangssaldo-Feld nachziehen, wenn Jahr oder Konto wechseln
   useEffect(() => {
@@ -79,15 +88,28 @@ export function EinstellungenView() {
     notify('Anfangssaldo gespeichert.')
   }
 
-  function addNewCategory(e: React.FormEvent) {
-    e.preventDefault()
+  async function saveAccountNumber() {
+    const number = accountNumberInput.trim()
+    if (number === savedAccountNumber) return
+    const accountNumbers = { ...settings.accountNumbers, [konto]: number }
+    setAccountNumberInput(accountNumberFor(konto, { ...settings, accountNumbers }))
+    await updateSettings({ accountNumbers })
+  }
+
+  async function addNewCategory() {
+    if (addingCategory) return
     const name = newCat.name.trim()
     const code = newCat.code.trim().toUpperCase()
     if (!name || !code) return notify('Name und Kürzel angeben.')
+    if (!newCat.area) return notify('Tätigkeitsbereich wählen.')
     if (file!.categories.some((c) => c.code === code)) return notify(`Kürzel „${code}“ ist bereits vergeben.`)
     const maxSort = Math.max(0, ...file!.categories.map((c) => c.sortOrder))
-    addCategory({ name, code, sortOrder: maxSort + 10, active: true })
-    setNewCat({ name: '', code: '' })
+    setAddingCategory(true)
+    try {
+      await addCategory({ name, code, sortOrder: maxSort + 10, active: true }, newCat.area)
+      setNewCat({ name: '', code: '', area: '' })
+      notify('Kategorie angelegt.')
+    } finally { setAddingCategory(false) }
   }
 
   function move(id: string, dir: -1 | 1) {
@@ -99,11 +121,15 @@ export function EinstellungenView() {
     updateCategory(other.id, { sortOrder: current.sortOrder })
   }
 
+  function run(task: () => Promise<unknown>) {
+    void task().catch((error) => notify(error instanceof Error ? error.message : String(error)))
+  }
+
   async function removeYear(year: number) {
     const label = fiscalLabel({ year, fiscalStartMonth: file!.fiscalStartMonth })
     if (
       !confirm(
-        `${jahrWort} ${label} wirklich löschen?\n\nEine Sicherungskopie wird im Backup-Ordner abgelegt (Einstellungen → „Datenordner öffnen“ → backups).`,
+        `${jahrWort} ${label} wirklich löschen?\n\nEine Sicherungskopie wird im Backup-Ordner abgelegt.`,
       )
     )
       return
@@ -128,7 +154,7 @@ export function EinstellungenView() {
     <div className="view">
       <header className="view__header">
         <div>
-          <h1 className="view__title">Einstellungen</h1>
+          <h1 className="view__title">Kontoeinstellungen</h1>
         </div>
       </header>
 
@@ -138,33 +164,16 @@ export function EinstellungenView() {
           {jahrWort} {fiscalLabel(file)}
         </h2>
         <div className="form-grid">
-          <div className="field" style={{ gridColumn: 'span 4' }}>
-            <label htmlFor="s-club">Verein / Ortsgruppe</label>
-            <input
-              id="s-club"
-              value={file.clubName}
-              onChange={(e) => update((f) => ({ ...f, clubName: e.target.value }))}
-            />
-          </div>
-          <div className="field" style={{ gridColumn: 'span 4' }}>
-            <label htmlFor="s-treasurer">Kassenwart:in</label>
-            <input
-              id="s-treasurer"
-              value={file.treasurerName}
-              onChange={(e) => update((f) => ({ ...f, treasurerName: e.target.value }))}
-            />
-          </div>
           <div className="field" style={{ gridColumn: 'span 2' }}>
             <label htmlFor="s-balance">Anfangssaldo (€)</label>
-            <AmountField id="s-balance" value={balanceInput} onChange={setBalanceInput} onBlur={saveBalance} />
+            <AmountField id="s-balance" value={balanceInput} onChange={setBalanceInput} onBlur={saveBalance} allowNegative />
           </div>
           <div style={{ gridColumn: 'span 2' }}>
-            <button className="btn" onClick={() => void startNextYear()}>
+            <button className="btn" onClick={() => run(startNextYear)}>
               Jahresabschluss → {fiscalLabel({ year: file.year + 1, fiscalStartMonth: file.fiscalStartMonth })}
             </button>
           </div>
-          {konto !== 'haupt' && (
-            <div className="field" style={{ gridColumn: 'span 4' }}>
+          <div className="field" style={{ gridColumn: 'span 4' }}>
               <label htmlFor="s-kontoname">Konto-Name</label>
               <input
                 id="s-kontoname"
@@ -172,33 +181,13 @@ export function EinstellungenView() {
                 onChange={(e) => update((f) => ({ ...f, kontoName: e.target.value }))}
                 placeholder="z. B. Karnevalskonto"
               />
-            </div>
-          )}
+          </div>
+          <div className="field" style={{ gridColumn: 'span 4' }}>
+            <label htmlFor="s-account-number">IBAN / Kontonummer</label>
+            <input id="s-account-number" value={accountNumberInput} maxLength={80} autoComplete="off" spellCheck={false}
+              onChange={(event) => setAccountNumberInput(event.target.value)} onBlur={() => run(saveAccountNumber)} />
+          </div>
         </div>
-      </section>
-
-      <DataStorageCard notify={notify} />
-
-      <LogoCard notify={notify} />
-
-      {isElectron && <UpdateCard />}
-
-      <section className="card">
-        <h2 className="card__title">Konten</h2>
-        <p className="hint" style={{ marginTop: 0 }}>
-          Alle Konten werden vollständig getrennt geführt – eigene Kategorien, eigene
-          Beleg-Nummern, eigenes Kassenjahr. Summen werden nie verrechnet. Es können beliebig
-          viele Konten angelegt werden.
-        </p>
-        {kontos.length > 1 && (
-          <p className="hint">
-            Angelegt: {kontos.map((k) => k.name).join(', ')} – Wechsel über die Konto-Auswahl in
-            der Seitenleiste.
-          </p>
-        )}
-        <button className="btn" onClick={startKontoSetup}>
-          Weiteres Konto anlegen …
-        </button>
       </section>
 
       <section className="card">
@@ -213,14 +202,14 @@ export function EinstellungenView() {
                 </td>
                 <td className="num" style={{ whiteSpace: 'nowrap' }}>
                   {y !== file.year && (
-                    <button className="btn btn--ghost btn--sm" onClick={() => void selectYear(y)}>
+                    <button className="btn btn--ghost btn--sm" onClick={() => run(() => selectYear(y))}>
                       Öffnen
                     </button>
                   )}
                   <button
                     className="btn btn--ghost btn--sm btn--danger"
                     disabled={konto === 'haupt' && years.length < 2}
-                    onClick={() => void removeYear(y)}
+                    onClick={() => run(() => removeYear(y))}
                   >
                     Löschen
                   </button>
@@ -229,22 +218,19 @@ export function EinstellungenView() {
             ))}
           </tbody>
         </table>
-        <p className="hint">
-          Gelöschte Jahre wandern als Sicherungskopie in den Backup-Ordner – z. B. falls ein
-          Jahresabschluss versehentlich ausgelöst wurde. Das letzte Jahr des Hauptkontos kann nicht
-          gelöscht werden; wird das letzte Jahr eines weiteren Kontos gelöscht, verschwindet das Konto.
-        </p>
+        <p className="hint">Gelöschte Kassenjahre bleiben im Backup-Ordner erhalten.</p>
       </section>
 
       <section className="card">
         <h2 className="card__title">Veranstaltungen / Kategorien</h2>
         <div className="table-scroll">
-          <table className="ledger category-table" aria-label="Veranstaltungen und Kategorien">
+          <table className="ledger category-table" aria-label="Veranstaltungen und Kategorien" style={{ minWidth: 1040 }}>
             <colgroup>
               <col />
               <col className="category-table__code" />
               <col className="category-table__active" />
-              <col className="category-table__presentation" />
+              <col className="category-table__area" style={{ width: 210 }} />
+              <col className="category-table__presentation" style={{ width: '32%' }} />
               <col className="category-table__order" />
               <col className="category-table__actions" />
             </colgroup>
@@ -253,6 +239,7 @@ export function EinstellungenView() {
                 <th>Name</th>
                 <th>Kürzel</th>
                 <th className="category-table__active">Aktiv</th>
+                <th>Tätigkeitsbereich</th>
                 <th>Präsentation</th>
                 <th>Reihenfolge</th>
                 <th>Aktionen</th>
@@ -280,6 +267,20 @@ export function EinstellungenView() {
                         aria-label="Kategorie aktiv"
                       />
                     </label>
+                  </td>
+                  <td>
+                    <select
+                      value={suggestedArea(organization, konto, c.id) ?? ''}
+                      onChange={(event) => {
+                        const area = event.target.value as ActivityAreaId | ''
+                        run(() => setCategoryArea(konto, c.id, area || undefined))
+                      }}
+                      aria-label={`Tätigkeitsbereich für ${c.name}`}
+                      style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}
+                    >
+                      <option value="">Ohne Vorgabe</option>
+                      {AREA_DEFINITIONS.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+                    </select>
                   </td>
                   <td>
                     <div className="category-presentation">
@@ -347,13 +348,15 @@ export function EinstellungenView() {
             </tbody>
           </table>
         </div>
-        <form className="toolbar category-create" style={{ marginTop: 'var(--space-4)' }} onSubmit={addNewCategory}>
+        <form className="toolbar category-create" style={{ marginTop: 'var(--space-4)' }} onSubmit={(event) => { event.preventDefault(); run(addNewCategory) }}>
           <div className="field category-create__name">
             <input
               value={newCat.name}
               onChange={(e) => setNewCat((s) => ({ ...s, name: e.target.value }))}
               placeholder="Neue Veranstaltung / Kategorie"
               aria-label="Name der neuen Kategorie"
+              required
+              disabled={addingCategory}
             />
           </div>
           <div className="field category-create__code">
@@ -362,19 +365,27 @@ export function EinstellungenView() {
               onChange={(e) => setNewCat((s) => ({ ...s, code: e.target.value }))}
               placeholder="Kürzel"
               aria-label="Kürzel der neuen Kategorie"
+              required
+              disabled={addingCategory}
             />
           </div>
-          <button className="btn" type="submit">
+          <div className="field" style={{ flex: '1 1 240px', minWidth: 0 }}>
+            <select
+              value={newCat.area}
+              onChange={(event) => setNewCat((current) => ({ ...current, area: event.target.value as ActivityAreaId | '' }))}
+              aria-label="Tätigkeitsbereich der neuen Kategorie"
+              required
+              disabled={addingCategory}
+            >
+              <option value="">Bereich wählen</option>
+              {AREA_DEFINITIONS.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+            </select>
+          </div>
+          <button className="btn" type="submit" disabled={addingCategory}>
             Hinzufügen
           </button>
         </form>
-        <p className="hint">
-          Das Kürzel bestimmt die Beleg-Nummern (z. B. „M“ → M1, M2 …). Die Reihenfolge steuert die
-          Sortierung im Veranstaltungs-Blatt und im Prüfbericht. „Präsentation“ legt fest, ob eine
-          Kategorie im Jahresverlauf der Präsentation erscheint (einmalig, im Monat der ersten
-          Buchung oder im gewählten Monat), auf der Sammel-Folie nach den Monaten gesammelt wird
-          oder gar nicht in der Präsentation auftaucht.
-        </p>
+
       </section>
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -382,8 +393,12 @@ export function EinstellungenView() {
 }
 
 /** Lokale Speicherung plus optionale Spiegelung in einen Cloud-synchronisierten Ordner. */
-function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
-  const { settings, updateSettings } = useStore()
+export function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
+  const { settings, updateSettings, allFiles, flush, restoreBackup } = useStore()
+  const snapshot = useRef({ settings, allFiles })
+  snapshot.current = { settings, allFiles }
+  const backupPending = useRef(false)
+  const [backupBusy, setBackupBusy] = useState(false)
   const cloudEnabled = settings.cloudBackupEnabled === true
   const cloudDir = settings.cloudBackupDir?.trim() ?? ''
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus | null>(null)
@@ -394,21 +409,19 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
   }, [cloudEnabled, cloudDir])
 
   async function refreshCloudStatus() {
-    setCloudStatus(await api.cloudSyncStatus())
+    try {
+      setCloudStatus(await api.cloudSyncStatus())
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error))
+    }
   }
 
   /** Alle Jahre sämtlicher Konten plus Einstellungen als eine Sicherungsdatei exportieren. */
   async function exportBackup() {
-    const files: YearFile[] = []
-    for (const konto of await api.listKontos()) {
-      const list = await api.listYears(konto)
-      for (const y of list) {
-        const data = (await api.loadYear(konto, y)) as YearFile | null
-        if (data) files.push({ ...data, konto })
-      }
-    }
+    await flush()
+    const { allFiles: files, settings: latestSettings } = snapshot.current
     if (files.length === 0) return notify('Keine Daten zum Exportieren gefunden.')
-    const backup = buildBackup(files, settings, new Date().toISOString())
+    const backup = buildBackup(files, latestSettings, new Date().toISOString())
     const name = `Buchfuehrung-Sicherung-${new Date().toISOString().slice(0, 10)}.json`
     const result = await api.saveTextFile(name, JSON.stringify(backup, null, 2))
     if (result.ok) notify(result.path ? `Sicherung gespeichert: ${result.path}` : 'Sicherung exportiert.')
@@ -416,6 +429,7 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
 
   /** Sicherungsdatei einlesen, streng validieren und nach Bestätigung übernehmen. */
   async function importBackup() {
+    await flush()
     const file = await api.openTextFile()
     if (!file) return
     let parsed: unknown
@@ -443,18 +457,30 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
     const replaces = result.backup.years
       .filter((y) => existing[y.konto ?? 'haupt'].includes(y.year))
       .map((y) => `${kontoLabel(y)}${y.year}`)
+    const notes = [
+      'Nicht enthaltene Kassenjahre und deren Zuordnungen bleiben erhalten. Die Cloud-Sicherung wird deaktiviert.',
+      ...(!result.backup.settings?.organization ? ['Die Sicherung enthält keine Bereichszuordnungen. Zuordnungen und Umbuchungen der importierten Kassenjahre werden zurückgesetzt.'] : []),
+      ...(result.backup.settings?.bankAccounts?.length ? ['Für importierte Bankverbindungen muss die PIN erneut eingegeben werden.'] : []),
+    ].join('\n')
     if (
       !confirm(
         `Sicherung „${file.name}“ importieren?\n\n${summary}\n\n${
           replaces.length > 0
             ? `Achtung: Die vorhandenen Kassenjahre ${replaces.join(', ')} werden ersetzt (Sicherungskopien landen im Backup-Ordner).`
             : 'Es werden keine vorhandenen Jahre überschrieben.'
-        }`,
+        }\n\n${notes}`,
       )
     )
       return
-    for (const y of result.backup.years) await api.saveYear(y.konto ?? 'haupt', y.year, y)
-    if (result.backup.settings) await api.saveSettings(result.backup.settings)
+    await flush()
+    const before = buildBackup(snapshot.current.allFiles, snapshot.current.settings, new Date().toISOString())
+    const saved = await api.saveTextFile(
+      `Buchfuehrung-vor-Wiederherstellung-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+      JSON.stringify(before, null, 2),
+    )
+    if (!saved.ok) return notify('Wiederherstellung abgebrochen.')
+    await flush()
+    await restoreBackup(result.backup)
     window.location.reload()
   }
 
@@ -489,9 +515,23 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
       setCloudStatus(status)
       if (status.lastError) notify(`Cloud-Synchronisierung fehlgeschlagen: ${status.lastError}`)
       else notify('Cloud-Sicherung ist aktuell.')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error))
     } finally {
       setSyncing(false)
     }
+  }
+
+  function run(task: () => Promise<unknown>) {
+    void task().catch((error) => notify(error instanceof Error ? error.message : String(error)))
+  }
+
+  function runBackup(task: () => Promise<unknown>) {
+    if (backupPending.current) return
+    backupPending.current = true
+    setBackupBusy(true)
+    void task().catch((error) => notify(error instanceof Error ? error.message : String(error)))
+      .finally(() => { backupPending.current = false; setBackupBusy(false) })
   }
 
   return (
@@ -501,7 +541,7 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
         <span>
           Lokale Speicherung mit automatischen Backups
           {isElectron && (
-            <button className="btn btn--ghost btn--sm" style={{ marginLeft: 8 }} onClick={() => void api.openDataFolder()}>
+            <button className="btn btn--ghost btn--sm" style={{ marginLeft: 8 }} onClick={() => run(() => api.openDataFolder())}>
               Datenordner öffnen
             </button>
           )}
@@ -512,25 +552,25 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
           <input
             type="checkbox"
             checked={cloudEnabled}
-            disabled={!isElectron}
-            onChange={(e) => void toggleCloudBackup(e.target.checked)}
+            disabled={!isElectron || backupBusy}
+            onChange={(e) => { const enabled = e.target.checked; run(() => toggleCloudBackup(enabled)) }}
           />
-          Zusätzliche Sicherung in iCloud, OneDrive oder einem anderen Cloud-Ordner
+          Zusätzlicher Sicherungsordner
         </label>
         <div className="toolbar">
           <code className="storage-cloud__path">{cloudDir || 'Kein Cloud-Ordner ausgewählt'}</code>
           <div className="toolbar__spacer" />
           {cloudDir && (
-            <button className="btn btn--ghost btn--sm" onClick={() => void api.openCloudFolder()}>
+            <button className="btn btn--ghost btn--sm" onClick={() => run(() => api.openCloudFolder())}>
               Ordner öffnen
             </button>
           )}
           {cloudDir && (
-            <button className="btn btn--ghost btn--sm btn--danger" onClick={() => void clearCloudFolder()}>
+            <button className="btn btn--ghost btn--sm btn--danger" disabled={backupBusy} onClick={() => run(clearCloudFolder)}>
               Entfernen
             </button>
           )}
-          <button className="btn btn--sm" disabled={!isElectron} onClick={() => void chooseCloudFolder()}>
+          <button className="btn btn--sm" disabled={!isElectron || backupBusy} onClick={() => run(chooseCloudFolder)}>
             {cloudDir ? 'Ordner ändern …' : 'Cloud-Ordner wählen …'}
           </button>
         </div>
@@ -545,32 +585,24 @@ function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
                     ? `Zuletzt synchronisiert: ${formatCloudSyncDate(cloudStatus.lastSuccessAt)}${cloudStatus.fileCount ? ` · ${cloudStatus.fileCount} Dateien` : ''}`
                     : 'Noch nicht synchronisiert'}
             </span>
-            <button className="btn btn--ghost btn--sm" disabled={!isElectron || syncing} onClick={() => void syncNow()}>
+            <button className="btn btn--ghost btn--sm" disabled={!isElectron || syncing || backupBusy} onClick={() => run(syncNow)}>
               Jetzt synchronisieren
             </button>
           </div>
         )}
-        <p className="hint" style={{ marginBottom: 0 }}>
-          Die lokale Datei bleibt maßgeblich. Jede Speicherung wird zusätzlich in den gewählten
-          Cloud-Ordner gespiegelt; es findet kein automatisches Zurücksynchronisieren statt.
-        </p>
+
       </div>
       <div className="storage-cloud">
-        <span className="storage-cloud__toggle">Sicherungsdatei (alle Kassenjahre + Einstellungen)</span>
+        <span className="storage-cloud__toggle">Vollständige Sicherung</span>
         <div className="toolbar">
-          <button className="btn btn--sm" onClick={() => void exportBackup()}>
+          <button className="btn btn--sm" disabled={backupBusy} onClick={() => runBackup(exportBackup)}>
             Daten exportieren …
           </button>
-          <button className="btn btn--sm" onClick={() => void importBackup()}>
+          <button className="btn btn--sm" disabled={backupBusy} onClick={() => runBackup(importBackup)}>
             Sicherung importieren …
           </button>
         </div>
-        <p className="hint" style={{ marginBottom: 0 }}>
-          Der Export erzeugt eine JSON-Datei mit allen Kassenjahren und Einstellungen. Beim Import
-          wird die Datei vollständig geprüft (Format, Beträge, Daten, Kategorie-Verweise) – ungültige
-          Dateien werden abgelehnt. Ersetzte Jahre wandern vorher als Sicherungskopie in den
-          Backup-Ordner.
-        </p>
+        <p className="hint" style={{ marginBottom: 0 }}>Vor einer Wiederherstellung wird eine vollständige Sicherung gespeichert.</p>
       </div>
     </section>
   )
@@ -583,7 +615,7 @@ function formatCloudSyncDate(iso: string): string {
 }
 
 /** Eigenes Vereinslogo hochladen – erscheint in Seitenleiste, Prüfbericht und Dock. */
-function LogoCard({ notify }: { notify: (msg: string) => void }) {
+export function LogoCard({ notify }: { notify: (msg: string) => void }) {
   const { settings, updateSettings } = useStore()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -612,8 +644,7 @@ function LogoCard({ notify }: { notify: (msg: string) => void }) {
           <button
             className="btn btn--ghost btn--danger"
             onClick={() => {
-              void updateSettings({ logoDataUrl: null })
-              notify('Logo entfernt.')
+              void updateSettings({ logoDataUrl: null }).then(() => notify('Logo entfernt.')).catch((error) => notify(error instanceof Error ? error.message : String(error)))
             }}
           >
             Logo entfernen
@@ -631,17 +662,13 @@ function LogoCard({ notify }: { notify: (msg: string) => void }) {
           aria-label="Logo-Datei wählen"
         />
       </div>
-      <p className="hint" style={{ marginBottom: 0 }}>
-        Das Logo erscheint in der Seitenleiste, im Kopf des Prüfberichts und als Dock-Symbol.
-        Ohne eigenes Logo zeigt die App eine neutrale Wortmarke. Nach dem Entfernen erscheint das
-        Standard-Dock-Symbol erst nach einem Neustart wieder.
-      </p>
+
     </section>
   )
 }
 
 /** Update-Bereich: Version anzeigen, Release prüfen, herunterladen und installieren. */
-function UpdateCard() {
+export function UpdateCard() {
   const [version, setVersion] = useState('')
   const [checking, setChecking] = useState(false)
   const [info, setInfo] = useState<UpdateInfo | null>(null)
@@ -649,7 +676,7 @@ function UpdateCard() {
   const [progress, setProgress] = useState<number | null>(null)
 
   useEffect(() => {
-    void api.getVersion().then(setVersion)
+    void api.getVersion().then(setVersion).catch((err) => setError(err instanceof Error ? err.message : String(err)))
     return api.onUpdateProgress((p) => {
       setProgress(p.total > 0 ? Math.round((p.received / p.total) * 100) : -1)
     })
@@ -672,11 +699,15 @@ function UpdateCard() {
     if (!info) return
     setError('')
     setProgress(0)
-    const result = await api.installUpdate(info)
-    // Bei Erfolg startet die App neu – diesen Zweig sieht man nur im Fehlerfall
-    if (!result.ok) {
+    try {
+      const result = await api.installUpdate(info)
+      if (!result.ok) {
+        setProgress(null)
+        setError(result.error ?? 'Installation fehlgeschlagen.')
+      }
+    } catch (err) {
       setProgress(null)
-      setError(result.error ?? 'Installation fehlgeschlagen.')
+      setError(err instanceof Error ? err.message : String(err))
     }
   }
 

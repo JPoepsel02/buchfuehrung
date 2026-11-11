@@ -48,6 +48,8 @@ async function launch() {
   try {
     expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(join(root, 'kassenwart'))
     const page = await app.firstWindow()
+    await expect(page.getByRole('heading', { level: 1, name: 'Vereinsübersicht', exact: true })).toBeVisible()
+    await page.getByLabel('Konto wählen', { exact: true }).selectOption('haupt')
     await expect(page.getByRole('heading', { level: 1, name: /Übersicht/ })).toBeVisible()
     return { app, page, data, main }
   } catch (error) {
@@ -118,7 +120,7 @@ test('öffnet Kategorien und Kalenderjahresmonate auch im abweichenden Wirtschaf
     await expect(page.getByLabel('Von', { exact: true })).toHaveValue('')
     await expect(page.getByLabel('Bis', { exact: true })).toHaveValue('')
     expect(await ids(page)).toEqual(['vorjahr'])
-    await page.getByLabel('Konto wählen').selectOption('zweit')
+    await page.getByLabel('Konto wählen', { exact: true }).selectOption('zweit')
     await expect(page.getByLabel('Von', { exact: true })).toHaveValue('')
     await expect(page.getByLabel('Bis', { exact: true })).toHaveValue('')
     expect(await ids(page)).toHaveLength(2)
@@ -137,7 +139,7 @@ test('zeigt globale Suchtreffer trotz zuvor gesetzter Filter und über Kontogren
     await page.keyboard.press('Control+f')
     await page.getByRole('dialog').getByRole('textbox').fill('fiscal-januar')
     await page.getByRole('dialog').getByRole('button', { name: /fiscal-januar/ }).click()
-    await expect(page.getByLabel('Konto wählen')).toHaveValue('zweit')
+    await expect(page.getByLabel('Konto wählen', { exact: true })).toHaveValue('zweit')
     await expect(page.getByRole('heading', { name: 'Buchung bearbeiten' })).toBeVisible()
     await expect(page.getByLabel('Buchungsart')).toHaveValue('')
     await expect(page.getByLabel('Von', { exact: true })).toHaveValue('')

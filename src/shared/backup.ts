@@ -1,5 +1,10 @@
+import { isSafeLogoDataUrl } from './logo'
 import { isKontoId } from './types'
 import type { AppSettings, YearFile } from './types'
+import { validateOrganizationConfig } from './organization'
+import { draftAllocationStructureError } from './importDraft'
+import { validateBankAccounts } from './bankValidation'
+import { validateAccountNumbers } from './accountDetails'
 
 /**
  * Export-/Import-Format für die Datensicherung: alle Kassenjahre plus
@@ -27,6 +32,12 @@ export type ValidationResult = { ok: true; backup: Backup } | { ok: false; error
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
+function validDate(value: unknown): boolean {
+  if (typeof value !== 'string' || !DATE_RE.test(value)) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
 function positiveSafeInteger(value: unknown): boolean {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
@@ -35,6 +46,19 @@ function validReceiptReference(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const ref = value as Record<string, unknown>
   return typeof ref.categoryId === 'string' && Boolean(ref.categoryId.trim()) && positiveSafeInteger(ref.refNo)
+}
+
+function safeTotals(file: YearFile): boolean {
+  const limit = BigInt(Number.MAX_SAFE_INTEGER)
+  let balance = BigInt(file.openingBalance), income = 0n, expenses = 0n
+  const ordered = [...file.bookings].sort((left, right) => left.date.localeCompare(right.date) || left.seq - right.seq || left.id.localeCompare(right.id))
+  for (const booking of ordered) {
+    const amount = BigInt(booking.amount)
+    if (booking.type === 'einnahme') { income += amount; balance += amount }
+    else { expenses += amount; balance -= amount }
+    if (income > limit || expenses > limit || balance > limit || balance < -limit) return false
+  }
+  return true
 }
 
 /** Prüft eine eingelesene Sicherung Feld für Feld. Sammelt maximal 12 Fehler. */
@@ -70,7 +94,7 @@ export function validateBackup(data: unknown): ValidationResult {
     const yearKey = `${typeof f.konto === 'string' ? f.konto : 'haupt'}:${yearNo}`
     if (seenYears.has(yearKey)) err(`Kassenjahr ${yearNo} ist doppelt enthalten.`)
     seenYears.add(yearKey)
-    if (!Number.isInteger(f.openingBalance)) err(`Kassenjahr ${yearNo}: Anfangssaldo ist kein Cent-Betrag.`)
+    if (!Number.isSafeInteger(f.openingBalance)) err(`Kassenjahr ${yearNo}: Anfangssaldo ist kein sicherer Cent-Betrag.`)
     if (typeof f.clubName !== 'string' || typeof f.treasurerName !== 'string')
       err(`Kassenjahr ${yearNo}: Vereins-/Kassenwart-Name fehlt.`)
     if (f.konto !== undefined && !isKontoId(f.konto))
@@ -109,9 +133,9 @@ export function validateBackup(data: unknown): ValidationResult {
       catIds.add(cat.id)
       if (typeof cat.name !== 'string' || !cat.name.trim()) err(`${cw}: Name fehlt.`)
       if (typeof cat.code !== 'string' || !cat.code.trim()) err(`${cw}: Kürzel fehlt.`)
-      if (typeof cat.sortOrder !== 'number') err(`${cw}: Reihenfolge ist keine Zahl.`)
+      if (typeof cat.sortOrder !== 'number' || !Number.isFinite(cat.sortOrder)) err(`${cw}: Reihenfolge ist keine endliche Zahl.`)
       if (typeof cat.active !== 'boolean') err(`${cw}: Aktiv-Kennzeichen fehlt.`)
-      if (cat.praesentation !== undefined && cat.praesentation !== 'monat' && cat.praesentation !== 'sammel')
+      if (cat.praesentation !== undefined && cat.praesentation !== 'monat' && cat.praesentation !== 'sammel' && cat.praesentation !== 'aus')
         err(`${cw}: ungültiger Präsentations-Modus.`)
       if (
         cat.praesentationMonat !== undefined &&
@@ -132,18 +156,18 @@ export function validateBackup(data: unknown): ValidationResult {
       if (typeof bo.id !== 'string' || !bo.id) return err(`${bw}: ID fehlt.`)
       if (bookingIds.has(bo.id)) err(`${bw}: doppelte ID "${bo.id}".`)
       bookingIds.add(bo.id)
-      if (typeof bo.date !== 'string' || !DATE_RE.test(bo.date) || Number.isNaN(Date.parse(bo.date)))
+      if (!validDate(bo.date))
         err(`${bw}: ungültiges Datum "${String(bo.date)}".`)
       if (typeof bo.categoryId !== 'string' || !catIds.has(bo.categoryId))
         err(`${bw}: verweist auf unbekannte Kategorie.`)
       if (bo.name !== undefined && typeof bo.name !== 'string') err(`${bw}: Name ist kein Text.`)
       if (typeof bo.description !== 'string') err(`${bw}: Verwendungszweck fehlt.`)
       if (bo.type !== 'einnahme' && bo.type !== 'ausgabe') err(`${bw}: Art muss Einnahme oder Ausgabe sein.`)
-      if (!Number.isInteger(bo.amount) || (bo.amount as number) < 0)
+      if (!Number.isSafeInteger(bo.amount) || (bo.amount as number) < 0)
         err(`${bw}: Betrag muss ein Cent-Betrag ≥ 0 sein.`)
       if (typeof bo.isUmsatz !== 'boolean') err(`${bw}: Umsatz-Kennzeichen fehlt.`)
       if (
-        !Number.isInteger(bo.nonUmsatzAmount) ||
+        !Number.isSafeInteger(bo.nonUmsatzAmount) ||
         (bo.nonUmsatzAmount as number) < 0 ||
         (Number.isInteger(bo.amount) && (bo.nonUmsatzAmount as number) > (bo.amount as number))
       )
@@ -160,8 +184,8 @@ export function validateBackup(data: unknown): ValidationResult {
         bo.receiptStatus !== 'nicht_erforderlich'
       )
         err(`${bw}: Beleg-Status ist ungültig.`)
-      if (!Number.isInteger(bo.seq)) err(`${bw}: laufende Nummer fehlt.`)
-      if (bo.refNo !== undefined && (!Number.isInteger(bo.refNo) || (bo.refNo as number) < 1))
+      if (!Number.isSafeInteger(bo.seq)) err(`${bw}: laufende Nummer fehlt.`)
+      if (bo.refNo !== undefined && (!Number.isSafeInteger(bo.refNo) || (bo.refNo as number) < 1))
         err(`${bw}: Beleg-Nummer muss eine positive Ganzzahl sein.`)
       if (bo.source !== 'manuell' && bo.source !== 'import') err(`${bw}: ungültige Herkunft.`)
       if (
@@ -187,7 +211,7 @@ export function validateBackup(data: unknown): ValidationResult {
       } else {
         const draft = f.importDraft as Record<string, unknown>
         if (typeof draft.fileName !== 'string') err(`${dw}: Quellenname fehlt.`)
-        if (!Number.isInteger(draft.skipped) || (draft.skipped as number) < 0)
+        if (!Number.isSafeInteger(draft.skipped) || (draft.skipped as number) < 0)
           err(`${dw}: Anzahl übersprungener Zeilen ist ungültig.`)
         if (!Array.isArray(draft.rows)) {
           err(`${dw}: Zeilen fehlen.`)
@@ -199,9 +223,12 @@ export function validateBackup(data: unknown): ValidationResult {
               return
             }
             const row = item as Record<string, unknown>
-            if (typeof row.date !== 'string' || !DATE_RE.test(row.date)) err(`${rw}: Datum ist ungültig.`)
+            if (!validDate(row.date)) err(`${rw}: Datum ist ungültig.`)
             if (typeof row.bankText !== 'string') err(`${rw}: Banktext fehlt.`)
-            if (!Number.isInteger(row.amount)) err(`${rw}: Betrag ist kein Cent-Betrag.`)
+            if (row.bankName !== undefined && typeof row.bankName !== 'string') err(`${rw}: Originalname ist kein Text.`)
+            const rowAllocationIssue = draftAllocationStructureError(row.allocations)
+            if (rowAllocationIssue) err(`${rw}: ${rowAllocationIssue}`)
+            if (!Number.isSafeInteger(row.amount)) err(`${rw}: Betrag ist kein Cent-Betrag.`)
             if (typeof row.hash !== 'string' || !row.hash) err(`${rw}: Import-Hash fehlt.`)
             if (
               row.legacyHashes !== undefined &&
@@ -243,9 +270,11 @@ export function validateBackup(data: unknown): ValidationResult {
                   if (typeof split.id !== 'string' || !split.id) err(`${sw}: ID fehlt.`)
                   if (typeof split.description !== 'string') err(`${sw}: Verwendungszweck fehlt.`)
                   if (typeof split.categoryId !== 'string') err(`${sw}: Kategorie ist kein Text.`)
-                  if (!Number.isInteger(split.amount) || (split.amount as number) < 0)
+                  if (!Number.isSafeInteger(split.amount) || (split.amount as number) < 0)
                     err(`${sw}: Betrag ist kein gültiger Cent-Betrag.`)
                   if (typeof split.isUmsatz !== 'boolean') err(`${sw}: Umsatz-Kennzeichen fehlt.`)
+                  const splitAllocationIssue = draftAllocationStructureError(split.allocations)
+                  if (splitAllocationIssue) err(`${sw}: ${splitAllocationIssue}`)
                   if (split.receiptRef !== undefined && !validReceiptReference(split.receiptRef))
                     err(`${sw}: reservierte Belegnummer ist ungültig.`)
                 })
@@ -262,8 +291,25 @@ export function validateBackup(data: unknown): ValidationResult {
       err('Einstellungen: kein Objekt.')
     } else {
       const s = b.settings as Record<string, unknown>
+      if (s.kontoSequence !== undefined && (!Number.isSafeInteger(s.kontoSequence) || (s.kontoSequence as number) < 1))
+        err('Einstellungen: reservierte Kontokennung ist ungültig.')
+      if (s.cloudBackupEnabled !== undefined && typeof s.cloudBackupEnabled !== 'boolean')
+        err('Einstellungen: Cloud-Sicherung ist kein Wahr/Falsch-Wert.')
+      if (s.cloudBackupDir != null && typeof s.cloudBackupDir !== 'string')
+        err('Einstellungen: Sicherungsordner ist kein Text.')
+      if (s.fintsProductId != null && typeof s.fintsProductId !== 'string')
+        err('Einstellungen: FinTS-Produktkennung ist kein Text.')
+      if (s.accountNumbers !== undefined) {
+        for (const message of validateAccountNumbers(s.accountNumbers)) err(`Kontoangaben: ${message}`)
+      }
+      if (s.bankAccounts !== undefined) {
+        for (const message of validateBankAccounts(s.bankAccounts)) err(`Online-Banking: ${message}`)
+      }
+      if (s.organization !== undefined) {
+        for (const message of validateOrganizationConfig(s.organization)) err(`Vereinsdaten: ${message}`)
+      }
       if (s.logoDataUrl !== undefined && s.logoDataUrl !== null) {
-        if (typeof s.logoDataUrl !== 'string' || !s.logoDataUrl.startsWith('data:image/'))
+        if (!isSafeLogoDataUrl(s.logoDataUrl))
           err('Einstellungen: Logo ist keine Bild-Data-URL.')
       }
       if (s.theme !== undefined && s.theme !== 'hell' && s.theme !== 'dunkel' && s.theme !== 'system')
@@ -273,6 +319,11 @@ export function validateBackup(data: unknown): ValidationResult {
     }
   }
 
+  if (errors.length === 0) {
+    for (const file of b.years as YearFile[]) {
+      if (!safeTotals(file)) err(`Kassenjahr ${file.year}: Summen oder laufende Bestände überschreiten den sicheren Cent-Bereich.`)
+    }
+  }
   if (errors.length > 0) return { ok: false, errors }
   return { ok: true, backup: data as Backup }
 }

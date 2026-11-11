@@ -11,7 +11,21 @@ permissions:
   contents: write
 
 jobs:
+  validate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run test:e2e
+
   release:
+    needs: validate
     strategy:
       matrix:
         include:
@@ -28,7 +42,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build
+      - run: npm run build:production
       - name: Installer bauen
         run: npx electron-builder ${{ matrix.args }} --publish never
         env:

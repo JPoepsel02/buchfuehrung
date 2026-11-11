@@ -6,7 +6,9 @@ import { makeId } from './defaults'
 import { reserveImportReceiptNumbers } from './importReceipts'
 import { newImportRows } from './importRows'
 import type { StatementRow } from './csv'
-import type { ImportDraftRow, ImportDraftSplit, YearFile } from './types'
+import type { Booking, ImportDraftRow, ImportDraftSplit, YearFile } from './types'
+import { allocationError, AREA_DEFINITIONS } from './organization'
+import type { ActivityAllocation } from './organization'
 
 /**
  * Berechnet ausschließlich die technischen Kennungen offener Entwurfszeilen
@@ -74,6 +76,7 @@ export function appendToDraft(
   const newRows: ImportDraftRow[] = fresh.map((r) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
+    bankName: r.name,
     amount: r.amount,
     hash: r.hash,
     legacyHashes: r.legacyHashes,
@@ -123,6 +126,7 @@ export function buildDraft(
   const rows: ImportDraftRow[] = sorted.map(({ r }) => withReceiptStatus({
     date: r.date,
     bankText: r.description,
+    bankName: r.name,
     amount: r.amount,
     hash: r.hash,
     legacyHashes: r.legacyHashes,
@@ -183,7 +187,7 @@ export function bookingParts(row: ImportDraftRow): ImportDraftSplit[] {
   if (row.splits?.length) return row.splits
   return [{
     id: row.hash, description: row.description, categoryId: row.categoryId,
-    amount: Math.abs(row.amount), isUmsatz: row.isUmsatz, receiptRef: row.receiptRef,
+    amount: Math.abs(row.amount), isUmsatz: row.isUmsatz, receiptRef: row.receiptRef, allocations: row.allocations,
   }]
 }
 
@@ -191,22 +195,50 @@ export function sumSplits(splits: ImportDraftSplit[] | undefined): number {
   return splits?.reduce((sum, split) => sum + split.amount, 0) ?? 0
 }
 
+export function draftAllocationStructureError(allocations: unknown): string | null {
+  if (allocations === undefined) return null
+  if (!Array.isArray(allocations) || allocations.length > AREA_DEFINITIONS.length) return 'Bereichsaufteilung ist ungültig.'
+  const areas = new Set<string>()
+  for (const part of allocations) {
+    if (typeof part !== 'object' || part === null || Array.isArray(part) ||
+      !AREA_DEFINITIONS.some((area) => area.id === part.area) ||
+      !Number.isSafeInteger(part.amount) || part.amount < 0 || areas.has(part.area)) return 'Bereichsaufteilung enthält ungültige oder doppelte Anteile.'
+    areas.add(part.area)
+  }
+  return null
+}
+
+export function draftAllocationError(amount: number, allocations: unknown): string | null {
+  if (allocations === undefined || (Array.isArray(allocations) && allocations.length === 0)) return null
+  return allocationError(amount, allocations as ActivityAllocation[])
+}
+
 export function rowIsImportable(row: ImportDraftRow): boolean {
   const parts = bookingParts(row)
-  if (!(row.name ?? '').trim()) return false
-  if (parts.some((part) => !part.description.trim() || !part.categoryId || part.amount <= 0)) return false
+  if (!(row.name ?? '').trim() || !Number.isSafeInteger(row.amount) || row.amount === 0) return false
+  if (parts.some((part) => !part.description.trim() || !part.categoryId || !Number.isSafeInteger(part.amount) || part.amount <= 0 || draftAllocationError(part.amount, part.allocations))) return false
   return !row.splits?.length || sumSplits(row.splits) === Math.abs(row.amount)
 }
 
-/** Prüft den aktuellen Entwurf erneut und übernimmt reservierte Nummern unverändert. */
+export interface ImportedDraftBooking {
+  booking: Booking
+  allocations?: ActivityAllocation[]
+}
+export interface ImportedDraftResult { file: YearFile; added: ImportedDraftBooking[] }
+
 export function importSelectedRows(file: YearFile): YearFile {
-  if (!file.importDraft) return file
+  return importSelectedRowsDetailed(file).file
+}
+
+/** Prüft den aktuellen Entwurf erneut und übernimmt reservierte Nummern unverändert. */
+export function importSelectedRowsDetailed(file: YearFile): ImportedDraftResult {
+  if (!file.importDraft) return { file, added: [] }
   const prepared = reserveImportReceiptNumbers(file)
   const draft = prepared.importDraft!
   const selected = new Set(newImportRows(prepared).flatMap(({ row, index }) =>
-    row.selected && rowIsImportable(row) && inFiscalYear(prepared, row.date) ? [index] : [],
+    row.selected && rowIsImportable(row) && bookingParts(row).every((part) => prepared.categories.some((category) => category.id === part.categoryId)) && inFiscalYear(prepared, row.date) ? [index] : [],
   ))
-  if (selected.size === 0) return prepared
+  if (selected.size === 0) return { file: prepared, added: [] }
   let seq = nextSeq(prepared)
   const counters = new Map<string, number>()
   const takeRefNo = (part: ImportDraftSplit) => {
@@ -215,8 +247,10 @@ export function importSelectedRows(file: YearFile): YearFile {
     counters.set(part.categoryId, refNo + 1)
     return refNo
   }
-  const added = draft.rows.filter((_, i) => selected.has(i)).flatMap((row) =>
+  const added: ImportedDraftBooking[] = draft.rows.filter((_, i) => selected.has(i)).flatMap((row) =>
     bookingParts(row).map((part) => ({
+      ...(part.allocations !== undefined ? { allocations: part.allocations.map((allocation) => ({ ...allocation })) } : {}),
+      booking: {
       id: makeId(), seq: seq++, refNo: takeRefNo(part), date: row.date,
       categoryId: part.categoryId, name: row.name.trim(), description: part.description.trim(),
       subcategory: row.splits?.length ? undefined : (row.subcategory ?? '').trim() || undefined,
@@ -225,11 +259,15 @@ export function importSelectedRows(file: YearFile): YearFile {
       ...withReceiptStatus({}, receiptStatus(row, 'offen')),
       nonUmsatzAmount: 0, note: row.bankText, source: 'import' as const,
       importHash: row.hash, legacyImportHashes: row.legacyHashes, importHashVersion: IMPORT_HASH_VERSION,
+      },
     })),
   )
   const remaining = draft.rows.filter((_, i) => !selected.has(i))
-  return reserveImportReceiptNumbers({
-    ...prepared, bookings: [...prepared.bookings, ...added],
-    importDraft: remaining.length > 0 ? { ...draft, rows: remaining } : null,
-  })
+  return {
+    file: reserveImportReceiptNumbers({
+      ...prepared, bookings: [...prepared.bookings, ...added.map((entry) => entry.booking)],
+      importDraft: remaining.length > 0 ? { ...draft, rows: remaining } : null,
+    }),
+    added,
+  }
 }

@@ -32,8 +32,10 @@ for (const viewport of [{ width: 1280, height: 840 }, { width: 960, height: 640 
       expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(join(root, 'kassenwart'))
       const page = await app.firstWindow()
       await page.setViewportSize(viewport)
+      await expect(page.getByRole('heading', { level: 1, name: 'Vereinsübersicht', exact: true })).toBeVisible()
+      await page.getByLabel('Konto wählen', { exact: true }).selectOption('haupt')
       await page.getByRole('navigation', { name: 'Hauptnavigation' })
-        .getByRole('button', { name: 'Einstellungen', exact: true }).click()
+        .getByRole('button', { name: 'Kontoeinstellungen', exact: true }).click()
       const table = page.getByRole('table').filter({ has: page.getByRole('columnheader', { name: 'Präsentation', exact: true }) })
       const rows = table.locator('tbody tr')
       await expect(rows).toHaveCount(3)
@@ -50,15 +52,17 @@ for (const viewport of [{ width: 1280, height: 840 }, { width: 960, height: 640 
           const selects = Array.from(element.querySelectorAll('select'))
           return {
             cell: rect(selects[0].closest('td')!),
+            cells: selects.map((select) => rect(select.closest('td')!)),
             selects: selects.map(rect),
             actions: Array.from(element.querySelectorAll('button')).map(rect),
           }
         })
-        for (const select of geometry.selects) {
-          expect(select.left).toBeGreaterThanOrEqual(geometry.cell.left - 1)
-          expect(select.top).toBeGreaterThanOrEqual(geometry.cell.top - 1)
-          expect(select.right, 'Darstellungsfeld ragt aus seiner Tabellenzelle').toBeLessThanOrEqual(geometry.cell.right + 1)
-          expect(select.bottom).toBeLessThanOrEqual(geometry.cell.bottom + 1)
+        for (const [index, select] of geometry.selects.entries()) {
+          const cell = geometry.cells[index]
+          expect(select.left).toBeGreaterThanOrEqual(cell.left - 1)
+          expect(select.top).toBeGreaterThanOrEqual(cell.top - 1)
+          expect(select.right, 'Kategoriefeld ragt aus seiner Tabellenzelle').toBeLessThanOrEqual(cell.right + 1)
+          expect(select.bottom).toBeLessThanOrEqual(cell.bottom + 1)
         }
         const overlaps = (a: typeof geometry.cell, b: typeof geometry.cell) =>
           a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top

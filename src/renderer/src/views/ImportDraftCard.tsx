@@ -5,12 +5,16 @@ import { Amount } from '../components/Amount'
 import { CentsAmountInput } from '../components/AmountInput'
 import { inFiscalYear } from '@shared/fiscal'
 import { makeId } from '@shared/defaults'
-import { bookingParts, clearImportSelection, importSelectedRows, rowIsImportable, subcategorySuggestions, sumSplits } from '@shared/importDraft'
+import { bookingParts, clearImportSelection, rowIsImportable, subcategorySuggestions, sumSplits } from '@shared/importDraft'
 import { importReceiptLabel } from '@shared/importReceipts'
 import { newImportRows } from '@shared/importRows'
 import { formatDate } from '@shared/money'
 import { receiptStatus, withReceiptStatus } from '@shared/receipt'
 import type { ImportDraftRow, ImportDraftSplit, ReceiptStatus } from '@shared/types'
+import { ImportReviewDialog, importReviewRowMatches } from './ImportReviewDialog'
+import type { ImportReviewSession } from './ImportReviewDialog'
+import { ImportReviewAllocation, splitReviewAllocations } from './ImportReviewAllocation'
+import '../styles/importReview.css'
 
 /**
  * Zuweisungstabelle für den gespeicherten Import-Entwurf: Auswahl,
@@ -30,9 +34,12 @@ interface BulkPatch {
 
 const EMPTY_BULK: BulkPatch = { categoryId: '', subcategory: '', description: '', name: '', receiptStatus: '', isUmsatz: '' }
 
-export function ImportDraftCard() {
-  const { file, update } = useStore()
+export function ImportDraftCard({ onImported }: { onImported?(message: string): void } = {}) {
+  const { file, update, organization, importDraft } = useStore()
   const [toast, setToast] = useState('')
+  const [error, setError] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [review, setReview] = useState<ImportReviewSession | null>(null)
   const [bulk, setBulk] = useState<BulkPatch>(EMPTY_BULK)
   const scope = file ? `${file.konto ?? 'haupt'}:${file.year}` : ''
 
@@ -48,40 +55,36 @@ export function ImportDraftCard() {
 
   if (!file?.importDraft) return null
   const draft = file.importDraft
+  const rowReady = (row: ImportDraftRow) => rowIsImportable(row) && bookingParts(row).every(part => file.categories.some(category => category.id === part.categoryId))
 
+  function mutateRow(index: number, mutate: (row: ImportDraftRow) => ImportDraftRow) {
+    const expected = draft.rows[index]
+    if (!expected) return
+    const target = { index, hash: expected.hash, date: expected.date, amount: expected.amount, bankText: expected.bankText }
+    update(current => {
+      const currentDraft = current.importDraft
+      if (`${current.konto ?? 'haupt'}:${current.year}` !== scope || currentDraft?.fileName !== draft.fileName || !importReviewRowMatches(currentDraft.rows[index], target)) return current
+      if (!inFiscalYear(current, target.date) || !newImportRows(current).some(entry => entry.index === index)) return current
+      return { ...current, importDraft: { ...currentDraft, rows: currentDraft.rows.map((row, i) => i === index ? mutate(row) : row) } }
+    })
+  }
   function setRow(index: number, patch: Partial<ImportDraftRow>) {
-    update((f) =>
-      f.importDraft
-        ? {
-            ...f,
-            importDraft: {
-              ...f.importDraft,
-              rows: f.importDraft.rows.map((r, i) => (i === index ? { ...r, ...patch } : r)),
-            },
-          }
-        : f,
-    )
+    mutateRow(index, row => ({ ...row, ...patch }))
+  }
+  function startReview(index?: number, focusAllocations = false) {
+    const targets = freshRows.filter(entry => inFiscalYear(file!, entry.row.date)).map(({ row, index: rowIndex }) => ({ index: rowIndex, hash: row.hash, date: row.date, amount: row.amount, bankText: row.bankText }))
+    if (!targets.length) return
+    const initialPosition = Math.max(0, targets.findIndex(target => target.index === index))
+    setReview({ scope, fileName: draft.fileName, targets, initialPosition, focusAllocations })
   }
 
   function toggleRowSelection(index: number, hash: string) {
-    update((current) => {
-      if (!current.importDraft || `${current.konto ?? 'haupt'}:${current.year}` !== scope || current.importDraft.rows[index]?.hash !== hash) return current
-      return {
-        ...current,
-        importDraft: {
-          ...current.importDraft,
-          rows: current.importDraft.rows.map((row, i) => i === index ? { ...row, selected: !row.selected } : row),
-        },
-      }
-    })
+    if (draft.rows[index]?.hash !== hash) return
+    mutateRow(index, row => ({ ...row, selected: !row.selected }))
   }
 
   function setSplit(rowIndex: number, splitId: string, patch: Partial<ImportDraftSplit>) {
-    const current = draft.rows[rowIndex]
-    if (!current?.splits) return
-    setRow(rowIndex, {
-      splits: current.splits.map((s) => (s.id === splitId ? { ...s, ...patch } : s)),
-    })
+    mutateRow(rowIndex, row => ({ ...row, splits: row.splits?.map(split => split.id === splitId ? { ...split, ...patch } : split) }))
   }
 
   function startSplit(index: number) {
@@ -90,6 +93,7 @@ export function ImportDraftCard() {
     const total = Math.abs(row.amount)
     const first = Math.floor(total / 2)
     const second = total - first
+    const [firstAllocations, secondAllocations] = splitReviewAllocations(row.allocations, total, first)
     setRow(index, {
       splits: [
         {
@@ -99,6 +103,7 @@ export function ImportDraftCard() {
           amount: first,
           isUmsatz: row.isUmsatz,
           receiptRef: row.receiptRef,
+          allocations: firstAllocations,
         },
         {
           id: makeId(),
@@ -106,6 +111,7 @@ export function ImportDraftCard() {
           categoryId: row.categoryId,
           amount: second,
           isUmsatz: row.isUmsatz,
+          allocations: secondAllocations,
         },
       ],
     })
@@ -137,11 +143,11 @@ export function ImportDraftCard() {
 
   function setAllSelected(selected: boolean) {
     if (!selected) {
-      update(clearImportSelection)
+      update(current => `${current.konto ?? 'haupt'}:${current.year}` === scope && current.importDraft?.fileName === draft.fileName ? clearImportSelection(current) : current)
       return
     }
     update((f) => {
-      if (!f.importDraft) return f
+      if (!f.importDraft || `${f.konto ?? 'haupt'}:${f.year}` !== scope || f.importDraft.fileName !== draft.fileName) return f
       const freshIndices = new Set(newImportRows(f).map(({ index }) => index))
       return {
         ...f,
@@ -157,21 +163,21 @@ export function ImportDraftCard() {
 
   function discardDraft() {
     if (!confirm('Gespeicherten Import-Entwurf wirklich verwerfen?')) return
-    update((f) => ({ ...f, importDraft: null }))
+    update(f => `${f.konto ?? 'haupt'}:${f.year}` === scope && f.importDraft?.fileName === draft.fileName ? { ...f, importDraft: null } : f)
   }
 
   /** Wendet die Sammel-Zuweisung ausschließlich auf ausgewählte neue Zeilen an. */
   function applyBulk() {
     let touched = 0
     update((f) => {
-      if (!f.importDraft) return f
+      if (!f.importDraft || `${f.konto ?? 'haupt'}:${f.year}` !== scope || f.importDraft.fileName !== draft.fileName) return f
       const freshIndices = new Set(newImportRows(f).map(({ index }) => index))
       return {
         ...f,
         importDraft: {
           ...f.importDraft,
           rows: f.importDraft.rows.map((r, i) => {
-            if (!r.selected || !freshIndices.has(i)) return r
+            if (!r.selected || !freshIndices.has(i) || !inFiscalYear(f, r.date)) return r
             touched++
             const next = { ...r }
             // Kategorie/Verwendungszweck/Unterkategorie gelten nicht für aufgeteilte Zeilen
@@ -197,29 +203,40 @@ export function ImportDraftCard() {
     bulk.isUmsatz !== ''
 
   /** Übernimmt alle ausgewählten Zeilen als Buchungen und entfernt sie aus dem Entwurf. */
-  function doImport() {
+  async function doImport() {
     const selectedRows = freshRows.filter(
-      ({ row }) => row.selected && rowIsImportable(row) && inFiscalYear(file!, row.date),
+      ({ row }) => row.selected && rowReady(row) && inFiscalYear(file!, row.date),
     )
     if (selectedRows.length === 0) return
     const importedBookingsCount = selectedRows.reduce((count, { row }) => count + bookingParts(row).length, 0)
-    update(importSelectedRows)
-    setToast(`${importedBookingsCount} Buchungen aus ${selectedRows.length} Bankpositionen importiert.`)
-    setTimeout(() => setToast(''), 4000)
+    setImporting(true)
+    setError('')
+    try {
+      await importDraft()
+      const message = `${importedBookingsCount} Buchungen aus ${selectedRows.length} Bankpositionen importiert.`
+      if (onImported) onImported(message)
+      else { setToast(message); setTimeout(() => setToast(''), 4000) }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Die Buchungen konnten nicht übernommen werden.') }
+    finally { setImporting(false) }
   }
 
   const selected = freshRows.map(({ row }) => row).filter((row) => row.selected)
-  const invalidRows = selected.filter((r) => !rowIsImportable(r)).length
-  const readyRows = selected.filter((row) => rowIsImportable(row) && inFiscalYear(file, row.date))
+  const invalidRows = selected.filter((r) => !rowReady(r)).length
+  const readyRows = selected.filter((row) => rowReady(row) && inFiscalYear(file, row.date))
   const readyBookings = readyRows.reduce((count, r) => count + bookingParts(r).length, 0)
+  const excludedCount = freshRows.filter(entry => !inFiscalYear(file, entry.row.date)).length
+  const alreadyKnownCount = draft.rows.length - freshRows.length
+  const reviewCount = freshRows.length - excludedCount
 
   return (
     <section className="card">
-      <div className="toolbar" style={{ marginBottom: 'var(--space-4)' }}>
+      <fieldset disabled={importing} className="import-draft-controls" aria-label="Importentwurf bearbeiten">
+      <div className="toolbar import-draft-toolbar" style={{ marginBottom: 'var(--space-4)' }}>
         <h2 className="card__title" style={{ marginBottom: 0 }}>
           {draft.fileName} · {freshRows.length} {freshRows.length === 1 ? 'neuer Umsatz' : 'neue Umsätze'}
         </h2>
         <div className="toolbar__spacer" />
+        <button type="button" className="btn btn--primary btn--sm" disabled={!reviewCount || importing} onClick={() => startReview()}>Einzeln zuordnen</button>
         <button className="btn btn--sm" onClick={() => setAllSelected(true)}>
           Alle auswählen
         </button>
@@ -230,6 +247,8 @@ export function ImportDraftCard() {
           Entwurf verwerfen
         </button>
       </div>
+      {(excludedCount > 0 || alreadyKnownCount > 0) && <p className="import-draft-note--excluded">{[alreadyKnownCount ? `${alreadyKnownCount} bereits bekannte Umsätze ausgeblendet` : '', excludedCount ? `${excludedCount} Umsätze außerhalb des Kassenjahres` : ''].filter(Boolean).join(' · ')}</p>}
+      {error && <p className="org-error" role="alert">{error}</p>}
       {draft.skipped > 0 && (
         <p className="hint" style={{ marginTop: 0 }}>
           {draft.skipped} Zeilen konnten nicht gelesen werden (z. B. Kopf- oder Saldozeilen).
@@ -300,7 +319,7 @@ export function ImportDraftCard() {
           ))}
         </datalist>
       ))}
-      <table className="ledger">
+      <div className="import-draft-table-scroll"><table className="ledger import-draft-table">
         <thead>
           <tr>
             <th></th>
@@ -330,6 +349,7 @@ export function ImportDraftCard() {
                   <input
                     type="checkbox"
                     checked={r.selected}
+                    disabled={!inYear || importing}
                     onChange={(e) => setRow(i, { selected: e.target.checked })}
                     aria-label="Umsatz importieren"
                   />
@@ -413,12 +433,14 @@ export function ImportDraftCard() {
                       style={{ minWidth: 140, width: '100%', marginTop: 4, fontSize: 'var(--text-xs)' }}
                     />
                   )}
+                  {!r.splits?.length && <ImportReviewAllocation amount={Math.abs(r.amount)} categoryId={r.categoryId} value={r.allocations} organization={organization} konto={file.konto ?? 'haupt'} disabled={!r.selected || !inYear} onChange={allocations => setRow(i, { allocations })} onOpenReview={() => startReview(i, true)} />}
+                  <button type="button" className="btn btn--ghost btn--sm import-review-row-button" disabled={!inYear || importing} onClick={() => startReview(i)}>Einzeln zuordnen</button>
                 </td>
                 <td>
                   <select
                     value={receiptStatus(r, 'offen')}
                     disabled={!r.selected}
-                    onChange={(e) => setRow(i, withReceiptStatus(r, e.target.value as ReceiptStatus))}
+                    onChange={(e) => setRow(i, withReceiptStatus({}, e.target.value as ReceiptStatus))}
                     aria-label="Belegstatus"
                     style={{ maxWidth: 178 }}
                   >
@@ -459,7 +481,7 @@ export function ImportDraftCard() {
                             aria-label="Split-Verwendungszweck"
                             aria-invalid={r.selected && !split.description.trim()}
                           />
-                          <select
+                          <div className="import-split-category"><select
                             value={split.categoryId}
                             onChange={(e) => setSplit(i, split.id, { categoryId: e.target.value })}
                             disabled={!r.selected}
@@ -474,7 +496,7 @@ export function ImportDraftCard() {
                                 {c.name}
                               </option>
                             ))}
-                          </select>
+                          </select><ImportReviewAllocation amount={split.amount} categoryId={split.categoryId} value={split.allocations} organization={organization} konto={file.konto ?? 'haupt'} disabled={!r.selected || !inYear} label="Split-Tätigkeitsbereich" onChange={allocations => setSplit(i, split.id, { allocations })} onOpenReview={() => startReview(i, true)} /></div>
                           {receiptStatus(r, 'offen') === 'vorhanden' && importReceiptLabel(file, split) && (
                             <strong style={{ whiteSpace: 'nowrap' }}>{importReceiptLabel(file, split)}</strong>
                           )}
@@ -533,7 +555,7 @@ export function ImportDraftCard() {
             )
           })}
         </tbody>
-      </table>
+      </table></div>
       <div className="toolbar" style={{ marginTop: 'var(--space-4)' }}>
         {invalidRows > 0 && (
           <p className="hint" style={{ margin: 0 }}>
@@ -541,11 +563,13 @@ export function ImportDraftCard() {
           </p>
         )}
         <div className="toolbar__spacer" />
-        <button className="btn btn--primary" disabled={readyRows.length === 0} onClick={doImport}>
-          {readyBookings} Buchungen übernehmen
+        <button className="btn btn--primary" disabled={readyRows.length === 0 || importing} onClick={() => void doImport()}>
+          {importing ? 'Übernimmt …' : `${readyBookings} Buchungen übernehmen`}
         </button>
       </div>
+      </fieldset>
       {toast && <div className="toast">{toast}</div>}
+      {review && <ImportReviewDialog session={review} onClose={() => setReview(null)} />}
     </section>
   )
 }

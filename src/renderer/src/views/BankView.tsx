@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useStore } from '../store'
-import { buildDraft } from '@shared/importDraft'
-import { newImportRows } from '@shared/importRows'
+import { mergeImportResponse } from '../importResponse'
 import { makeId } from '@shared/defaults'
 import { legacyRowHashes, rowHash } from '@shared/csv'
 import { formatDate } from '@shared/money'
 import type { StatementRow } from '@shared/csv'
 import type { BankAccountChoice, BankFetchResult, BankFetchedRow } from '@shared/bank'
-import type { BankAccountConfig } from '@shared/types'
+import type { BankAccountConfig, KontoId } from '@shared/types'
 
 /** FinTS-Zugangsadressen der großen Rechenzentren als Vorschlag. */
 const FINTS_URL_SUGGESTIONS = [
@@ -25,10 +24,17 @@ type FlowModal =
 
 interface Flow {
   account: BankAccountConfig
+  request: FetchRequest
   /** PIN nur im Arbeitsspeicher für die Dauer des Abrufs */
   pin?: string
   savePin: boolean
   modal: FlowModal | null
+}
+
+interface FetchRequest {
+  id: string
+  target: { konto: KontoId; year: number }
+  sessionId?: string
 }
 
 function isoDaysAgo(days: number): string {
@@ -45,7 +51,7 @@ function isoDaysAgo(days: number): string {
  */
 /** Eingebetteter Online-Banking-Weg innerhalb von „Umsätze importieren“. */
 export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: string) => void }) {
-  const { file, update, settings, updateSettings } = useStore()
+  const { file, updateAccount, settings, updateSettings } = useStore()
   const accounts = settings.bankAccounts ?? []
   const [editing, setEditing] = useState<BankAccountConfig | null>(null)
   const [isNew, setIsNew] = useState(false)
@@ -54,6 +60,25 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
   const [days, setDays] = useState(30)
   const [error, setError] = useState('')
   const continuing = useRef(false)
+  const mounted = useRef(true)
+  const activeRequest = useRef<FetchRequest | null>(null)
+  const cancelledRequests = useRef<Set<string>>(new Set())
+  const currentScope = useRef('')
+  const latestAccounts = useRef(accounts)
+  latestAccounts.current = accounts
+  currentScope.current = file ? `${file.konto ?? 'haupt'}:${file.year}` : ''
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      const request = activeRequest.current
+      if (request?.sessionId) {
+        cancelledRequests.current = new Set([...cancelledRequests.current, request.id])
+        void cancelSession(request.sessionId)
+      }
+    }
+  }, [])
 
   if (!file) return null
 
@@ -63,38 +88,58 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
   const account = accounts.find((a) => (a.konto ?? 'haupt') === bankKonto) ?? null
   const kontoLabel = bankKonto === 'haupt' ? 'Hauptkonto' : file.kontoName || 'dieses Konto'
 
-  function endFlow() {
-    setFlow(null)
-    setBusyId(null)
+  function isCurrentView(request: FetchRequest): boolean {
+    return mounted.current && currentScope.current === `${request.target.konto}:${request.target.year}`
   }
 
-  /** Vor dem ersten Abruf-Schritt: offenen Entwurf nicht ungefragt ersetzen. */
-  function confirmDraftReplace(): boolean {
-    if (newImportRows(file!).length === 0) return true
-    return confirm('Es gibt bereits einen offenen Import-Entwurf. Der Abruf ersetzt ihn – fortfahren?')
+  function endFlow(request: FetchRequest) {
+    if (activeRequest.current?.id !== request.id) return
+    activeRequest.current = null
+    if (mounted.current) { setFlow(null); setBusyId(null) }
   }
 
-  async function beginFetch(account: BankAccountConfig, pin?: string, savePin = false) {
-    setError('')
-    setBusyId(account.id)
-    setFlow({ account, pin, savePin, modal: null })
-    const result = (await api.bankFetch(account, {
-      pin,
-      savePin,
-      from: isoDaysAgo(days),
-    })) as BankFetchResult
-    handleResult(account, result, pin, savePin)
+  async function cancelSession(sessionId: string) {
+    try { await api.bankCancel(sessionId) }
+    catch { if (mounted.current) setError('Die Bankfreigabe konnte nicht abgebrochen werden. Bitte den Abruf in der Banking-App prüfen.') }
   }
 
-  function handleResult(account: BankAccountConfig, result: BankFetchResult, pin?: string, savePin = false) {
+  async function beginFetch(account: BankAccountConfig, pin?: string, savePin = false, previousRequest?: FetchRequest) {
+    const request = previousRequest ?? { id: makeId(), target: { konto: file!.konto ?? 'haupt', year: file!.year } }
+    if (cancelledRequests.current.has(request.id)) return
+    activeRequest.current = request
+    if (isCurrentView(request)) {
+      setError(''); setBusyId(account.id)
+      setFlow({ account, request, pin, savePin, modal: null })
+    }
+    try {
+      const result = (await api.bankFetch(account, { pin, savePin, from: isoDaysAgo(days) })) as BankFetchResult
+      await handleResult(account, request, result, pin, savePin)
+    } catch (failure) {
+      endFlow(request)
+      if (isCurrentView(request)) setError(failure instanceof Error ? failure.message : 'Der Bankabruf ist fehlgeschlagen.')
+    }
+  }
+
+  async function handleResult(account: BankAccountConfig, request: FetchRequest, result: BankFetchResult, pin?: string, savePin = false) {
+    if (cancelledRequests.current.has(request.id)) {
+      if (result.status === 'tan' || result.status === 'tanPending') await cancelSession(result.sessionId)
+      return
+    }
+    if (result.status !== 'ok' && !isCurrentView(request)) {
+      if (result.status === 'tan' || result.status === 'tanPending') await cancelSession(result.sessionId)
+      endFlow(request)
+      return
+    }
     switch (result.status) {
       case 'needPin':
-        setFlow({ account, pin, savePin, modal: { kind: 'pin' } })
+        setFlow({ account, request, pin, savePin, modal: { kind: 'pin' } })
         return
       case 'tan':
       case 'tanPending':
+        activeRequest.current = { ...request, sessionId: result.sessionId }
         setFlow({
           account,
+          request: activeRequest.current,
           pin,
           savePin,
           modal: { kind: 'tan', sessionId: result.sessionId, challenge: result.challenge, decoupled: result.decoupled },
@@ -102,17 +147,17 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
         return
       case 'chooseAccount':
         if (result.accounts.length === 1) {
-          void chooseAccount(account, result.accounts[0], pin, savePin)
+          await chooseAccount(account, request, result.accounts[0], pin, savePin)
         } else {
-          setFlow({ account, pin, savePin, modal: { kind: 'chooseAccount', accounts: result.accounts } })
+          setFlow({ account, request, pin, savePin, modal: { kind: 'chooseAccount', accounts: result.accounts } })
         }
         return
       case 'ok':
-        endFlow()
-        applyRows(account, result.rows)
+        await applyRows(account, request, result.rows)
+        endFlow(request)
         return
       case 'error':
-        endFlow()
+        endFlow(request)
         setError(result.message)
         return
     }
@@ -123,7 +168,10 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
     continuing.current = true
     try {
       const result = (await api.bankContinue(sessionId, tan)) as BankFetchResult
-      handleResult(flow.account, result, flow.pin, flow.savePin)
+      await handleResult(flow.account, flow.request, result, flow.pin, flow.savePin)
+    } catch (failure) {
+      endFlow(flow.request)
+      if (isCurrentView(flow.request)) setError(failure instanceof Error ? failure.message : 'Die Bankfreigabe ist fehlgeschlagen.')
     } finally {
       continuing.current = false
     }
@@ -131,20 +179,24 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
 
   async function chooseAccount(
     account: BankAccountConfig,
+    request: FetchRequest,
     choice: BankAccountChoice,
     pin?: string,
     savePin = false,
   ) {
-    const withNumber = { ...account, accountNumber: choice.accountNumber, iban: choice.iban }
+    if (!isCurrentView(request) || cancelledRequests.current.has(request.id)) return
+    const current = latestAccounts.current.find((entry) => entry.id === account.id && (entry.konto ?? 'haupt') === request.target.konto)
+    if (!current) { endFlow(request); return }
+    const withNumber = { ...current, accountNumber: choice.accountNumber, iban: choice.iban }
     await updateSettings({
-      bankAccounts: accounts.map((a) => (a.id === account.id ? withNumber : a)),
+      bankAccounts: latestAccounts.current.map((a) => (a.id === account.id ? withNumber : a)),
     })
-    await beginFetch(withNumber, pin, savePin)
+    if (isCurrentView(request) && !cancelledRequests.current.has(request.id)) await beginFetch(withNumber, pin, savePin, request)
   }
 
-  function applyRows(account: BankAccountConfig, rows: BankFetchedRow[]) {
+  async function applyRows(account: BankAccountConfig, request: FetchRequest, rows: BankFetchedRow[]) {
     if (rows.length === 0) {
-      onFetchResult('Die Bank hat für den gewählten Zeitraum keine Umsätze gemeldet.')
+      if (isCurrentView(request)) onFetchResult('Die Bank hat für den gewählten Zeitraum keine Umsätze gemeldet.')
       return
     }
     const statementRows: StatementRow[] = rows.map((r) => ({
@@ -153,9 +205,14 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
       legacyHashes: legacyRowHashes(r.date, r.amount, r.description),
     }))
     const sourceName = `${account.label} · Abruf vom ${formatDate(new Date().toISOString().slice(0, 10))}`
-    const { mutate, messages } = buildDraft(file!, statementRows, sourceName, 0)
-    const freshCount = newImportRows(mutate(file!)).length
-    update(mutate)
+    const imported: { result?: ReturnType<typeof mergeImportResponse> } = {}
+    await updateAccount(request.target.konto, request.target.year, (current) => {
+      if (cancelledRequests.current.has(request.id)) return current
+      imported.result = mergeImportResponse(current, statementRows, sourceName, 0)
+      return imported.result.file
+    }, account.id)
+    if (!imported.result) return
+    const { freshCount, messages } = imported.result
     const extra = messages.length > 0 ? ` ${messages.join(', ')}.` : ''
     onFetchResult(freshCount > 0
       ? `${freshCount} neue Umsätze abgerufen – unten zuweisen und übernehmen.${extra}`
@@ -163,8 +220,11 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
   }
 
   async function cancelFlow() {
-    if (flow?.modal?.kind === 'tan') void api.bankCancel(flow.modal.sessionId)
-    endFlow()
+    const request = activeRequest.current
+    if (!request) return
+    cancelledRequests.current = new Set([...cancelledRequests.current, request.id])
+    if (request.sessionId) await cancelSession(request.sessionId)
+    endFlow(request)
   }
 
   async function removeAccount(account: BankAccountConfig) {
@@ -249,7 +309,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
                     className="btn btn--primary btn--sm"
                     disabled={busyId !== null}
                     onClick={() => {
-                      if (confirmDraftReplace()) void beginFetch(account)
+                      void beginFetch(account)
                     }}
                   >
                     {busyId === account.id ? 'Abruf läuft …' : 'Umsätze abrufen'}
@@ -283,16 +343,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
           </p>
         )}
 
-        <p className="hint" style={{ marginTop: 'var(--space-3)' }}>
-          FinTS-Produktkennung (optional, kostenlose Registrierung bei der Deutschen Kreditwirtschaft):{' '}
-          <input
-            defaultValue={settings.fintsProductId ?? ''}
-            placeholder="Standard-Kennung verwenden"
-            onBlur={(e) => void updateSettings({ fintsProductId: e.target.value.trim() || null })}
-            aria-label="FinTS-Produktkennung"
-            style={{ minWidth: 220 }}
-          />
-        </p>
+
       </section>
 
       {editing && (
@@ -307,7 +358,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
       {flow?.modal?.kind === 'pin' && (
         <PinModal
           account={flow.account}
-          onSubmit={(pin, savePin) => void beginFetch(flow.account, pin, savePin)}
+          onSubmit={(pin, savePin) => void beginFetch(flow.account, pin, savePin, flow.request)}
           onCancel={() => void cancelFlow()}
         />
       )}
@@ -323,7 +374,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
       {flow?.modal?.kind === 'chooseAccount' && (
         <ChooseAccountModal
           choices={flow.modal.accounts}
-          onChoose={(choice) => void chooseAccount(flow.account, choice, flow.pin, flow.savePin)}
+          onChoose={(choice) => void chooseAccount(flow.account, flow.request, choice, flow.pin, flow.savePin)}
           onCancel={() => void cancelFlow()}
         />
       )}

@@ -1,9 +1,11 @@
 import { BrowserWindow, app } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
-import { createWriteStream, existsSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { open } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareVersions, pickAsset } from '../shared/version'
+import { isTrustedUpdateAsset } from '../shared/updateSource'
 
 /**
  * Update über GitHub-Releases: Check vergleicht das neueste Release mit der
@@ -36,7 +38,8 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
   }
   const latest = String(rel.tag_name ?? '').replace(/^v/i, '')
   const current = app.getVersion()
-  const asset = pickAsset(rel.assets ?? [], process.platform, process.arch)
+  const assets = Array.isArray(rel.assets) ? rel.assets.filter((asset) => asset && isTrustedUpdateAsset(asset.name, asset.browser_download_url)) : []
+  const asset = pickAsset(assets, process.platform, process.arch)
   return {
     current,
     latest,
@@ -52,7 +55,7 @@ async function download(win: BrowserWindow | null, url: string, target: string):
   const res = await fetch(url, { headers: { 'User-Agent': 'Buchfuehrung-Updater' } })
   if (!res.ok || !res.body) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`)
   const total = Number(res.headers.get('content-length') ?? 0)
-  const out = createWriteStream(target)
+  const out = await open(target, 'wx', 0o600)
   const reader = res.body.getReader()
   let received = 0
   try {
@@ -60,11 +63,12 @@ async function download(win: BrowserWindow | null, url: string, target: string):
       const { done, value } = await reader.read()
       if (done) break
       received += value.byteLength
-      if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()))
-      win?.webContents.send('update:progress', { received, total })
+      await out.writeFile(value)
+      if (win && !win.isDestroyed()) win.webContents.send('update:progress', { received, total })
     }
   } finally {
-    await new Promise<void>((r) => out.end(() => r()))
+    await out.close()
+    reader.releaseLock()
   }
   if (total > 0 && received < total) throw new Error('Download unvollständig.')
 }
@@ -83,7 +87,7 @@ function installFromDmg(dmgPath: string): void {
     .pop()
   if (!mount) throw new Error('Mount-Punkt der DMG nicht gefunden.')
   try {
-    const appName = readdirSync(mount).find((f) => f.endsWith('.app'))
+    const appName = readdirSync(mount).find((f) => f === 'Buchfuehrung.app')
     if (!appName) throw new Error('Kein App-Bundle in der DMG gefunden.')
     const source = join(mount, appName)
     const target = join('/Applications', appName)
@@ -117,7 +121,13 @@ export async function downloadAndInstall(
   info: UpdateInfo,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!info.assetUrl || !info.assetName) return { ok: false, error: 'Kein Installer gefunden.' }
-  const target = join(tmpdir(), info.assetName)
+  if (!isTrustedUpdateAsset(info.assetName, info.assetUrl)
+    || !pickAsset([{ name: info.assetName, browser_download_url: info.assetUrl }], process.platform, process.arch)) {
+    return { ok: false, error: 'Der Installer stammt nicht aus einer gültigen offiziellen Veröffentlichung.' }
+  }
+  const directory = mkdtempSync(join(tmpdir(), 'buchfuehrung-update-'))
+  const target = join(directory, info.assetName)
+  let installerStarted = false
   try {
     await download(win, info.assetUrl, target)
     if (process.platform === 'darwin') {
@@ -126,7 +136,12 @@ export async function downloadAndInstall(
       app.exit(0)
     } else {
       // Windows: NSIS-Setup übernimmt Austausch und Neustart
-      spawn(target, [], { detached: true, stdio: 'ignore' }).unref()
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(target, [], { detached: true, stdio: 'ignore' })
+        child.once('error', reject)
+        child.once('spawn', () => { child.unref(); resolve() })
+      })
+      installerStarted = true
       app.quit()
     }
     return { ok: true }
@@ -134,6 +149,6 @@ export async function downloadAndInstall(
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   } finally {
     // Installer-Datei nach Windows-Start nicht löschen – das Setup läuft daraus
-    if (process.platform === 'darwin') rmSync(target, { force: true })
+    if (process.platform === 'darwin' || !installerStarted) rmSync(directory, { recursive: true, force: true })
   }
 }

@@ -1,11 +1,11 @@
 import { BrowserWindow, Menu, app, shell } from 'electron'
 import { join } from 'node:path'
 import { applyLogo, currentLogo, registerIpc } from './ipc'
+import { applyExperimentIdentity, experimentAppName } from './experiment'
 
 // Datenordner explizit festnageln: bleibt „kassenwart“, egal wie die App
 // nach außen heißt – sonst verlören Bestandsnutzer beim Umbenennen ihre Daten.
-app.setPath('userData', join(app.getPath('appData'), 'kassenwart'))
-app.setName('Buchführung')
+applyExperimentIdentity()
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -13,7 +13,7 @@ function createWindow(): void {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: 'Buchführung',
+    title: experimentAppName,
     backgroundColor: '#f5f6f8',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
@@ -36,11 +36,24 @@ function createWindow(): void {
   }
 }
 
+const ownsDataDirectory = app.requestSingleInstanceLock()
+if (!ownsDataDirectory) app.quit()
+else {
+app.on('second-instance', () => {
+  const window = BrowserWindow.getAllWindows()[0]
+  if (!window) return
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+})
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
     { label: 'Bearbeiten', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: 'Ansicht', submenu: [
+      { label: 'Gemeinsame Einstellungen …', accelerator: 'CmdOrCtrl+,', click: () => BrowserWindow.getFocusedWindow()?.webContents.send('view:settings') },
+      { label: 'Berichte', click: () => BrowserWindow.getFocusedWindow()?.webContents.send('view:reports') },
       { id: 'toggle-sidebar', label: 'Seitenleiste ein-/ausblenden', accelerator: 'CmdOrCtrl+Shift+L', click: () => BrowserWindow.getFocusedWindow()?.webContents.send('view:sidebar') },
       { id: 'search-bookings', label: 'Buchungen suchen', accelerator: 'CmdOrCtrl+F', click: () => BrowserWindow.getFocusedWindow()?.webContents.send('view:search') },
       { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
@@ -49,11 +62,13 @@ app.whenReady().then(() => {
   ]))
   registerIpc()
   createWindow()
-  applyLogo(currentLogo())
+  try { applyLogo(currentLogo()) }
+  catch { console.warn('Einstellungen konnten nicht geladen werden. Die App zeigt den Fehler beim Öffnen an.') }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

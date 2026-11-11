@@ -1,5 +1,6 @@
 const { app } = require('electron')
 const { basename, resolve } = require('node:path')
+globalThis.__readinessFs = require('node:fs')
 
 const root = process.env.BUCHFUEHRUNG_TEST_ROOT
 if (!root || !basename(root).startsWith('buchfuehrung-e2e-')) {

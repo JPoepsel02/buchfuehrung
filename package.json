@@ -1,26 +1,33 @@
 {
   "name": "kassenwart",
-  "version": "1.16.0",
-  "description": "Buchführung – Kassenbericht-App für Vereine: Buchungen, Auswertung, Kontoauszug-Import und Prüfbericht",
+  "version": "1.17.0",
+  "description": "Buchf\u00fchrung und Vereinszentrale",
   "main": "out/main/index.js",
-  "author": "Buchführung contributors",
+  "author": "Buchf\u00fchrung contributors",
   "license": "MIT",
   "private": true,
+  "overrides": {
+    "image-size": "2.0.4"
+  },
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "node scripts/seed-local.cjs && electron-vite dev",
+    "build": "node scripts/build-production.cjs --local",
     "preview:web": "vite --config vite.web.config.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "npm run build && playwright test",
+    "test:e2e": "npm run build && npm run build:production && playwright test",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win",
-    "dist": "electron-vite build && electron-builder"
+    "dist:mac": "npm run build:production && electron-builder --mac",
+    "dist:win": "npm run build:production && electron-builder --win",
+    "dist": "npm run build:production && electron-builder",
+    "dev:web": "vite --config vite.web.config.ts --host 127.0.0.1 --port 5190 --strictPort",
+    "build:production": "node scripts/build-production.cjs"
   },
   "dependencies": {
+    "image-size": "2.0.4",
     "lib-fints": "^1.4.8",
+    "pptxgenjs": "4.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

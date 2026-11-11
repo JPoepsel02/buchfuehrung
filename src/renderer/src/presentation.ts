@@ -1,13 +1,8 @@
-import { byCategory, yearTotals } from '@shared/ledger'
-import { MONTH_NAMES, formatEur, monthOf } from '@shared/money'
-import type { Category, YearFile } from '@shared/types'
-
-/**
- * Jahres-Präsentation für die Generalversammlung (A4 quer, eine Folie pro
- * Seite) – erzählt das Jahr als Reise: Startsaldo, dann alle Veranstaltungen
- * chronologisch als Stationen an einer durchlaufenden Zeitlinie, zum Schluss
- * Jahressaldo und Kassenbestand als Großzahlen (wie die Vereins-Vorlage).
- */
+import { MONTH_NAMES, formatDate, formatEur } from '@shared/money'
+import { isSafeLogoDataUrl } from '@shared/logo'
+import type { YearFile } from '@shared/types'
+import { buildPresentationData } from './presentationData'
+export { praesentationsModus } from './presentationData'
 
 const PINE = '#13271b'
 const PINE_DEEP = '#0b1b11'
@@ -19,65 +14,14 @@ const RED = '#b14a32'
 const MUTED = '#98a094'
 const LINE = '#dcd7c8'
 
-/** Eine Station der Jahres-Reise: Veranstaltung mit Monat und Jahres-Saldo. */
-interface Station {
-  month: number
-  name: string
-  saldo: number
-  /** Datum der ersten Buchung – Tiebreaker für die Reihenfolge */
-  firstDate: string
-}
-
-/**
- * Sammel-Folie oder Jahresverlauf? Ohne explizite Einstellung landen
- * typische Sammelposten (Sonstiges, Beiträge, Zuschüsse, Spenden) auf
- * der eigenen Folie nach den Monaten – wie in der Vereins-Vorlage.
- */
-export function praesentationsModus(c: Category): 'monat' | 'sammel' | 'aus' {
-  if (c.praesentation) return c.praesentation
-  // Default: Jahresverlauf; typische Sammelposten automatisch auf die Sammel-Folie.
-  return /sonstig|beitr[aä]g|zusch[uü]ss|spende/i.test(c.name) ? 'sammel' : 'monat'
-}
-
 export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | null): string {
-  const totals = yearTotals(file)
-  const groups = byCategory(file)
-
-  // Jede Kategorie genau einmal: Jahres-Saldo im Monat der ersten Buchung
-  // (oder im manuell eingestellten Monat).
-  const stations: Station[] = groups
-    .filter((g) => praesentationsModus(g.category) === 'monat')
-    .map((g) => ({
-      month: g.category.praesentationMonat ?? monthOf(g.rows[0].date),
-      name: g.category.name,
-      saldo: g.saldo,
-      firstDate: g.rows[0].date,
-    }))
-    .sort((a, b) => a.month - b.month || a.firstDate.localeCompare(b.firstDate))
-
-  // Sammelposten für die Extra-Folie (in Kategorien-Reihenfolge)
-  const sammel = groups
-    .filter((g) => praesentationsModus(g.category) === 'sammel')
-    .map((g) => ({ name: g.category.name, saldo: g.saldo }))
-
-  // Stationen gleichmäßig auf Folien verteilen (max. 4 je Folie) –
-  // verhindert eine fast leere letzte Folie mit nur einer Station.
-  const chunks: Station[][] = []
-  const slideCount = Math.max(1, Math.ceil(stations.length / 4))
-  const base = Math.floor(stations.length / slideCount)
-  let rest = stations.length % slideCount
-  for (let i = 0; i < stations.length; ) {
-    const size = base + (rest > 0 ? 1 : 0)
-    rest -= 1
-    chunks.push(stations.slice(i, i + size))
-    i += size
-  }
-
-  const logo = logoDataUrl ? `<img class="logo" src="${logoDataUrl}" alt="">` : ''
-  const heroLogo = logoDataUrl ? `<img class="hero-logo" src="${logoDataUrl}" alt="">` : ''
+  const { totals, timeline: chunks, summaries, range, label } = buildPresentationData(file)
+  const safeLogo = isSafeLogoDataUrl(logoDataUrl) ? logoDataUrl : null
+  const logo = safeLogo ? `<img class="logo" src="${safeLogo}" alt="">` : ''
+  const heroLogo = safeLogo ? `<img class="hero-logo" src="${safeLogo}" alt="">` : ''
   // Auf den Großzahl-Folien: kleines Logo statt Zierstrich (wenn vorhanden)
-  const centerMark = logoDataUrl
-    ? `<img class="center-logo" src="${logoDataUrl}" alt="">`
+  const centerMark = safeLogo
+    ? `<img class="center-logo" src="${safeLogo}" alt="">`
     : '<div class="rule"></div>'
 
   const flowSlides = chunks
@@ -95,7 +39,7 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
         <div class="kicker accent">Der Jahresverlauf${chunks.length > 1 ? ` · ${idx + 1}/${chunks.length}` : ''}</div>
         <div class="headline">${monthRange}</div>
       </div>
-      ${logo || `<span class="kicker soft">Kassenbericht ${file.year}</span>`}
+      ${logo || `<span class="kicker soft">Kassenbericht ${esc(label)}</span>`}
     </header>
     <div class="flow" style="grid-template-columns: repeat(${chunk.length}, 1fr)">
       <div class="flow-line"></div>
@@ -117,7 +61,7 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
         })
         .join('')}
     </div>
-    <footer>${esc(file.clubName || '')} · Kassenbericht ${file.year}</footer>
+    <footer>${esc(file.clubName || '')} · Kassenbericht ${esc(label)}</footer>
   </section>`
     })
     .join('')
@@ -126,18 +70,21 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<title>Kassenbericht ${file.year} – Präsentation</title>
+<title>Kassenbericht ${esc(label)} – Präsentation</title>
 <style>
-  @page { size: A4 landscape; margin: 0; }
+  @page { size: 13.333333in 7.5in; margin: 0; }
   * { box-sizing: border-box; margin: 0; }
-  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: ${INK}; }
+  html { background: #e9e9e7; }
+  body { width: 1280px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: ${INK}; }
   .slide {
-    width: 296mm; height: 209mm;
+    width: 1280px; height: 720px;
     page-break-after: always;
     padding: 16mm 20mm 12mm;
     display: flex; flex-direction: column;
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; isolation: isolate;
   }
+  .slide:last-child { page-break-after: auto; }
+  @media screen { .slide + .slide { margin-top: 16px; } }
   .slide.dark {
     background: radial-gradient(130% 150% at 12% -10%, #1e3d29 0%, ${PINE} 48%, ${PINE_DEEP} 100%);
     color: ${CREAM};
@@ -155,11 +102,11 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
            opacity: 0.4; z-index: 1; }
   .slide.dark footer { opacity: 0.5; }
 
-  /* Riesige Jahreszahl als Hintergrund */
+  /* Große, am Folienrand angeschnittene Jahreszahl. */
   .giant-year {
     position: absolute; right: -10mm; bottom: -30mm;
-    font-size: 150mm; font-weight: 700; letter-spacing: -0.05em;
-    line-height: 1; color: rgb(255 255 255 / 0.045); user-select: none;
+    font-size: 150mm; font-weight: 700; letter-spacing: -0.05em; line-height: 1;
+    color: rgb(255 255 255 / 0.045); user-select: none; pointer-events: none; z-index: 0;
   }
   .slide.light .giant-year { color: rgb(25 45 30 / 0.045); }
 
@@ -173,7 +120,7 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
   .subtitle { font-size: 15pt; margin-top: 7mm; opacity: 0.72; }
 
   /* Großzahl-Folien */
-  .big-center { margin: auto; text-align: center; z-index: 1; max-width: 240mm; }
+  .big-center { margin: auto; text-align: center; z-index: 1; max-width: 280mm; }
   .big-label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13pt;
                letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.5; margin-bottom: 10mm; }
   .slide.dark .big-label { color: ${GREEN_SOFT}; opacity: 1; }
@@ -255,38 +202,38 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
 </head>
 <body>
   <section class="slide dark">
-    <div class="giant-year">${file.year}</div>
+    <div class="giant-year" aria-hidden="true">${file.year}</div>
     <div class="hero">
       ${heroLogo}
       <div class="eyebrow">${esc(file.clubName || 'Kassenbericht')}</div>
-      <h1>Kassenbericht<br><span class="year-accent">${file.year}</span></h1>
+      <h1>Kassenbericht<br><span class="year-accent">${esc(label)}</span></h1>
       <div class="subtitle">Generalversammlung</div>
     </div>
   </section>
 
   <section class="slide light">
-    <div class="giant-year">${file.year}</div>
+    <div class="giant-year" aria-hidden="true">${file.year}</div>
     <div class="big-center">
       ${centerMark}
-      <div class="big-label">Kontostand zu Beginn des Jahres ${file.year}</div>
+      <div class="big-label">Kontostand zu Beginn des Geschäftsjahres ${esc(label)}</div>
       <div class="big-number">${formatEur(file.openingBalance)}</div>
-      <div class="big-sub">1. Januar ${file.year}</div>
+      <div class="big-sub">${formatDate(range.start)}</div>
     </div>
   </section>
 
   ${flowSlides}
 
   ${
-    sammel.length > 0
-      ? `
+    summaries.length > 0
+      ? summaries.map((sammel) => `
   <section class="slide light">
-    <div class="giant-year">${file.year}</div>
+    <div class="giant-year" aria-hidden="true">${file.year}</div>
     <header>
       <div>
         <div class="kicker accent">Weitere Posten</div>
         <div class="headline">Beiträge, Zuschüsse &amp; Co.</div>
       </div>
-      ${logo || `<span class="kicker soft">Kassenbericht ${file.year}</span>`}
+      ${logo || `<span class="kicker soft">Kassenbericht ${esc(label)}</span>`}
     </header>
     <div class="sammel-grid cols-${Math.min(sammel.length, 2)}">
       ${sammel
@@ -299,27 +246,27 @@ export function buildPresentationHtml(file: YearFile, logoDataUrl?: string | nul
         )
         .join('')}
     </div>
-    <footer>${esc(file.clubName || '')} · Kassenbericht ${file.year}</footer>
+    <footer>${esc(file.clubName || '')} · Kassenbericht ${esc(label)}</footer>
   </section>`
-      : ''
+      ).join('') : ''
   }
 
   <section class="slide light">
-    <div class="giant-year">${file.year}</div>
+    <div class="giant-year" aria-hidden="true">${file.year}</div>
     <div class="big-center">
       ${centerMark}
-      <div class="big-label">Saldo für das Geschäftsjahr ${file.year}</div>
+      <div class="big-label">Saldo für das Geschäftsjahr ${esc(label)}</div>
       <div class="big-number ${totals.saldo < 0 ? 'neg' : 'pos'}">${totals.saldo > 0 ? '+ ' : totals.saldo < 0 ? '− ' : ''}${formatEur(Math.abs(totals.saldo))}</div>
     </div>
   </section>
 
   <section class="slide dark">
-    <div class="giant-year">${file.year}</div>
+    <div class="giant-year" aria-hidden="true">${file.year}</div>
     <div class="big-center">
       ${centerMark}
       <div class="big-label">Kassenbestand</div>
       <div class="big-number">${formatEur(totals.closingBalance)}</div>
-      <div class="big-sub">31. Dezember ${file.year}</div>
+      <div class="big-sub">${formatDate(range.end)}</div>
     </div>
     <footer style="text-align:center">${esc(file.clubName || '')}</footer>
   </section>

@@ -5,29 +5,39 @@ import { useStore } from '../store'
 import { MONTH_NAMES, parseAmountToCents } from '@shared/money'
 
 /** Erstes Kassenjahr eines weiteren Kontos anlegen (z. B. Karnevalskonto, Nov–Okt). */
-export function KontoSetupView() {
-  const { createKonto, cancelKontoSetup, settings } = useStore()
+export function KontoSetupView({ onCreated }: { onCreated: () => void }) {
+  const { createKonto, cancelKontoSetup, settings, error: persistenceError, clearError, flush } = useStore()
   const [name, setName] = useState('')
   const [startMonth, setStartMonth] = useState(1)
   const [year, setYear] = useState(String(new Date().getFullYear()))
   const [balance, setBalance] = useState('0,00')
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const label = startMonth === 1 ? year : `${year}/${Number(year) + 1}`
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (saving) return
     const y = Number(year)
     const cents = parseAmountToCents(balance)
     if (!name.trim()) return setError('Bitte einen Konto-Namen angeben.')
     if (!Number.isInteger(y) || y < 2000 || y > 2100) return setError('Bitte ein gültiges Jahr angeben.')
     if (cents === null) return setError('Der Anfangssaldo ist kein gültiger Betrag.')
-    await createKonto(name.trim(), startMonth, y, cents)
+    setSaving(true)
+    setError('')
+    try {
+      if (persistenceError) { clearError(); await flush() }
+      await createKonto(name.trim(), startMonth, y, cents)
+      onCreated()
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Das Konto konnte nicht angelegt werden.') }
+    finally { setSaving(false) }
   }
 
   return (
     <div className="setup">
       <form className="setup__card" onSubmit={submit}>
+        <fieldset className="import-draft-controls" disabled={saving}>
         <div style={{ marginBottom: 'var(--space-3)' }}>
           <LogoMark logo={settings.logoDataUrl} size={72} />
         </div>
@@ -57,22 +67,23 @@ export function KontoSetupView() {
           </div>
           <div className="field" style={{ gridColumn: 'span 6' }}>
             <label htmlFor="zk-balance">Anfangssaldo (€)</label>
-            <AmountField id="zk-balance" value={balance} onChange={setBalance} />
+            <AmountField id="zk-balance" value={balance} onChange={setBalance} allowNegative />
           </div>
           <div style={{ gridColumn: 'span 12', display: 'flex', gap: 'var(--space-2)' }}>
             <button className="btn btn--primary" type="submit">
-              Konto anlegen
+              {saving ? 'Speichert …' : 'Konto anlegen'}
             </button>
             <button className="btn" type="button" onClick={cancelKontoSetup}>
               Abbrechen
             </button>
             {error && (
-              <span className="hint" style={{ color: 'var(--color-expense)', alignSelf: 'center' }}>
+              <span role="alert" className="hint" style={{ color: 'var(--color-expense)', alignSelf: 'center' }}>
                 {error}
               </span>
             )}
           </div>
         </div>
+        </fieldset>
       </form>
     </div>
   )

@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { formatAmount, parseAmountToCents } from '@shared/money'
 
 /**
- * Betrags-Eingaben: lassen nur Ziffern, Komma und Punkt zu und normalisieren
- * beim Verlassen auf das deutsche Format ("1.234,56").
+ * Betragseingaben verwenden das deutsche Zahlenformat. Salden können ein Vorzeichen haben.
  */
 
 type BaseProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>
@@ -14,14 +13,15 @@ export function AmountField({
   onChange,
   invalid,
   onBlur,
+  allowNegative = false,
   ...rest
-}: BaseProps & { value: string; onChange: (value: string) => void; invalid?: boolean }) {
+}: BaseProps & { value: string; onChange: (value: string) => void; invalid?: boolean; allowNegative?: boolean }) {
   return (
     <input
       {...rest}
       value={value}
       inputMode="decimal"
-      onChange={(e) => onChange(e.target.value.replace(/[^0-9.,]/g, ''))}
+      onChange={(e) => onChange(e.target.value.replace(allowNegative ? /[^0-9.,-]/g : /[^0-9.,]/g, ''))}
       onBlur={(e) => {
         const cents = parseAmountToCents(e.target.value)
         if (cents !== null && e.target.value.trim()) onChange(formatAmount(cents))

@@ -1,3 +1,8 @@
+import type { SnapshotPayload } from '@shared/snapshot'
+import { validateSettings, validateSnapshot } from '@shared/snapshot'
+import { isLocalExperiment } from '@shared/runtime'
+import { commitBrowserSnapshot, recoverBrowserSnapshot } from './browserPersistence'
+
 /**
  * Zugriff auf den Main-Prozess. Läuft die App im Browser (Vorschau/Tests),
  * springt ein localStorage-Fallback ein, damit alle Ansichten bedienbar sind.
@@ -20,7 +25,7 @@ export interface CloudSyncStatus {
 }
 
 export interface Api {
-  onAppCommand(cb: (command: 'search' | 'sidebar') => void): () => void
+  onAppCommand(cb: (command: 'search' | 'sidebar' | 'settings' | 'reports') => void): () => void
   listKontos(): Promise<string[]>
   listYears(konto: string): Promise<number[]>
   loadYear(konto: string, year: number): Promise<unknown | null>
@@ -28,6 +33,7 @@ export interface Api {
   deleteYear(konto: string, year: number): Promise<void>
   loadSettings(): Promise<unknown>
   saveSettings(data: unknown): Promise<void>
+  commitSnapshot(payload: SnapshotPayload): Promise<void>
   openDataFolder(): Promise<void>
   openCloudFolder(): Promise<void>
   selectCloudFolder(): Promise<string | null>
@@ -35,11 +41,12 @@ export interface Api {
   syncCloudNow(): Promise<CloudSyncStatus>
   openCsv(): Promise<{ name: string; content: string } | null>
   saveTextFile(suggestedName: string, content: string): Promise<{ ok: boolean; path?: string }>
+  savePptx(suggestedName: string, content: Uint8Array): Promise<{ ok: boolean; path?: string }>
   openTextFile(): Promise<{ name: string; content: string } | null>
   exportPdf(
     html: string,
     suggestedName: string,
-    options?: { landscape?: boolean },
+    options?: { landscape?: boolean; slideFormat?: '16:9' },
   ): Promise<{ ok: boolean; path?: string }>
   getVersion(): Promise<string>
   checkForUpdate(): Promise<UpdateInfo>
@@ -59,18 +66,28 @@ declare global {
   }
 }
 
-/** Schlüssel je Buch: haupt "kassenwart:jahr:", zweit "kassenwart:k2:", weitere "kassenwart:k3:" … */
+/** Schlüssel je Buch: haupt "vereinszentrale-lokal:jahr:", zweit "vereinszentrale-lokal:k2:", weitere "vereinszentrale-lokal:k3:" … */
+const storagePrefix = isLocalExperiment ? 'vereinszentrale-lokal:' : 'kassenwart:'
 const keyFor = (konto: string) => {
-  if (konto === 'haupt' || !konto) return 'kassenwart:jahr:'
-  return `kassenwart:${konto === 'zweit' ? 'k2' : konto}:`
+  if (konto === 'haupt' || !konto) return `${storagePrefix}jahr:`
+  return `${storagePrefix}${konto === 'zweit' ? 'k2' : konto}:`
+}
+const browserStorage = () => { recoverBrowserSnapshot(localStorage, storagePrefix); return localStorage }
+const browserSettings = (): unknown => {
+  try {
+    const raw = browserStorage().getItem(`${storagePrefix}einstellungen`)
+    const data: unknown = raw === null ? {} : JSON.parse(raw)
+    if (validateSettings(data).length) throw new Error('Invalid settings')
+    return data
+  } catch { throw new Error('Die Einstellungen konnten nicht gelesen werden und wurden nicht überschrieben. Bitte eine Sicherung wiederherstellen.') }
 }
 
 const webFallback: Api = {
   onAppCommand() { return () => {} },
   async listKontos() {
     const found = new Set<string>(['haupt'])
-    for (const key of Object.keys(localStorage)) {
-      const m = /^kassenwart:(k\d+):\d{4}$/.exec(key)
+    for (const key of Object.keys(browserStorage())) {
+      const m = /^(k\d+):\d{4}$/.exec(key.startsWith(storagePrefix) ? key.slice(storagePrefix.length) : '')
       if (m) found.add(m[1] === 'k2' ? 'zweit' : m[1])
     }
     const num = (k: string) => (k === 'zweit' ? 2 : Number(k.slice(1)))
@@ -78,27 +95,44 @@ const webFallback: Api = {
   },
   async listYears(konto) {
     const prefix = keyFor(konto)
-    return Object.keys(localStorage)
+    return Object.keys(browserStorage())
       .filter((k) => k.startsWith(prefix))
+      .filter((k) => /^\d{4}$/.test(k.slice(prefix.length)))
       .map((k) => Number(k.slice(prefix.length)))
       .sort((a, b) => b - a)
   },
   async loadYear(konto, year) {
-    const raw = localStorage.getItem(keyFor(konto) + year)
+    const raw = browserStorage().getItem(keyFor(konto) + year)
     return raw ? JSON.parse(raw) : null
   },
   async saveYear(konto, year, data) {
-    localStorage.setItem(keyFor(konto) + year, JSON.stringify(data))
+    const errors = validateSnapshot({ years: [{ konto, year, data }] })
+    if (errors.length) throw new Error(errors[0])
+    browserSettings()
+    commitBrowserSnapshot(localStorage, storagePrefix, [[keyFor(konto) + year, JSON.stringify(data)]])
   },
   async deleteYear(konto, year) {
-    localStorage.removeItem(keyFor(konto) + year)
+    browserSettings()
+    browserStorage().removeItem(keyFor(konto) + year)
   },
   async loadSettings() {
-    const raw = localStorage.getItem('kassenwart:einstellungen')
-    return raw ? JSON.parse(raw) : {}
+    return browserSettings()
   },
   async saveSettings(data) {
-    localStorage.setItem('kassenwart:einstellungen', JSON.stringify(data))
+    const errors = validateSettings(data)
+    if (errors.length) throw new Error(errors[0])
+    browserSettings()
+    commitBrowserSnapshot(localStorage, storagePrefix, [[`${storagePrefix}einstellungen`, JSON.stringify(data)]])
+  },
+  async commitSnapshot(payload) {
+    const errors = validateSnapshot(payload)
+    if (errors.length) throw new Error(errors[0])
+    browserSettings()
+    const entries: Array<[string, string]> = [
+      ...(payload.settings === undefined ? [] : [[`${storagePrefix}einstellungen`, JSON.stringify(payload.settings)] as [string, string]]),
+      ...payload.years.map((entry): [string, string] => [keyFor(entry.konto) + entry.year, JSON.stringify(entry.data)]),
+    ]
+    commitBrowserSnapshot(localStorage, storagePrefix, entries)
   },
   async openDataFolder() {
     alert('Im Browser-Modus werden die Daten im localStorage gespeichert.')
@@ -140,6 +174,15 @@ const webFallback: Api = {
     a.download = suggestedName
     a.click()
     URL.revokeObjectURL(url)
+    return { ok: true }
+  },
+  async savePptx(suggestedName, content) {
+    const url = URL.createObjectURL(new Blob([new Uint8Array(content)], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = suggestedName
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
     return { ok: true }
   },
   openTextFile() {

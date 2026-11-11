@@ -1,5 +1,6 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, isElectron } from './api'
+import { isLocalExperiment } from '@shared/runtime'
 import { runStartupBankFetch } from './autoFetch'
 import { LogoMark } from './components/LogoMark'
 import { Icon } from './components/Icon'
@@ -13,6 +14,11 @@ import { VeranstaltungenView } from './views/VeranstaltungenView'
 import { ImportView } from './views/ImportView'
 import { PruefberichtView } from './views/PruefberichtView'
 import { EinstellungenView } from './views/EinstellungenView'
+import { OrganizationSettingsView } from './views/OrganizationSettingsView'
+import { OrganizationView } from './views/OrganizationView'
+import { ActivityAreasView } from './views/ActivityAreasView'
+import { ReportsView } from './views/ReportsView'
+import { PresentationView } from './views/PresentationView'
 import { fiscalLabel } from '@shared/fiscal'
 import { bookingMatches, computeBookings } from '@shared/ledger'
 import { newImportRows } from '@shared/importRows'
@@ -20,275 +26,202 @@ import { bookingScope } from './bookingFilters'
 import type { BookingFilterPreset, BookingFilterRequest } from './bookingFilters'
 import { formatDate, formatEur } from '@shared/money'
 import type { ComputedBooking, KontoId, YearFile } from '@shared/types'
+import type { BookingReference, OrganizationPeriod } from '@shared/organization'
 
-const VIEWS = [
+const ACCOUNT_VIEWS = [
   { id: 'uebersicht', label: 'Übersicht', icon: 'overview' },
   { id: 'buchungen', label: 'Buchungen', icon: 'book' },
   { id: 'chronologisch', label: 'Chronologisch', icon: 'list' },
   { id: 'veranstaltungen', label: 'Veranstaltungen', icon: 'calendar' },
   { id: 'import', label: 'Umsätze importieren', icon: 'import' },
-  { id: 'pruefbericht', label: 'Prüfbericht', icon: 'report' },
-  { id: 'einstellungen', label: 'Einstellungen', icon: 'settings' },
+  { id: 'einstellungen', label: 'Kontoeinstellungen', icon: 'settings' },
 ] as const
-
+const ORGANIZATION_VIEWS = [
+  { id: 'verein', label: 'Vereinsübersicht', icon: 'overview' },
+  { id: 'bereiche', label: 'Tätigkeitsbereiche', icon: 'list' },
+  { id: 'berichte', label: 'Berichte', icon: 'report' },
+  { id: 'gemeinsam', label: 'Einstellungen', icon: 'settings' },
+] as const
+const ACCOUNT_GROUPS = [
+  { label: 'Finanzen', items: ACCOUNT_VIEWS.filter((entry) => ['uebersicht', 'buchungen'].includes(entry.id)) },
+  { label: 'Auswertungen', items: ACCOUNT_VIEWS.filter((entry) => ['chronologisch', 'veranstaltungen'].includes(entry.id)) },
+  { label: 'Werkzeuge', items: ACCOUNT_VIEWS.filter((entry) => entry.id === 'import') },
+  { label: 'Verwaltung', items: ACCOUNT_VIEWS.filter((entry) => entry.id === 'einstellungen') },
+]
+const VIEWS = [...ORGANIZATION_VIEWS, ...ACCOUNT_VIEWS, { id: 'pruefbericht', label: 'Kassenprüfbericht', icon: 'report' }, { id: 'praesentation', label: 'Jahrespräsentation', icon: 'report' }] as const
 type ViewId = (typeof VIEWS)[number]['id']
-
 const isMac = navigator.userAgent.includes('Macintosh')
+const calendarYear = new Date().getFullYear()
 
 export function App() {
-  const {
-    loading,
-    file,
-    years,
-    selectYear,
-    selectKontoYear,
-    settings,
-    konto,
-    selectKonto,
-    kontos,
-    creatingKonto,
-    startKontoSetup,
-    update,
-  } = useStore()
-  const [view, setView] = useState<ViewId>('uebersicht')
-  const [updateHint, setUpdateHint] = useState('')
-  const [bankHint, setBankHint] = useState('')
+  const { loading, restoring, file, years, selectYear, selectKontoYear, settings, konto, kontos,
+    creatingKonto, startKontoSetup, allFiles, error, clearError, updateAccount } = useStore()
+  const [view, setView] = useState<ViewId>('verein')
+  const [period, setPeriod] = useState<OrganizationPeriod>({ from: `${calendarYear}-01-01`, to: `${calendarYear}-12-31` })
   const [searchOpen, setSearchOpen] = useState(false)
-  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [sidebarVisible, setSidebarVisible] = useState(() => window.innerWidth > 720)
   const [bookingToOpen, setBookingToOpen] = useState<{ scope: string; id: string } | null>(null)
   const [bookingPreset, setBookingPreset] = useState<BookingFilterRequest | null>(null)
+  const [navigationError, setNavigationError] = useState('')
+  const [bankHint, setBankHint] = useState<string | null>(null)
+  const bankFetchStarted = useRef(false)
+  const [sidebarKonto, setSidebarKonto] = useState<string>('haupt')
+  const [reportsVisit, setReportsVisit] = useState(0)
+  const lastAccountYear = useRef<Record<string, number>>({})
+  const lastAccountView = useRef<Record<string, ViewId>>({})
   const consumeBookingPreset = useCallback(() => setBookingPreset(null), [])
-  const autoFetchStarted = useRef(false)
+  const isOrganizationView = ['verein', 'bereiche', 'berichte', 'gemeinsam', 'pruefbericht', 'praesentation'].includes(view)
+
+  useEffect(() => {
+    if (loading || !file || !isElectron || isLocalExperiment || !settings.bankAccounts?.length) return
+    let active = true
+    void Promise.resolve().then(async () => {
+      if (!active || bankFetchStarted.current) return
+      bankFetchStarted.current = true
+      const hint = await runStartupBankFetch({ accounts: settings.bankAccounts!, applyToAccount: updateAccount,
+        onError: (label) => { if (active) setNavigationError(`Bankabruf für ${label} fehlgeschlagen. Unter „Umsätze importieren“ erneut abrufen.`) },
+      })
+      if (active) setBankHint(hint)
+    })
+    return () => { active = false }
+  }, [loading, Boolean(file), settings.bankAccounts, updateAccount])
+
+  useEffect(() => {
+    if (!isOrganizationView && file) {
+      setSidebarKonto(konto)
+      lastAccountView.current = { ...lastAccountView.current, [konto]: view }
+      lastAccountYear.current = { ...lastAccountYear.current, [konto]: file.year }
+    }
+  }, [view, konto, file?.year, isOrganizationView])
 
   useEffect(() => api.onAppCommand((command) => {
     if (command === 'search') setSearchOpen(true)
+    else if (command === 'settings') setView('gemeinsam')
+    else if (command === 'reports') navigate('berichte')
     else setSidebarVisible((visible) => !visible)
   }), [])
-
-  // Stiller Bank-Abruf beim Start: neue Umsätze landen im Import-Entwurf
-  // des jeweiligen Kontos; alles mit nötiger Interaktion wird übersprungen.
   useEffect(() => {
-    if (loading || !isElectron || autoFetchStarted.current) return
-    if (!settings.bankAccounts?.length) return
-    autoFetchStarted.current = true
-    void runStartupBankFetch({
-      accounts: settings.bankAccounts,
-      activeKonto: konto,
-      applyToActive: update,
-    }).then((summary) => {
-      if (summary) {
-        setBankHint(summary)
-        setTimeout(() => setBankHint(''), 15000)
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, settings.bankAccounts])
-
-  // Strg/Cmd+F öffnet die globale Suche
+    const theme = settings.theme ?? 'system'
+    if (theme === 'system') delete document.documentElement.dataset.theme
+    else document.documentElement.dataset.theme = theme
+  }, [settings.theme])
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault()
-        setSearchOpen(true)
-      }
-      if (e.key === 'Escape') setSearchOpen(false)
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
-        e.preventDefault()
-        setSidebarVisible((visible) => !visible)
-      }
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); setSearchOpen(true) }
+      if ((event.metaKey || event.ctrlKey) && event.key === ',') { event.preventDefault(); setView('gemeinsam') }
+      if (event.key === 'Escape') setSearchOpen(false)
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'l') { event.preventDefault(); setSidebarVisible((visible) => !visible) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
-
-  // Stiller Update-Check beim Start – bei neuer Version nur ein Hinweis,
-  // installiert wird bewusst erst auf Klick in den Einstellungen.
-  useEffect(() => {
-    if (!isElectron) return
-    const timer = setTimeout(() => {
-      api
-        .checkForUpdate()
-        .then((info) => {
-          if (info.hasUpdate) {
-            setUpdateHint(`Neue Version ${info.latest} verfügbar – installieren unter Einstellungen → Updates.`)
-            setTimeout(() => setUpdateHint(''), 12000)
-          }
-        })
-        .catch(() => {
-          // Kein Internet o. Ä. – der Start soll davon nichts merken
-        })
-    }, 3000)
-    return () => clearTimeout(timer)
-  }, [])
-
-  // Bei ausgeblendeter Titelleiste (macOS) bleibt oben eine Greif-Leiste zum Verschieben
   const dragStrip = isElectron && isMac ? <div className="titlebar-drag" aria-hidden /> : null
 
-  if (loading) return <div className="setup" role="status">Kassenbuch wird geöffnet …</div>
-  if (creatingKonto)
-    return (
-      <>
-        {dragStrip}
-        <KontoSetupView />
-      </>
-    )
-  if (!file)
-    return (
-      <>
-        {dragStrip}
-        <SetupView />
-      </>
-    )
-
-  // Präsentation und Prüfbericht gibt es nur vom Hauptkonto aus –
-  // der Prüfbericht enthält dort beide Konten.
-  const navViews = VIEWS.filter((v) => konto === 'haupt' || v.id !== 'pruefbericht')
-
-  async function switchKonto(target: string) {
-    setBookingPreset(null)
-    setBookingToOpen(null)
-    if (target === '__neu__') {
-      startKontoSetup()
-      return
-    }
-    await selectKonto(target as KontoId)
-    if (target !== 'haupt' && view === 'pruefbericht') setView('uebersicht')
+  function navigate(next: ViewId) {
+    if (next === 'berichte') setReportsVisit((visit) => visit + 1)
+    setView(next)
+    if (window.innerWidth <= 720) setSidebarVisible(false)
   }
-
-  async function openSearchHit(hit: SearchHit) {
-    setBookingPreset(null)
-    setBookingToOpen(null)
-    await selectKontoYear(hit.konto, hit.year)
-    setBookingToOpen({ scope: `${hit.konto}:${hit.year}`, id: hit.booking.id })
-    setView('buchungen')
-    setSearchOpen(false)
+  async function perform(task: () => Promise<void>) {
+    try { setNavigationError(''); await task() }
+    catch (failure) { setNavigationError(failure instanceof Error ? failure.message : 'Ansicht konnte nicht geöffnet werden.') }
   }
-
+  async function openAccountView(target: string, nextView?: ViewId, selectedYear?: number) {
+    setBookingPreset(null); setBookingToOpen(null)
+    const targetView = nextView ?? lastAccountView.current[target] ?? (isOrganizationView ? 'uebersicht' : view)
+    const files = allFiles.filter((entry) => (entry.konto ?? 'haupt') === target).sort((left, right) => right.year - left.year)
+    const rememberedYear = selectedYear ?? lastAccountYear.current[target]
+    const year = files.some((entry) => entry.year === rememberedYear) ? rememberedYear : files[0]?.year
+    if (year === undefined) return
+    await perform(async () => {
+      await selectKontoYear(target, year)
+      setSidebarKonto(target)
+      navigate(targetView)
+    })
+  }
+  async function switchKonto(target: string) { await openAccountView(target) }
+  async function openBooking(reference: BookingReference) {
+    await perform(async () => {
+      await selectKontoYear(reference.konto, reference.year)
+      setBookingPreset(null)
+      setBookingToOpen({ scope: `${reference.konto}:${reference.year}`, id: reference.bookingId })
+      navigate('buchungen'); setSearchOpen(false)
+    })
+  }
+  async function openSearchHit(hit: SearchHit) { await openBooking({ konto: hit.konto, year: hit.year, bookingId: hit.booking.id }) }
   function openOverviewTarget(target: 'buchungen' | 'import', filters?: BookingFilterPreset) {
     setBookingToOpen(null)
-    setBookingPreset(target === 'buchungen'
-      ? { scope: bookingScope(file!), filters: filters ?? {}, edit: !filters }
-      : null)
+    setBookingPreset(target === 'buchungen' ? { scope: bookingScope(file!), filters: filters ?? {}, edit: !filters } : null)
     setView(target)
   }
+  async function openAccountReport(target: 'chronologisch' | 'veranstaltungen' | 'pruefbericht' | 'praesentation', targetKonto?: string) {
+    await perform(async () => {
+      const id = (target === 'pruefbericht' || target === 'praesentation') ? 'haupt' : targetKonto ?? konto
+      const selected = allFiles.filter((entry) => (entry.konto ?? 'haupt') === id).sort((a, b) => b.year - a.year)
+      const matching = selected.find((entry) => Number(entry.year) === Number(period.to.slice(0, 4))) ?? selected[0]
+      if (matching) await selectKontoYear(id, matching.year)
+      setView(target)
+    })
+  }
 
-  const openImportRows = newImportRows(file).length
-
-  return (
-    <div className={`app${sidebarVisible ? '' : ' app--sidebar-hidden'}${isElectron && isMac ? ' app--electron' : ''}`}>
-      {dragStrip}
-      <aside className="sidebar" id="app-sidebar" hidden={!sidebarVisible}>
-        <div className="sidebar__brand">
-          <span className="sidebar__logo">
-            <LogoMark logo={settings.logoDataUrl} size={28} />
-          </span>
-          Buchführung
+  if (loading) return <div className="setup" role="status">Kassenbuch wird geöffnet …</div>
+  if (restoring) return <div className="setup" role="status">Sicherung wird wiederhergestellt …</div>
+  if (error && !file) return <div className="setup"><section className="card"><h1>Kassenbuch konnte nicht geöffnet werden</h1><p role="alert">{error}</p><div className="actions"><button className="btn" onClick={() => window.location.reload()}>Erneut öffnen</button>{isElectron && <button className="btn" onClick={() => void api.openDataFolder().catch(() => setNavigationError('Datenordner konnte nicht geöffnet werden.'))}>Datenordner öffnen</button>}</div>{navigationError && <p role="alert">{navigationError}</p>}</section></div>
+  if (creatingKonto) return <>{dragStrip}<KontoSetupView onCreated={() => navigate(isOrganizationView ? 'uebersicht' : view)} /></>
+  if (!file) return <>{dragStrip}<SetupView /></>
+  const selectedSidebarKonto = kontos.some((account) => account.id === sidebarKonto) ? sidebarKonto : kontos[0]?.id ?? konto
+  const sidebarFiles = allFiles.filter((entry) => (entry.konto ?? 'haupt') === selectedSidebarKonto).sort((left, right) => right.year - left.year)
+  const sidebarFile = !isOrganizationView && konto === selectedSidebarKonto ? file
+    : sidebarFiles.find((entry) => entry.year === lastAccountYear.current[selectedSidebarKonto]) ?? sidebarFiles[0]
+  const openImportRows = sidebarFile ? newImportRows(sidebarFile).length : 0
+  const selectedTitle = VIEWS.find((entry) => entry.id === view)?.label
+  return <div className={`app org-app${sidebarVisible ? '' : ' app--sidebar-hidden'}${isElectron && isMac ? ' app--electron' : ''}`}>
+    {dragStrip}
+    <aside className="sidebar" id="app-sidebar" hidden={!sidebarVisible}>
+      <div className="sidebar__brand"><span className="sidebar__logo" role="img" aria-label={settings.logoDataUrl ? 'Vereinslogo' : 'Buchführung'}><LogoMark logo={settings.logoDataUrl} size={64} /></span><button type="button" className="icon-button org-mobile-close" aria-label="Navigation schließen" onClick={() => setSidebarVisible(false)}><Icon name="close" /></button></div>
+      <nav className="sidebar-primary" aria-label="Verein">
+        <h2 className="sidebar__section-label">Gesamter Verein</h2>
+        {ORGANIZATION_VIEWS.map((entry) => {
+          const active = view === entry.id || (entry.id === 'berichte' && ['pruefbericht', 'praesentation'].includes(view))
+          return <button key={entry.id} className={`navlink${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => { setBookingToOpen(null); setBookingPreset(null); navigate(entry.id) }}><span className="navlink__icon" aria-hidden="true"><Icon name={entry.icon} /></span>{entry.label}</button>
+        })}
+      </nav>
+      <section className="sidebar-accounts" aria-label="Konten & Kassen">
+        <div className="sidebar-accounts__heading"><h2 className="sidebar__section-label">Konten &amp; Kassen</h2><button className="icon-button" aria-label="Konto anlegen" title="Konto anlegen" onClick={startKontoSetup}><Icon name="plus" size={15} /></button></div>
+        <div className="sidebar-account-picker">
+          <label htmlFor="sidebar-account">Konto</label>
+          <select id="sidebar-account" aria-label="Konto wählen" value={selectedSidebarKonto} onChange={(event) => void openAccountView(event.target.value)}>{kontos.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
         </div>
-        <div className="sidebar__section-label">Dein Kassenbuch</div>
-        <div className="sidebar__year">
-          <span>Konto</span>
-          <select value={konto} onChange={(e) => void switchKonto(e.target.value)} aria-label="Konto wählen">
-            {kontos.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.name}
-              </option>
-            ))}
-            <option value="__neu__">+ Konto anlegen …</option>
-          </select>
+        <div className="sidebar-account-options">
+          {sidebarFile && <div className="sidebar__year sidebar-fiscal-year"><span>Kassenjahr</span><select value={sidebarFile.year} aria-label="Jahr wählen" onChange={(event) => void openAccountView(selectedSidebarKonto, lastAccountView.current[selectedSidebarKonto] ?? 'uebersicht', Number(event.target.value))}>{sidebarFiles.map((entry) => <option key={entry.year} value={entry.year}>{fiscalLabel(entry)}</option>)}</select></div>}
+          <nav aria-label="Hauptnavigation">{ACCOUNT_GROUPS.map((group) => <div className="sidebar__group" key={group.label}><h3 className="sidebar__section-label">{group.label}</h3>{group.items.map((entry) => {
+            const active = !isOrganizationView && konto === selectedSidebarKonto && view === entry.id
+            return <button key={entry.id} className={`navlink${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => void openAccountView(selectedSidebarKonto, entry.id)}><span className="navlink__icon" aria-hidden="true"><Icon name={entry.icon} /></span>{entry.label}{entry.id === 'import' && openImportRows > 0 && <span className="navlink__badge">{openImportRows}</span>}</button>
+          })}</div>)}</nav>
         </div>
-        <div className="sidebar__year">
-          <span>Kassenjahr</span>
-          <select
-            value={file.year}
-            onChange={(e) => {
-              setBookingPreset(null)
-              setBookingToOpen(null)
-              void selectYear(Number(e.target.value))
-            }}
-            aria-label="Jahr wählen"
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {fiscalLabel({ year: y, fiscalStartMonth: file.fiscalStartMonth })}
-              </option>
-            ))}
-          </select>
-        </div>
-        <nav aria-label="Hauptnavigation">
-          {navViews.map((v) => (
-            <Fragment key={v.id}>
-            {v.id === 'uebersicht' && <div className="sidebar__section-label">Finanzen</div>}
-            {v.id === 'import' && <div className="sidebar__section-label">Werkzeuge</div>}
-            {v.id === 'einstellungen' && <div className="sidebar__section-label">Verwaltung</div>}
-            <button
-              className={`navlink${view === v.id ? ' is-active' : ''}`}
-              aria-current={view === v.id ? 'page' : undefined}
-              onClick={() => {
-                setBookingPreset(null)
-                setBookingToOpen(null)
-                setView(v.id)
-              }}
-            >
-              <span className="navlink__icon" aria-hidden>
-                <Icon name={v.icon} />
-              </span>
-              {v.label}
-              {v.id === 'import' && openImportRows > 0 && <span className="navlink__badge">{openImportRows}</span>}
-            </button>
-            </Fragment>
-          ))}
-        </nav>
-        <div className="sidebar__footer">
-          <div className="sidebar__identity"><Icon name="book" size={16} /><strong>{file.clubName || 'Vereinskasse'}</strong></div>
-          <span>{kontos.find((entry) => entry.id === konto)?.name ?? 'Kassenbuch'} · {fiscalLabel(file)}</span>
-        </div>
-      </aside>
-      <div className="workspace">
-        <div className="app-toolbar">
-          <div className="app-toolbar__context">
-            <button type="button" className="icon-button" onClick={() => setSidebarVisible((visible) => !visible)}
-              aria-label={sidebarVisible ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'}
-              aria-expanded={sidebarVisible} aria-controls="app-sidebar" title="Seitenleiste ein-/ausblenden">
-              <Icon name="sidebar" size={20} />
-            </button>
-            <span>{kontos.find((entry) => entry.id === konto)?.name ?? 'Kassenbuch'}</span>
-            <span aria-hidden="true" className="hint">/</span>
-            <strong>{VIEWS.find((entry) => entry.id === view)?.label}</strong>
-          </div>
-          <div className="app-toolbar__actions">
-            <button type="button" className="sidebar-search" aria-label="Buchungen suchen" onClick={() => setSearchOpen(true)}>
-              <Icon name="search" size={16} /><span>Suchen</span><kbd>{isMac ? '⌘' : 'Strg'} F</kbd>
-            </button>
-            <span className="pill">{fiscalLabel(file)}</span>
-          </div>
-        </div>
+      </section>
+      <div className="sidebar__footer"><div className="sidebar__identity"><Icon name="shield" size={16} /><strong>{isLocalExperiment ? 'Lokal' : 'Auf diesem Gerät'}</strong></div><span>{kontos.length} Konten</span></div>
+    </aside>
+    <div className="workspace"><div className="app-toolbar"><div className="app-toolbar__context"><button className="icon-button" onClick={() => setSidebarVisible((visible) => !visible)} aria-label={sidebarVisible ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'} aria-expanded={sidebarVisible} aria-controls="app-sidebar"><Icon name="sidebar" size={20} /></button><span>{isOrganizationView ? 'Gesamter Verein' : kontos.find((entry) => entry.id === konto)?.name}</span><span className="hint">/</span><strong>{selectedTitle}</strong></div><div className="app-toolbar__actions"><button className="sidebar-search" aria-label="Buchungen suchen" onClick={() => setSearchOpen(true)}><Icon name="search" size={16} /><span>Suchen</span><kbd>{isMac ? '⌘' : 'Strg'} F</kbd></button><span className="pill">{isOrganizationView ? period.to.slice(0, 4) : fiscalLabel(file)}</span></div></div>
+      {(error || navigationError) && <div className="org-global-error" role="alert"><span>{error || navigationError}</span><button className="btn btn--sm" onClick={() => { if (error) clearError(); setNavigationError('') }}>{error ? 'Erneut speichern' : 'Schließen'}</button></div>}
+      {bankHint && <div className="org-global-error" role="status"><span>{bankHint}</span><button className="btn btn--sm" onClick={() => setBankHint(null)}>Schließen</button></div>}
       <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>
-        {view === 'uebersicht' && <UebersichtView onNavigate={openOverviewTarget} onOpenBooking={(id) => {
-          setBookingPreset(null)
-          setBookingToOpen({ scope: bookingScope(file), id })
-          setView('buchungen')
-        }} />}
-        {view === 'buchungen' && (
-          <BuchungenView
-            key={bookingScope(file)}
-            preset={bookingPreset}
-            onPresetConsumed={consumeBookingPreset}
-            bookingToOpenId={bookingToOpen?.scope === bookingScope(file) ? bookingToOpen.id : null}
-            onBookingOpened={() => setBookingToOpen(null)}
-          />
-        )}
+        {view === 'verein' && <OrganizationView period={period} onPeriodChange={setPeriod} onNavigate={navigate} onOpenAccount={(id) => void switchKonto(id)} />}
+        {view === 'bereiche' && <ActivityAreasView period={period} onOpenBooking={(reference) => void openBooking(reference)} />}
+        {view === 'berichte' && <ReportsView key={reportsVisit} period={period} onPeriodChange={setPeriod} onOpenAccountReport={(target, id) => void openAccountReport(target, id)} />}
+        {view === 'gemeinsam' && <OrganizationSettingsView />}
+        {view === 'praesentation' && <PresentationView onBack={() => setView('berichte')} />}
+        {view === 'uebersicht' && <UebersichtView onNavigate={openOverviewTarget} onOpenBooking={(id) => { setBookingPreset(null); setBookingToOpen({ scope: bookingScope(file), id }); setView('buchungen') }} />}
+        {view === 'buchungen' && <BuchungenView key={bookingScope(file)} preset={bookingPreset} onPresetConsumed={consumeBookingPreset} bookingToOpenId={bookingToOpen?.scope === bookingScope(file) ? bookingToOpen.id : null} onBookingOpened={() => setBookingToOpen(null)} />}
         {view === 'chronologisch' && <ChronoView />}
         {view === 'veranstaltungen' && <VeranstaltungenView />}
         {view === 'import' && <ImportView />}
-        {view === 'pruefbericht' && <PruefberichtView />}
         {view === 'einstellungen' && <EinstellungenView />}
+        {view === 'pruefbericht' && <><div className="org-legacy-report-toolbar"><button className="btn btn--ghost" onClick={() => setView('berichte')}>← Berichte</button><label className="field"><span>Kassenjahr</span><select value={file.year} aria-label="Berichtsjahr" onChange={(event) => void perform(() => selectYear(Number(event.target.value)))}>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label></div><PruefberichtView /></>}
       </main>
-      </div>
-      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} onSelect={openSearchHit} />}
-      {updateHint && <div className="toast">{updateHint}</div>}
-      {bankHint && <div className="toast">{bankHint}</div>}
     </div>
-  )
+    {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} onSelect={(hit) => void openSearchHit(hit)} />}
+  </div>
 }
 
 interface SearchHit {
@@ -307,43 +240,18 @@ interface SearchFile {
 
 /** Globale Suche (Strg/Cmd+F): standardmäßig über alle Konten und Kassenjahre. */
 function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (hit: SearchHit) => void }) {
-  const { file, konto, kontos } = useStore()
+  const { file, konto, kontos, allFiles: snapshot } = useStore()
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<'all' | 'current'>('all')
-  const [allFiles, setAllFiles] = useState<SearchFile[] | null>(null)
+  const allFiles = useMemo<SearchFile[]>(() => snapshot.map((entry) => ({ file: entry, konto: entry.konto ?? 'haupt', kontoName: kontos.find((konto) => konto.id === (entry.konto ?? 'haupt'))?.name ?? 'Konto' })), [snapshot, kontos])
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     const previous = document.activeElement
     inputRef.current?.focus()
     return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus() }
   }, [])
-
-  useEffect(() => {
-    if (scope !== 'all') return
-    let cancelled = false
-    setAllFiles(null)
-    setError('')
-    void (async () => {
-      const loaded = await Promise.all(
-        kontos.map(async (entry) => {
-          const years = await api.listYears(entry.id)
-          const files = await Promise.all(years.map((year) => api.loadYear(entry.id, year)))
-          return files
-            .filter((candidate): candidate is YearFile => Boolean(candidate))
-            .map((candidate) => ({ file: candidate, konto: entry.id, kontoName: entry.name }))
-        }),
-      )
-      if (!cancelled) setAllFiles(loaded.flat())
-    })().catch(() => {
-      if (!cancelled) setError('Die Suche konnte nicht alle Kassenbücher laden. Versuche es erneut oder suche in diesem Kassenjahr.')
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [scope, kontos])
 
   const results = useMemo(() => {
     if (!query.trim()) return []
@@ -399,7 +307,6 @@ function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (
             Dieses Kassenjahr
           </button>
         </div>
-        {error && <p className="search-empty" role="alert">{error}</p>}
         {query.trim() && (
           <div className="search-results">
             {scope === 'all' && !allFiles && <div className="search-empty">Durchsuche Konten und Kassenjahre …</div>}

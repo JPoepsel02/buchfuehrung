@@ -11,6 +11,14 @@ im Prüfbericht und als Dock-Symbol.
 
 ## Funktionen
 
+- **Vereinszentrale** mit Gesamtübersicht, gemeinsamen Einstellungen und
+  Kontenauswahl. Die bisherigen Kontofunktionen bleiben erhalten.
+- **Tätigkeitsbereiche** mit Kategorie-Vorgaben, individuellen Zuordnungen,
+  Aufteilungen und internen Umbuchungen über mehrere Konten.
+- **Berichte** als eigene Auswahlseite: Einnahmenüberschussrechnung,
+  Buchungsübersicht, Veranstaltungsauswertung, Kassenprüfbericht und
+  Jahrespräsentation. EÜR-Exporte sind erst nach vollständiger Zuordnung möglich;
+  die Jahrespräsentation gibt es als PDF und editierbare PowerPoint-Datei in 16:9.
 - **Einheitliche Oberfläche** mit klaren Tabellen, systemabhängigem Hell-/Dunkelmodus
   und einblendbarer Seitenleiste (Ansicht → Seitenleiste ein-/ausblenden).
 - **Jahresübersicht** mit Monatsdiagramm und zuletzt erfassten Buchungen, die sich
@@ -49,22 +57,36 @@ im Prüfbericht und als Dock-Symbol.
 Die Daten liegen lokal als JSON-Datei pro Kassenjahr im Benutzerdaten-Ordner
 der App (über *Einstellungen → Datenordner öffnen* erreichbar). Vor jedem
 Speichern wird automatisch ein Backup rotiert (die letzten 20 Stände bleiben
-erhalten).
+erhalten), auch für die gemeinsamen Einstellungen. Mehrteilige Änderungen
+werden zusammen mit einem Transaktionsjournal gespeichert. Nach einem Fehler
+bleiben weitere Schreibvorgänge bis zur erfolgreichen Wiederholung gesperrt.
+Unterbrochene Änderungen werden vor dem nächsten Datenzugriff wiederhergestellt.
+Beschädigte Einstellungen werden sichtbar gemeldet und nicht überschrieben.
+
+Vor einem Versionswechsel eine vollständige JSON-Sicherung erstellen und die
+alte App schließen. Der bisherige Datenpfad und die Dateinamen bleiben erhalten.
 
 ## Entwicklung
 
 ```bash
 npm install
-npm run dev          # Electron mit Hot-Reload
+npm run dev          # Isolierte lokale Entwicklung mit Beispieldaten
 npm test             # Tests der Kernlogik (Vitest)
 npm run test:coverage # Kernlogik mit mindestens 80 % Testabdeckung
 npm run test:e2e     # UI, Import und Einstellungen in separater Electron-Test-App
 npm run typecheck    # TypeScript
 npm run preview:web  # Nur die Oberfläche im Browser (ohne Electron)
+npm run build        # Lokaler Build nach out/
+npm run build:production # Produktionsbuild nach .production-out/
 ```
 
 Die E2E-Tests verwenden eigene temporäre Jahresdateien. Die vorhandenen
 Kassenbücher und Bankverbindungen werden dabei nicht geladen.
+Lokale Entwicklung verwendet `.local-data/`, `.local-backups/` und `.exports/`.
+Automatische Bankabrufe und Updates sind dort deaktiviert. Produktionsbuilds
+verwenden den bisherigen Benutzerdatenordner `kassenwart` und den Downloads-Ordner
+für Exportvorschläge. Der Packager erzeugt vor dem Verpacken zwingend einen
+Produktionsbuild; Beispieldaten gelangen nicht in das App-Paket.
 Alle Testdaten müssen künstlich sein: keine echten Namen, Banktexte,
 Kontostände oder Referenzen aus produktiven Kassenbüchern übernehmen.
 

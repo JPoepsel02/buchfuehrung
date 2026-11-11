@@ -28,9 +28,8 @@ export function UebersichtView({ onNavigate, onOpenBooking }: {
     <div className="view overview-view">
       <header className="view__header overview-heading">
         <div>
-          <span className="overview-kicker">Dein Verein. Alles im Blick.</span>
           <h1 className="view__title">Übersicht {fiscalLabel(file)}</h1>
-          <p className="view__subtitle">Dein Kassenjahr auf einen Blick · {totals.count} Buchungen</p>
+          <p className="view__subtitle">{totals.count} Buchungen</p>
         </div>
         <div className="overview-actions">
           <button className="btn" onClick={() => onNavigate?.('import')}>
@@ -78,7 +77,6 @@ export function UebersichtView({ onNavigate, onOpenBooking }: {
             <div className="chart-legend"><span><i className="legend-dot" />Einnahmen</span><span><i className="legend-dot legend-dot--expense" />Ausgaben</span></div>
           </div>
           <div className="table-scroll"><CashflowChart months={months} /></div>
-          <p className="hint" style={{ margin: '10px 0 0' }}>Alle Beträge und Monatsdetails findest du in der Monatsübersicht.</p>
         </section>
         <section className="card activity-card" aria-labelledby="recent-heading">
           <div className="section-heading"><h2 id="recent-heading">Zuletzt gebucht</h2>

@@ -36,6 +36,8 @@ async function launch() {
   try {
     expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(join(root, 'kassenwart'))
     const page = await app.firstWindow()
+    await expect(page.getByRole('heading', { level: 1, name: 'Vereinsübersicht', exact: true })).toBeVisible()
+    await page.getByLabel('Konto wählen', { exact: true }).selectOption('haupt')
     await expect(page.getByRole('heading', { level: 1, name: /Übersicht/ })).toBeVisible()
     return { app, page, data, main, second }
   } catch (error) {
@@ -71,7 +73,7 @@ test('gibt der Übersicht mehr Platz und stellt die Seitenleiste samt Auswahl wi
     await expect(show).toHaveAttribute('aria-expanded', 'false')
     await show.click()
     await expect(page.locator('#app-sidebar')).toBeVisible()
-    await expect(page.getByLabel('Konto wählen')).toHaveValue('haupt')
+    await expect(page.getByLabel('Konto wählen', { exact: true })).toHaveValue('haupt')
     await expect(page.getByLabel('Jahr wählen')).toHaveValue('2026')
   } finally { await app.close() }
 })
@@ -95,7 +97,7 @@ test('macht die globale Suche sichtbar und führt über Konten und Jahre ohne Da
     await dialog.getByRole('textbox').fill('Historischer Testbeitrag')
     await dialog.getByRole('button', { name: /Historischer Testbeitrag/ }).click()
     await expect(dialog).toHaveCount(0)
-    await expect(page.getByLabel('Konto wählen')).toHaveValue('zweit')
+    await expect(page.getByLabel('Konto wählen', { exact: true })).toHaveValue('zweit')
     await expect(page.getByLabel('Jahr wählen')).toHaveValue('2025')
     await expect(page.getByRole('heading', { name: 'Buchung bearbeiten', exact: true })).toBeVisible()
     await expect(page.getByLabel('Verwendungszweck', { exact: true })).toHaveValue('Historischer Testbeitrag')

@@ -45,7 +45,7 @@ export function SetupView() {
           </div>
           <div className="field" style={{ gridColumn: 'span 6' }}>
             <label htmlFor="setup-balance">Anfangssaldo (€)</label>
-            <AmountField id="setup-balance" value={balance} onChange={setBalance} />
+            <AmountField id="setup-balance" value={balance} onChange={setBalance} allowNegative />
           </div>
           <div className="field" style={{ gridColumn: 'span 12' }}>
             <label htmlFor="setup-club">Verein / Ortsgruppe (für den Prüfbericht)</label>

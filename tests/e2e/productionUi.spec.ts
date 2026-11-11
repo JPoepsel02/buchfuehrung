@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import type { Booking, YearFile } from '../../src/shared/types'
 
 async function launch() {
-  const root = mkdtempSync(join(tmpdir(), 'buchfuehrung-e2e-production-ui-'))
+  const root = mkdtempSync(join(tmpdir(), 'buchfuehrung-e2e-local-isolation-'))
   const data = join(root, 'kassenwart', 'daten')
   mkdirSync(data, { recursive: true })
   const booking: Booking = {
@@ -38,7 +38,7 @@ async function launch() {
   try {
     expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(join(root, 'kassenwart'))
     const page = await app.firstWindow()
-    await expect(page.getByRole('heading', { level: 1, name: /Übersicht/ })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Vereinsübersicht', exact: true })).toBeVisible()
     const assertUnchanged = () => {
       for (const [name, content] of Object.entries(fixtures)) expect(readFileSync(join(data, name), 'utf8')).toBe(content)
     }
@@ -63,18 +63,26 @@ async function clickMenu(app: ElectronApplication, id: string) {
   }, id)
 }
 
-test('behält App-Identität, Vereinsdaten und den ursprünglichen Update-Einstieg bei', async () => {
+test('isoliert die lokale App, bewahrt Vereinsdaten und sperrt produktive Updates', async () => {
   const { app, page, assertUnchanged, close } = await launch()
   try {
     const identity = await app.evaluate(({ app, BrowserWindow }) => ({
       name: app.getName(), title: BrowserWindow.getAllWindows()[0].getTitle(),
     }))
-    expect.soft(identity.name).toBe('Buchführung')
-    expect.soft(identity.title).toBe('Buchführung')
-    await expect.soft(page.getByText('Vereinsrunde Musterstadt', { exact: true }).first()).toBeVisible()
+    expect.soft(identity.name).toBe('Buchführung · Lokal')
+    expect.soft(identity.title).toBe('Buchführung · Lokal')
+    await expect(page.locator('#app-sidebar .org-sidebar-club')).toHaveCount(0)
+    await page.getByRole('navigation', { name: 'Verein', exact: true }).getByRole('button', { name: 'Einstellungen', exact: true }).click()
+    await expect.soft(page.getByLabel('Vereinsname', { exact: true })).toHaveValue('Vereinsrunde Musterstadt')
     await expect.soft(page.getByText(/Designvorschau/)).toHaveCount(0)
-    const result = await page.evaluate(() => window.kassenwart.installUpdate({ current: '1', latest: '1', hasUpdate: false }))
-    expect.soft(result).toEqual({ ok: false, error: 'Kein Installer gefunden.' })
+    const currentVersion = await app.evaluate(({ app }) => app.getVersion())
+    const check = await page.evaluate(() => window.kassenwart.checkForUpdate())
+    expect.soft(check).toEqual({ current: currentVersion, latest: currentVersion, hasUpdate: false, notes: 'Lokale Entwicklungsversion.' })
+    const result = await page.evaluate(() => window.kassenwart.installUpdate({
+      current: '1', latest: '999', hasUpdate: true,
+      assetName: 'Buchfuehrung.dmg', assetUrl: 'https://example.invalid/Buchfuehrung.dmg',
+    }))
+    expect.soft(result).toEqual({ ok: false, error: 'Updates sind in der lokalen Entwicklungsversion deaktiviert.' })
     assertUnchanged()
   } finally { await close() }
 })
@@ -103,6 +111,7 @@ test('führt native Ansichtsmenüs einmal aus und öffnet zuletzt gebuchte Eintr
     await expect(search.getByRole('textbox')).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(search).toHaveCount(0)
+    await page.getByLabel('Konto wählen', { exact: true }).selectOption('haupt')
     await page.getByRole('region', { name: 'Zuletzt gebucht', exact: true })
       .getByRole('button', { name: /Mitgliedsbeitrag April/ }).click()
     await expect(page.getByRole('heading', { name: 'Buchung bearbeiten', exact: true })).toBeVisible()

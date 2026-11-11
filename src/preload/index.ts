@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { SnapshotPayload } from '../shared/snapshot'
 
 interface UpdateInfo {
   current: string
@@ -11,14 +12,20 @@ interface UpdateInfo {
 
 /** Schmale, typisierte Brücke zwischen Renderer und Main-Prozess. */
 const api = {
-  onAppCommand: (cb: (command: 'search' | 'sidebar') => void): (() => void) => {
+  onAppCommand: (cb: (command: 'search' | 'sidebar' | 'settings' | 'reports') => void): (() => void) => {
     const search = () => cb('search')
     const sidebar = () => cb('sidebar')
+    const settings = () => cb('settings')
+    const reports = () => cb('reports')
     ipcRenderer.on('view:search', search)
     ipcRenderer.on('view:sidebar', sidebar)
+    ipcRenderer.on('view:settings', settings)
+    ipcRenderer.on('view:reports', reports)
     return () => {
       ipcRenderer.removeListener('view:search', search)
       ipcRenderer.removeListener('view:sidebar', sidebar)
+      ipcRenderer.removeListener('view:settings', settings)
+      ipcRenderer.removeListener('view:reports', reports)
     }
   },
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
@@ -38,6 +45,7 @@ const api = {
   deleteYear: (konto: string, year: number): Promise<void> => ipcRenderer.invoke('years:delete', konto, year),
   loadSettings: (): Promise<unknown> => ipcRenderer.invoke('settings:load'),
   saveSettings: (data: unknown): Promise<void> => ipcRenderer.invoke('settings:save', data),
+  commitSnapshot: (payload: SnapshotPayload): Promise<void> => ipcRenderer.invoke('data:commit', payload),
   openDataFolder: (): Promise<void> => ipcRenderer.invoke('data:openFolder'),
   openCloudFolder: (): Promise<void> => ipcRenderer.invoke('data:openCloudFolder'),
   selectCloudFolder: (): Promise<string | null> => ipcRenderer.invoke('data:selectCloudFolder'),
@@ -48,11 +56,13 @@ const api = {
   openCsv: (): Promise<{ name: string; content: string } | null> => ipcRenderer.invoke('csv:open'),
   saveTextFile: (suggestedName: string, content: string): Promise<{ ok: boolean; path?: string }> =>
     ipcRenderer.invoke('file:saveText', suggestedName, content),
+  savePptx: (suggestedName: string, content: Uint8Array): Promise<{ ok: boolean; path?: string }> =>
+    ipcRenderer.invoke('file:savePptx', suggestedName, content),
   openTextFile: (): Promise<{ name: string; content: string } | null> => ipcRenderer.invoke('file:openText'),
   exportPdf: (
     html: string,
     suggestedName: string,
-    options?: { landscape?: boolean },
+    options?: { landscape?: boolean; slideFormat?: '16:9' },
   ): Promise<{ ok: boolean; path?: string }> => ipcRenderer.invoke('pdf:export', html, suggestedName, options),
   bankFetch: (account: unknown, opts: unknown): Promise<unknown> => ipcRenderer.invoke('bank:fetch', account, opts),
   bankContinue: (sessionId: string, tan?: string): Promise<unknown> =>

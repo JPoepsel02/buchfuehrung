@@ -2,7 +2,8 @@ import { fiscalEndLabel, fiscalLabel, prevFiscalEndLabel } from '@shared/fiscal'
 import { byCategory, chronological, eventRows, yearTotals } from '@shared/ledger'
 import { MONTH_NAMES, formatAmount, formatDate, formatEur, monthOf } from '@shared/money'
 import { receiptAvailable, receiptStatus } from '@shared/receipt'
-import type { AuditInfo, YearFile } from '@shared/types'
+import { accountNumberFor } from '@shared/accountDetails'
+import type { AppSettings, AuditInfo, YearFile } from '@shared/types'
 
 /** Leere Angaben erscheinen im Druck als Schreiblinie. */
 function val(v: string | undefined, width = 180): string {
@@ -15,15 +16,7 @@ function dateVal(v: string | undefined, fallbackYear: number, width = 110): stri
   return formatted ? esc(formatted) : `<span class="fill" style="min-width:${width}px"></span>`
 }
 
-/**
- * Erzeugt den druckfertigen Prüfbericht als eigenständiges HTML-Dokument
- * (A4). Enthält Abhak-Kästchen je Beleg sowie Unterschriftsfelder für die
- * Kassenprüfung.
- */
-/**
- * Erzeugt Zusammenfassung, Chronologie und Veranstaltungs-Tabelle für EIN
- * Buch – wird für Haupt- und Zweitkonto identisch verwendet.
- */
+/** Zusammenfassung und Belegübersichten eines einzelnen Kontos. */
 function ledgerSections(file: YearFile, accountNo: number, accountLabel: string): string {
   const totals = yearTotals(file)
   const chrono = chronological(file)
@@ -36,7 +29,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
         <td class="nowrap">${formatDate(r.date)}</td>
         <td class="ref">${esc(r.ref)}</td>
         <td>${bookingReceiptCell(receiptStatus(r))}</td>
-        <td>${esc((r.name ?? '').trim() || '–')}</td>
+        <td>${bookingNameCell(r.name)}</td>
         <td>${esc(r.description)}</td>
         <td class="num">${r.type === 'ausgabe' ? formatAmount(r.amount) : ''}</td>
         <td class="num">${r.type === 'einnahme' ? formatAmount(r.amount) : ''}</td>
@@ -56,7 +49,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
           <td class="ref">${esc(r.refs)}</td>
           <td class="nowrap">${r.kind === 'einzeln' ? formatDate(r.date) : `${r.count} Buchungen`}</td>
           <td>${receiptCell(r.receiptAvailableCount, r.count)}</td>
-          <td>${r.kind === 'unterkategorie' ? '' : esc(r.name || '–')}</td>
+          <td>${r.kind === 'unterkategorie' ? '' : bookingNameCell(r.name)}</td>
           <td>${esc(r.label)}</td>
           <td class="num">${r.ausgaben > 0 ? formatAmount(r.ausgaben) : ''}</td>
           <td class="num">${r.einnahmen > 0 ? formatAmount(r.einnahmen) : ''}</td>
@@ -96,7 +89,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
     <tr class="total"><td>Abschlusssaldo ${fiscalEndLabel(file)}</td><td class="num">${formatEur(totals.closingBalance)}</td></tr>
   </table>
 
-  <h3>Buchungen chronologisch <span style="font-weight:normal;font-size:9pt">(▤ = Beleg im Ordner, □ = noch prüfen, — = nicht erforderlich)</span></h3>
+  <h3>Buchungen chronologisch</h3>
   <table>
     <thead>
       <tr><th>Datum</th><th>Nr.</th><th>Beleg</th><th>Name</th><th>Verwendungszweck</th>
@@ -105,7 +98,7 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
     <tbody>${chronoRows}</tbody>
   </table>
 
-  <div class="pagebreak"></div>
+  ${groups.length > 0 ? `<div class="pagebreak"></div>
   <h3>Buchungen nach Veranstaltung</h3>
   <table>
     <thead>
@@ -113,22 +106,21 @@ function ledgerSections(file: YearFile, accountNo: number, accountLabel: string)
       <th class="num">Ausgaben (€)</th><th class="num">Einnahmen (€)</th></tr>
     </thead>
     <tbody>${groupSections}</tbody>
-  </table>
+  </table>` : ''}
   </section>`
 }
 
-/**
- * Erzeugt den druckfertigen Prüfbericht als eigenständiges HTML-Dokument
- * (A4): Titel + Abschnitte des Hauptkontos, danach die Abschnitte aller
- * weiteren Konten (eigenes Kassenjahr, strikt getrennt – keine Summen
- * über mehrere Konten) und zum Schluss der Kassenprüfbericht nach Vorlage,
- * der alle Konten abdeckt.
- */
+/** Ausgewählte Konten mit getrennten Beständen und gemeinsamem Kassenprüfbericht. */
 export function buildReportHtml(
   file: YearFile,
   logoDataUrl?: string | null,
   others: readonly YearFile[] = [],
+  settings: AppSettings = {},
 ): string {
+  const excluded = new Set(file.reportExcludedKontos ?? [])
+  const included = [file, ...others].filter((account) => !excluded.has(account.konto ?? 'haupt'))
+  if (included.length === 0) throw new Error('Bitte mindestens ein Konto auswählen.')
+  const accountLabels = included.map((account) => accountReportLabel(account, settings))
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -195,44 +187,29 @@ export function buildReportHtml(
     ${logoDataUrl ? `<img src="${logoDataUrl}" alt="">` : ''}
   </header>
 
-  ${ledgerSections(file, 1, accountReportLabel(file, file.audit?.konto1))}
-
-  ${others
+  ${included
     .map(
-      (other, i) => `
-  <div class="pagebreak"></div>
-  ${ledgerSections(other, 2 + i, accountReportLabel(other, i === 0 ? file.audit?.konto2 : undefined))}
+      (account, i) => `
+  ${i > 0 ? '<div class="pagebreak"></div>' : ''}
+  ${ledgerSections(account, i + 1, accountLabels[i])}
   `,
     )
     .join('\n')}
 
   <div class="pagebreak"></div>
-  ${auditSection(file, 2 + others.length, auditKontoRefs(file, others))}
+  ${auditSection(file, included.length + 1, accountLabels)}
   <footer>Erstellt mit Buchführung · Kassenbericht ${file.year}</footer>
 </body>
 </html>`
 }
 
-/**
- * Ein "Geprüft wurde"-Block je Konto des Berichts: das Hauptkonto nutzt die
- * Kontonummer aus "Geprüftes Konto 1", das erste weitere Konto die aus
- * "Geprüftes Konto 2" – ohne Eintrag steht der Konto-Name im Block.
- */
-function auditKontoRefs(file: YearFile, others: readonly YearFile[]): (string | undefined)[] {
-  const a: Partial<AuditInfo> = file.audit ?? {}
-  return [
-    a.konto1?.trim() || accountName(file),
-    ...others.map((other, i) => (i === 0 && a.konto2?.trim() ? a.konto2.trim() : accountName(other))),
-  ]
-}
-
 /** Kassenprüfbericht – Aufbau und Formulierungen folgen der Vereinsvorlage. */
-function auditSection(file: YearFile, sectionNo: number, kontoRefs: readonly (string | undefined)[]): string {
+function auditSection(file: YearFile, sectionNo: number, kontoRefs: readonly string[]): string {
   const a: Partial<AuditInfo> = file.audit ?? {}
-  const kontoBlocks = (kontoRefs.length > 0 ? kontoRefs : [undefined]).map(
+  const kontoBlocks = kontoRefs.map(
     (konto) => `
     <div class="konto">
-      <div class="konto-head">Geprüft wurde das Bankkonto ${val(konto, 160)}</div>
+      <div class="konto-head">Geprüft wurde das Konto ${val(konto, 160)}</div>
       <div>
         <span class="box">☐</span> lückenlos
         <span class="box">☐</span> stichprobenartig
@@ -277,23 +254,25 @@ function accountName(file: YearFile): string {
   return file.kontoName?.trim() || ((file.konto ?? 'haupt') === 'haupt' ? 'Hauptkonto' : 'Weiteres Konto')
 }
 
-function accountReportLabel(file: YearFile, accountReference?: string): string {
+function accountReportLabel(file: YearFile, settings: AppSettings): string {
   const name = accountName(file)
-  const ref = accountReference?.trim()
-  return ref ? `${name} · ${ref}` : name
+  const number = accountNumberFor(file.konto ?? 'haupt', settings)
+  return number ? `${name} ${number}` : name
 }
 
 function receiptCell(available: number, total: number): string {
   if (available === 0) return ''
   const count = total > 1 ? ` ${available}/${total}` : ''
-  return `<span class="receipt-state">▤${count}</span>`
+  return `<span class="receipt-state">✓${count}</span>`
 }
 
-/** Im Bericht unterscheidet ein Strich "nicht erforderlich" von offenem Beleg. */
 function bookingReceiptCell(status: ReturnType<typeof receiptStatus>): string {
-  if (receiptAvailable(status)) return receiptCell(1, 1)
-  if (status === 'nicht_erforderlich') return '<span class="receipt-state">—</span>'
-  return '<span class="receipt-state">□</span>'
+  return receiptAvailable(status) ? receiptCell(1, 1) : ''
+}
+
+function bookingNameCell(value: string | undefined): string {
+  const name = (value ?? '').trim()
+  return /^nicht erforderlich$/i.test(name) ? '' : esc(name)
 }
 
 function formatAuditDate(value: string | undefined, fallbackYear: number): string | null {

@@ -5,6 +5,7 @@ import { Amount } from '../components/Amount'
 import { AmountField } from '../components/AmountInput'
 import { BookingFilterBar } from '../components/BookingFilterBar'
 import { ChronologicalTable } from '../components/ChronologicalTable'
+import { BookingActivityField } from '../components/BookingActivityField'
 import { bookingScope, createBookingFilters, filterBookings, hasBookingFilters } from '../bookingFilters'
 import type { BookingFilterRequest, BookingFilters } from '../bookingFilters'
 import { shouldStartBookingEdit } from '../bookingRow'
@@ -15,6 +16,8 @@ import { subcategorySuggestions } from '@shared/importDraft'
 import { chronological } from '@shared/ledger'
 import { formatDate, parseAmountToCents } from '@shared/money'
 import { receiptAvailable, receiptStatus, receiptStatusLabel, withReceiptStatus } from '@shared/receipt'
+import { allOrganizationBookings, allocationError, bookingKey, categoryAllocations, suggestedArea } from '@shared/organization'
+import type { ActivityAllocation } from '@shared/organization'
 import type { Booking, BookingType, ReceiptStatus } from '@shared/types'
 
 interface FormState {
@@ -65,7 +68,7 @@ export function BuchungenView({
   preset?: BookingFilterRequest | null
   onPresetConsumed?: () => void
 }) {
-  const { file, settings, updateSettings, addBooking, updateBooking, deleteBooking } = useStore()
+  const { file, settings, updateSettings, addBooking, updateBooking, deleteBooking, allFiles, organization } = useStore()
   const [cleanMode, setCleanMode] = useState(settings.bookingsCleanMode === true)
   const activeCats = useMemo(
     () => (file ? file.categories.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder) : []),
@@ -73,6 +76,9 @@ export function BuchungenView({
   )
   const [form, setForm] = useState<FormState>(() => emptyForm(activeCats[0]?.id ?? '', file ?? { year: 2026 }))
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [allocations, setAllocations] = useState<ActivityAllocation[] | null>(null)
+  const [allocationEdited, setAllocationEdited] = useState(false)
+  const [editingTransfer, setEditingTransfer] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [filter, setFilter] = useState('')
@@ -90,6 +96,10 @@ export function BuchungenView({
     receiptStatus: '' as '' | ReceiptStatus,
     isUmsatz: '' as '' | 'ja' | 'nein',
   })
+  const activityByKey = useMemo(
+    () => new Map(allOrganizationBookings(allFiles, organization).map((entry) => [entry.key, entry])),
+    [allFiles, organization],
+  )
 
   // Vorschläge: bereits verwendete Unterkategorien der gewählten Kategorie
   const subSuggestions = useMemo(
@@ -168,9 +178,28 @@ export function BuchungenView({
     Boolean(selectionFilter.amount.trim()) &&
     (parsedSelectionAmount === null || parsedSelectionAmount < 0)
   const rows = filterBookings(allRows, filter, selectionFilter)
+  const formAmount = parseAmountToCents(form.amount) ?? 0
+  const effectiveAllocations = allocations ?? categoryAllocations(organization, file.konto ?? 'haupt', form.categoryId, formAmount)
+  const defaultArea = suggestedArea(organization, file.konto ?? 'haupt', form.categoryId)
+  const editingActivity = editingId ? activityByKey.get(bookingKey({
+    konto: file.konto ?? 'haupt', year: file.year, bookingId: editingId,
+  })) : undefined
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
+    if (key === 'amount' && allocationEdited && allocations?.length === 1 && allocations[0].amount === formAmount) {
+      setAllocations([{ ...allocations[0], amount: parseAmountToCents(value as string) ?? 0 }])
+    }
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  function changeAllocations(value: ActivityAllocation[]) {
+    setAllocations(value)
+    setAllocationEdited(true)
+  }
+
+  function useCategoryAllocations() {
+    setAllocations(null)
+    setAllocationEdited(true)
   }
 
   function changeSearchFilter(value: string) {
@@ -187,6 +216,16 @@ export function BuchungenView({
     // Ein gezielter Suchtreffer öffnet die Bearbeitung nur vorübergehend.
     setCleanMode(false)
     setEditingId(b.id)
+    const referenceKey = bookingKey({
+      konto: file!.konto ?? 'haupt', year: file!.year, bookingId: b.id,
+    })
+    const activity = activityByKey.get(referenceKey)
+    const savedAllocations = activity?.status === 'invalid'
+      ? organization.assignments[referenceKey]?.allocations ?? []
+      : activity?.allocations ?? []
+    setAllocations(savedAllocations.map((part) => ({ ...part })))
+    setAllocationEdited(false)
+    setEditingTransfer(Boolean(activity?.transferId))
     setForm({
       date: b.date,
       categoryId: b.categoryId,
@@ -216,6 +255,10 @@ export function BuchungenView({
     if (amount === null || amount <= 0) return setError('Bitte einen gültigen Betrag größer 0 angeben.')
     if (nonUmsatz === null || nonUmsatz < 0) return setError('„Davon kein Umsatz“ ist kein gültiger Betrag.')
     if (nonUmsatz > amount) return setError('„Davon kein Umsatz“ darf den Betrag nicht übersteigen.')
+    if (!editingTransfer && (!editingId || allocationEdited) && effectiveAllocations.length > 0) {
+      const message = allocationError(amount, effectiveAllocations)
+      if (message) return setError(message)
+    }
 
     const data = withReceiptStatus({
       date: form.date,
@@ -230,19 +273,29 @@ export function BuchungenView({
       note: form.note.trim(),
       source: 'manuell' as const,
     }, form.receiptStatus)
-    if (editingId) {
-      updateBooking(editingId, data)
-      setEditingId(null)
-    } else {
-      addBooking(data)
+    try {
+      if (editingId) {
+        updateBooking(editingId, data, editingTransfer || !allocationEdited ? undefined : effectiveAllocations)
+        setEditingId(null)
+      } else {
+        addBooking(data, allocations === null ? undefined : effectiveAllocations)
+      }
+    } catch (cause) {
+      return setError(cause instanceof Error ? cause.message : 'Die Buchung konnte nicht gespeichert werden.')
     }
     clearSelection()
+    setAllocations(null)
+    setAllocationEdited(false)
+    setEditingTransfer(false)
     setForm((f) => ({ ...emptyForm(f.categoryId, file!), date: f.date }))
     setAdvancedOpen(false)
   }
 
   function cancelEdit() {
     setEditingId(null)
+    setAllocations(null)
+    setAllocationEdited(false)
+    setEditingTransfer(false)
     setForm(emptyForm(activeCats[0]?.id ?? '', file!))
     setError('')
     setAdvancedOpen(false)
@@ -344,10 +397,14 @@ export function BuchungenView({
   async function exportRows() {
     if (rows.length === 0) return
     const suffix = filter.trim() || selectionFilterActive ? '-gefiltert' : ''
-    const result = await api.saveTextFile(`Buchungen-${file!.year}${suffix}.csv`, bookingsToCsv(rows))
-    if (!result.ok) return
-    setToast(result.path ? `CSV gespeichert: ${result.path}` : 'CSV exportiert.')
-    setTimeout(() => setToast(''), 4000)
+    try {
+      const result = await api.saveTextFile(`Buchungen-${file!.year}${suffix}.csv`, bookingsToCsv(rows))
+      if (!result.ok) return
+      setToast(result.path ? `CSV gespeichert: ${result.path}` : 'CSV exportiert.')
+      setTimeout(() => setToast(''), 4000)
+    } catch {
+      setToast('CSV konnte nicht gespeichert werden.')
+    }
   }
 
   return (
@@ -419,6 +476,10 @@ export function BuchungenView({
               placeholder="Verwendungszweck"
             />
           </div>
+          <BookingActivityField amount={formAmount} value={effectiveAllocations} automatic={allocations === null}
+            defaultArea={defaultArea} transfer={editingTransfer}
+            needsReview={editingActivity?.status === 'invalid' && !allocationEdited}
+            onChange={changeAllocations} onUseCategory={useCategoryAllocations} />
           {advancedOpen && (
             <>
               <div className="field" style={{ gridColumn: 'span 3' }}>

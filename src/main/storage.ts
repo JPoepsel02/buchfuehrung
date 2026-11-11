@@ -1,14 +1,10 @@
 import { app } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
-
-/**
- * Speicherung der Jahresdateien als JSON im Benutzerdaten-Ordner.
- * Schreiben erfolgt atomar (temp + rename); vor jedem Schreiben wird ein
- * rotierendes Backup angelegt.
- */
-
-const MAX_BACKUPS = 20
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { allowedMirrorPath } from './experiment'
+import { isKontoId } from '../shared/types'
+import { validateSettings, validateSnapshot } from '../shared/snapshot'
+import { atomicWrite, createFilePersistence } from './filePersistence'
 
 export interface CloudSyncStatus {
   enabled: boolean
@@ -17,187 +13,127 @@ export interface CloudSyncStatus {
   fileCount?: number
 }
 
-function dataDir(): string {
-  const dir = join(app.getPath('userData'), 'daten')
-  mkdirSync(dir, { recursive: true })
-  return dir
-}
+const MIRROR_FILE = /^(kassenbuch(-k\d+)?-\d{4}|einstellungen)\.json$/
+function persistence() { return createFilePersistence(join(app.getPath('userData'), 'daten')) }
+function dataDir(): string { return persistence().directory() }
 
-function backupDir(): string {
-  const dir = join(dataDir(), 'backups')
-  mkdirSync(dir, { recursive: true })
-  return dir
-}
-
-/**
- * Dateiname je Buch: Hauptkonto "kassenbuch-…", das historisch zweite Buch
- * "kassenbuch-k2-…", weitere Bücher "kassenbuch-k3-…", "kassenbuch-k4-…" usw.
- */
 function prefixFor(konto: string): string {
-  if (konto === 'haupt' || !konto) return 'kassenbuch'
+  if (konto === 'haupt') return 'kassenbuch'
   return `kassenbuch-${konto === 'zweit' ? 'k2' : konto}`
 }
-
-function fileFor(konto: string, year: number): string {
-  return join(dataDir(), `${prefixFor(konto)}-${year}.json`)
+function nameFor(konto: string, year: number): string {
+  if (!isKontoId(konto) || !Number.isInteger(year) || year < 1900 || year > 9998) throw new Error('Ungültiges Konto oder Kassenjahr.')
+  return `${prefixFor(konto)}-${year}.json`
 }
 
 export function listYears(konto: string): number[] {
+  if (!isKontoId(konto)) throw new Error('Ungültiges Konto.')
   const re = new RegExp(`^${prefixFor(konto)}-(\\d{4})\\.json$`)
-  return readdirSync(dataDir())
-    .map((f) => re.exec(f)?.[1])
-    .filter((y): y is string => Boolean(y))
-    .map(Number)
-    .sort((a, b) => b - a)
+  return persistence().list().map((file) => re.exec(file)?.[1])
+    .filter((year): year is string => Boolean(year)).map(Number).sort((a, b) => b - a)
 }
 
-/** Alle vorhandenen Bücher anhand der Jahresdateien ('haupt' immer zuerst). */
 export function listKontos(): string[] {
   const found = new Set<string>(['haupt'])
-  for (const f of readdirSync(dataDir())) {
-    const m = /^kassenbuch-(k\d+)-\d{4}\.json$/.exec(f)
-    if (m) found.add(m[1] === 'k2' ? 'zweit' : m[1])
+  for (const file of persistence().list()) {
+    const match = /^kassenbuch-(k\d+)-\d{4}\.json$/.exec(file)
+    if (match) found.add(match[1] === 'k2' ? 'zweit' : match[1])
   }
-  const rest = [...found]
-    .filter((k) => k !== 'haupt')
-    .sort((a, b) => kontoNumber(a) - kontoNumber(b))
-  return ['haupt', ...rest]
-}
-
-function kontoNumber(konto: string): number {
-  return konto === 'zweit' ? 2 : Number(konto.slice(1))
+  const number = (konto: string) => konto === 'zweit' ? 2 : Number(konto.slice(1))
+  return ['haupt', ...[...found].filter((konto) => konto !== 'haupt').sort((a, b) => number(a) - number(b))]
 }
 
 export function loadYear(konto: string, year: number): unknown | null {
-  const file = fileFor(konto, year)
-  if (!existsSync(file)) return null
-  return JSON.parse(readFileSync(file, 'utf-8'))
+  return persistence().readJson(nameFor(konto, year))
 }
 
-export function saveYear(konto: string, year: number, data: unknown): void {
-  const file = fileFor(konto, year)
-  if (existsSync(file)) {
-    rotateBackup(konto, year, file)
-  }
-  const tmp = file + '.tmp'
-  writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
-  renameSync(tmp, file)
+export interface StorageSnapshot {
+  settings?: unknown
+  years: Array<{ konto: string; year: number; data: unknown }>
+}
+
+/** Year data and shared assignments are committed and recovered together. */
+export function commitSnapshot(payload: StorageSnapshot): void {
+  const errors = validateSnapshot(payload)
+  if (errors.length) throw new Error(errors[0])
+  loadSettings()
+  const writes = [
+    ...(payload.settings === undefined ? [] : [{ name: 'einstellungen.json', content: JSON.stringify(payload.settings, null, 2) }]),
+    ...payload.years.map((entry) => ({ name: nameFor(entry.konto, entry.year), content: JSON.stringify(entry.data, null, 2) })),
+  ]
+  persistence().commit(writes)
   syncDataToCloud()
 }
 
-function rotateBackup(konto: string, year: number, file: string): void {
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  copyFileSync(file, join(backupDir(), `${prefixFor(konto)}-${year}-${stamp}.json`))
-  const backups = readdirSync(backupDir())
-    .filter((f) => f.startsWith(`${prefixFor(konto)}-${year}-`))
-    .sort()
-  for (const old of backups.slice(0, Math.max(0, backups.length - MAX_BACKUPS))) {
-    try {
-      rmSync(join(backupDir(), old))
-    } catch {
-      // Backup-Rotation darf das Speichern nie verhindern
-    }
-  }
+export function saveYear(konto: string, year: number, data: unknown): void {
+  commitSnapshot({ years: [{ konto, year, data }] })
 }
 
-function settingsFile(): string {
-  return join(dataDir(), 'einstellungen.json')
+export function loadSettings(): unknown {
+  const settings = persistence().readSettings()
+  const errors = validateSettings(settings)
+  if (errors.length) throw new Error(`Die Einstellungen sind beschädigt und wurden nicht überschrieben. ${errors[0]} Bitte eine Einstellungssicherung aus dem Ordner „backups“ wiederherstellen.`)
+  return settings
+}
+export function saveSettings(data: unknown): void {
+  const errors = validateSettings(data)
+  if (errors.length) throw new Error(errors[0])
+  loadSettings()
+  persistence().writeJson('einstellungen.json', data)
+  syncDataToCloud(data)
 }
 
-function cloudStatusFile(): string {
-  return join(dataDir(), '.cloud-sync-status.json')
+export function deleteYear(konto: string, year: number): void {
+  loadSettings()
+  persistence().removeToBackup(nameFor(konto, year))
+  syncDataToCloud()
+}
+export function dataDirPath(): string {
+  const directory = join(app.getPath('userData'), 'daten')
+  mkdirSync(directory, { recursive: true })
+  return directory
 }
 
+function cloudStatusFile(): string { return join(dataDir(), '.cloud-sync-status.json') }
 function writeCloudStatus(status: CloudSyncStatus): void {
-  try {
-    const file = cloudStatusFile()
-    const tmp = file + '.tmp'
-    writeFileSync(tmp, JSON.stringify(status), 'utf-8')
-    renameSync(tmp, file)
-  } catch {
-    // Ein Status-Hinweis darf die lokale Buchführung nie beeinträchtigen.
-  }
+  try { atomicWrite(cloudStatusFile(), JSON.stringify(status)) }
+  catch { /* A status hint must not prevent a local save. */ }
 }
 
 export function cloudSyncStatus(settings: unknown = loadSettings()): CloudSyncStatus {
   if (!cloudBackupDir(settings)) return { enabled: false }
-  try {
-    const stored = JSON.parse(readFileSync(cloudStatusFile(), 'utf-8')) as CloudSyncStatus
-    return { ...stored, enabled: true }
-  } catch {
-    return { enabled: true }
-  }
-}
-
-export function loadSettings(): unknown {
-  if (!existsSync(settingsFile())) return {}
-  try {
-    return JSON.parse(readFileSync(settingsFile(), 'utf-8'))
-  } catch {
-    return {}
-  }
-}
-
-export function saveSettings(data: unknown): void {
-  const tmp = settingsFile() + '.tmp'
-  writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
-  renameSync(tmp, settingsFile())
-  syncDataToCloud(data)
-}
-
-/**
- * Löscht ein Kassenjahr, indem die Datei in den Backup-Ordner verschoben
- * wird – versehentliches Löschen bleibt damit wiederherstellbar.
- */
-export function deleteYear(konto: string, year: number): void {
-  const file = fileFor(konto, year)
-  if (!existsSync(file)) return
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  renameSync(file, join(backupDir(), `${prefixFor(konto)}-${year}-geloescht-${stamp}.json`))
-  syncDataToCloud()
-}
-
-export function dataDirPath(): string {
-  return dataDir()
+  try { return { ...JSON.parse(readFileSync(cloudStatusFile(), 'utf8')), enabled: true } }
+  catch { return { enabled: true } }
 }
 
 function syncDataToCloud(settings: unknown = loadSettings()): void {
-  const dir = cloudBackupDir(settings)
-  if (!dir) return
+  const directory = cloudBackupDir(settings)
+  if (!directory) return
   try {
-    mkdirSync(dir, { recursive: true })
-    const sourceDir = dataDir()
-    if (resolve(dir) === resolve(sourceDir)) return
-    for (const file of readdirSync(dir)) {
-      if (/^(kassenbuch(-k\d+)?-\d{4}|einstellungen)\.json$/.test(file)) {
-        rmSync(join(dir, file), { force: true })
-      }
-    }
-    let fileCount = 0
-    for (const file of readdirSync(sourceDir)) {
-      if (/^(kassenbuch(-k\d+)?-\d{4}|einstellungen)\.json$/.test(file)) {
-        copyFileSync(join(sourceDir, file), join(dir, basename(file)))
-        fileCount++
-      }
-    }
-    writeCloudStatus({ enabled: true, lastSuccessAt: new Date().toISOString(), fileCount })
-  } catch (error) {
-    // Cloud-Ordner sind manchmal kurzzeitig nicht verfügbar; lokales Speichern bleibt maßgeblich.
-    const message = error instanceof Error ? error.message : String(error)
+    mkdirSync(directory, { recursive: true })
+    const source = dataDir()
+    const sourceNames = readdirSync(source).filter((name) => MIRROR_FILE.test(name))
+    const names = new Set(sourceNames)
+    const mirror = createFilePersistence(directory)
+    // Stale files are removed in the same recoverable transaction as new copies.
+    const writes = [
+      ...sourceNames.map((name) => ({ name, content: readFileSync(join(source, name), 'utf8') })),
+      ...mirror.list().filter((name) => MIRROR_FILE.test(name) && !names.has(name)).map((name) => ({ name, content: null })),
+    ]
+    if (writes.length) mirror.commit(writes, { backup: false })
+    writeCloudStatus({ enabled: true, lastSuccessAt: new Date().toISOString(), fileCount: sourceNames.length })
+  } catch (failure) {
+    const message = failure instanceof Error ? failure.message : String(failure)
     writeCloudStatus({ ...cloudSyncStatus(settings), enabled: true, lastError: message })
   }
 }
 
-/** Manuell ausgelöste Spiegelung für die Statusanzeige in den Einstellungen. */
-export function syncCloudNow(): CloudSyncStatus {
-  syncDataToCloud()
-  return cloudSyncStatus()
-}
+export function syncCloudNow(): CloudSyncStatus { syncDataToCloud(); return cloudSyncStatus() }
 
 function cloudBackupDir(settings: unknown): string | null {
   if (!settings || typeof settings !== 'object') return null
   const data = settings as { cloudBackupEnabled?: unknown; cloudBackupDir?: unknown }
-  if (data.cloudBackupEnabled !== true) return null
-  if (typeof data.cloudBackupDir !== 'string' || !data.cloudBackupDir.trim()) return null
+  if (data.cloudBackupEnabled !== true || typeof data.cloudBackupDir !== 'string'
+    || !data.cloudBackupDir.trim() || !allowedMirrorPath(data.cloudBackupDir)) return null
   return data.cloudBackupDir
 }

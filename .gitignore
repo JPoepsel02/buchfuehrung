@@ -18,3 +18,12 @@ tmp/
 *.key
 *.p12
 *.pfx
+.local-data/
+.local-backups/
+.exports/
+.validation/
+.web-dist/
+.production-out/
+.npm-cache/
+private-fixtures/
+**/*.private.json

@@ -39,6 +39,8 @@ async function launch(root: string) {
   try {
     expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(join(root, 'kassenwart'))
     const page = await app.firstWindow()
+    await expect(page.getByRole('heading', { level: 1, name: 'Vereinsübersicht', exact: true })).toBeVisible()
+    await page.getByLabel('Konto wählen', { exact: true }).selectOption('haupt')
     await expect(page.getByRole('heading', { level: 1, name: /Übersicht/ })).toBeVisible()
     return { app, page }
   } catch (error) { await app.close(); throw error }
@@ -104,7 +106,7 @@ test('merkt die Moduswahl, öffnet explizite Bearbeitung vorübergehend und bewa
     await expect(first.page.getByRole('row', { name: /Abschlusssaldo 31.12.2026/ })).toContainText('150,00')
     await nav(first.page, 'Buchungen')
     await expect(first.page.getByRole('button', { name: 'Clean Mode', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await first.page.getByLabel('Konto wählen').selectOption('zweit')
+    await first.page.getByLabel('Konto wählen', { exact: true }).selectOption('zweit')
     await expect(first.page.getByRole('button', { name: 'Clean Mode', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await first.page.keyboard.press('Control+f')
     await first.page.getByRole('dialog').getByRole('textbox').fill('Andere Rechnung')
