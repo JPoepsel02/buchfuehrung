@@ -33,8 +33,10 @@ export interface BankAccountChoice {
  * sonst TAN-Eingabe), 'tanPending' heißt: Freigabe steht noch aus, weiter
  * abfragen. 'chooseAccount' verlangt die einmalige Auswahl der Kontonummer.
  */
+export type BankPinStatus = 'saved' | 'unusable' | 'missing'
+
 export type BankFetchResult =
-  | { status: 'ok'; rows: BankFetchedRow[] }
+  | { status: 'ok'; rows: BankFetchedRow[]; pinSaveFailed?: true }
   | { status: 'needPin' }
   | { status: 'tan'; sessionId: string; challenge: string; decoupled: boolean }
   | { status: 'tanPending'; sessionId: string; challenge: string; decoupled: boolean }
@@ -44,7 +46,7 @@ export type BankFetchResult =
 export interface BankFetchOptions {
   /** PIN für diesen Abruf; fehlt sie, wird die gespeicherte PIN verwendet */
   pin?: string
-  /** PIN verschlüsselt im Schlüsselbund des Betriebssystems hinterlegen */
+  /** PIN nach erfolgreichem Abruf verschlüsselt auf diesem Gerät hinterlegen */
   savePin?: boolean
   /** Ab-Datum (ISO) für den Umsatzabruf */
   from?: string

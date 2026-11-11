@@ -7,7 +7,7 @@ import type { BankAccountConfig } from '../../shared/types'
 const runtime = vi.hoisted(() => ({
   directory: '', accounts: [] as BankAccountConfig[], encryptionAvailable: true,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
-  first: vi.fn(), cached: vi.fn(), created: vi.fn(), decrypt: vi.fn(),
+  first: vi.fn(), cached: vi.fn(), created: vi.fn(), decrypt: vi.fn(), statements: vi.fn(),
   nextSyncUrl: undefined as string | undefined,
 }))
 
@@ -43,7 +43,8 @@ vi.mock('lib-fints', () => {
         if (runtime.nextSyncUrl) (this.config.bankingInformation as { bpd: { url: string } }).bpd.url = runtime.nextSyncUrl
         return { success: true, requiresTan: false, bankAnswers: [] }
       }
-      async getAccountStatements() { return { success: true, requiresTan: false, statements: [] } }
+      async getAccountStatements() { return runtime.statements() }
+      async getAccountStatementsWithTan() { return runtime.statements() }
     },
   }
 })
@@ -64,6 +65,7 @@ beforeEach(() => {
   runtime.nextSyncUrl = undefined
   runtime.handlers.clear()
   vi.clearAllMocks()
+  runtime.statements.mockReset().mockResolvedValue({ success: true, requiresTan: false, statements: [] })
   registerBankIpc()
 })
 afterEach(() => rmSync(runtime.directory, { recursive: true, force: true }))
@@ -132,18 +134,76 @@ describe('bank credential identity', () => {
 
   test('stops if bank parameters attempt to change the configured endpoint during synchronization', async () => {
     runtime.nextSyncUrl = 'https://other.example.test/fints'
-    expect(await fetch(account, { pin: 'test-pin' })).toMatchObject({ status: 'error' })
+    expect(await fetch(account, { pin: 'test-pin' })).toMatchObject({
+      status: 'error',
+      message: expect.stringContaining('Die Bank meldet den FinTS-Server „other.example.test“. Eingetragen ist „bank.example.test“.'),
+    })
     expect(existsSync(infoFile())).toBe(false)
   })
 
   test('handles unavailable encryption without retaining a PIN and removes a saved PIN on request', async () => {
     runtime.encryptionAvailable = false
-    expect(await fetch(account, { pin: 'test-pin', savePin: true })).toMatchObject({ status: 'ok' })
+    expect(await fetch(account, { pin: 'test-pin', savePin: true })).toMatchObject({ status: 'ok', pinSaveFailed: true })
     expect(existsSync(pinsFile())).toBe(false)
     expect(invoke('bank:pin:has', account.id)).toBe(false)
     runtime.encryptionAvailable = true
     await fetch(account, { pin: 'test-pin', savePin: true })
     invoke('bank:pin:delete', account.id)
     expect(invoke('bank:pin:has', account.id)).toBe(false)
+  })
+
+  test('replaces a saved PIN only after a successful bank response', async () => {
+    await fetch(account, { pin: 'previous-pin', savePin: true })
+    const previous = readFileSync(pinsFile(), 'utf8')
+    runtime.statements.mockResolvedValueOnce({ success: false, requiresTan: false, bankAnswers: [{ code: 9942, text: 'PIN falsch' }] })
+    expect(await fetch(account, { pin: 'rejected-pin', savePin: true })).toMatchObject({ status: 'error' })
+    expect(readFileSync(pinsFile(), 'utf8')).toBe(previous)
+    expect(await fetch(account, { pin: 'new-pin', savePin: true })).toMatchObject({ status: 'ok' })
+    await fetch()
+    expect(runtime.cached.mock.lastCall?.[4]).toBe('new-pin')
+  })
+
+  test('removal during a pending TAN prevents the completed fetch from resaving the PIN', async () => {
+    runtime.statements.mockResolvedValueOnce({ success: false, requiresTan: true, tanReference: 'test-tan' })
+    const result = await fetch(account, { pin: 'new-pin', savePin: true })
+    expect(result).toMatchObject({ status: 'tan' })
+    expect(invoke('bank:pin:status', account.id)).toBe('missing')
+    invoke('bank:pin:delete', account.id)
+    const { sessionId } = result as { status: string; sessionId: string }
+    expect(await invoke('bank:continue', sessionId)).toMatchObject({ status: 'ok' })
+    expect(await fetch()).toMatchObject({ status: 'needPin' })
+  })
+
+  test('does not save the PIN after cancellation while a TAN response is in flight', async () => {
+    runtime.statements.mockResolvedValueOnce({ success: false, requiresTan: true, tanReference: 'test-tan' })
+    const result = await fetch(account, { pin: 'new-pin', savePin: true }) as { status: string; sessionId: string }
+    let finish!: (response: unknown) => void
+    runtime.statements.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const pending = invoke('bank:continue', result.sessionId)
+    invoke('bank:cancel', result.sessionId)
+    finish({ success: true, requiresTan: false, statements: [] })
+    expect(await pending).toMatchObject({ status: 'error' })
+    expect(invoke('bank:pin:status', account.id)).toBe('missing')
+  })
+
+  test('closes a failed TAN session so it cannot later save a PIN', async () => {
+    runtime.statements.mockResolvedValueOnce({ success: false, requiresTan: true, tanReference: 'test-tan' })
+    const result = await fetch(account, { pin: 'new-pin', savePin: true }) as { status: string; sessionId: string }
+    runtime.statements.mockRejectedValueOnce(new Error('Testverbindung abgebrochen'))
+    expect(await invoke('bank:continue', result.sessionId)).toMatchObject({ status: 'error' })
+    expect(await invoke('bank:continue', result.sessionId)).toMatchObject({ status: 'error' })
+    expect(invoke('bank:pin:status', account.id)).toBe('missing')
+  })
+
+  test('reports an unusable local entry and allows removing it without clearing bank metadata', async () => {
+    await fetch(account, { pin: 'test-pin', savePin: true })
+    expect(invoke('bank:pin:status', account.id)).toBe('saved')
+    const previousInfo = readFileSync(infoFile(), 'utf8')
+    runtime.encryptionAvailable = false
+    expect(invoke('bank:pin:status', account.id)).toBe('unusable')
+    expect(invoke('bank:pin:has', account.id)).toBe(false)
+    invoke('bank:pin:delete', account.id)
+    expect(invoke('bank:pin:status', account.id)).toBe('missing')
+    expect(readFileSync(infoFile(), 'utf8')).toBe(previousInfo)
   })
 })

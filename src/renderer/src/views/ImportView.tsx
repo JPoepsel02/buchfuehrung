@@ -71,11 +71,11 @@ export function ImportView() {
     <div className="view">
       <header className="view__header">
         <h1 className="view__title">Umsätze importieren</h1>
+        {draft && <button className="btn" aria-expanded={source === 'bank'}
+          onClick={() => setSource(source === 'bank' ? null : 'bank')}>Online-Banking</button>}
       </header>
 
-      {draft ? (
-        <ImportDraftCard key={`${file.konto ?? 'haupt'}:${file.year}`} onImported={showToast} />
-      ) : (
+      {!draft && (
         <>
           <section className="import-source-grid" aria-label="Importquelle auswählen">
             <button
@@ -102,9 +102,6 @@ export function ImportView() {
             </button>
           </section>
 
-          {source === 'bank' && <BankImportPanel key={scope} onFetchResult={(message) => {
-            if (mounted.current && currentScope.current === scope) showToast(message)
-          }} />}
           {source !== 'bank' && (
             <p className="hint import-source-hint">
               Unterstützt CSV-Exporte von Sparkasse, Volksbank, ING, DKB und weiteren Banken.
@@ -112,6 +109,10 @@ export function ImportView() {
           )}
         </>
       )}
+      {source === 'bank' && <BankImportPanel key={scope} onFetchResult={(message) => {
+        if (mounted.current && currentScope.current === scope) showToast(message)
+      }} />}
+      {draft && <ImportDraftCard key={scope} onImported={showToast} />}
       {error && <p role="alert" className="org-error">{error}</p>}
       {toast && <div className="toast">{toast}</div>}
     </div>

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SnapshotPayload } from '../shared/snapshot'
+import type { BankPinStatus } from '../shared/bank'
 
 interface UpdateInfo {
   current: string
@@ -69,6 +70,7 @@ const api = {
     ipcRenderer.invoke('bank:continue', sessionId, tan),
   bankCancel: (sessionId: string): Promise<void> => ipcRenderer.invoke('bank:cancel', sessionId),
   bankPinExists: (accountId: string): Promise<boolean> => ipcRenderer.invoke('bank:pin:has', accountId),
+  bankPinStatus: (accountId: string): Promise<BankPinStatus> => ipcRenderer.invoke('bank:pin:status', accountId),
   bankPinDelete: (accountId: string): Promise<void> => ipcRenderer.invoke('bank:pin:delete', accountId),
   bankForget: (accountId: string): Promise<void> => ipcRenderer.invoke('bank:forget', accountId),
 }

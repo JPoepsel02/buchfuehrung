@@ -1,4 +1,5 @@
 import type { SnapshotPayload } from '@shared/snapshot'
+import type { BankPinStatus } from '@shared/bank'
 import { validateSettings, validateSnapshot } from '@shared/snapshot'
 import { isLocalExperiment } from '@shared/runtime'
 import { commitBrowserSnapshot, recoverBrowserSnapshot } from './browserPersistence'
@@ -56,6 +57,7 @@ export interface Api {
   bankContinue(sessionId: string, tan?: string): Promise<unknown>
   bankCancel(sessionId: string): Promise<void>
   bankPinExists(accountId: string): Promise<boolean>
+  bankPinStatus(accountId: string): Promise<BankPinStatus>
   bankPinDelete(accountId: string): Promise<void>
   bankForget(accountId: string): Promise<void>
 }
@@ -230,6 +232,9 @@ const webFallback: Api = {
   async bankCancel() {},
   async bankPinExists() {
     return false
+  },
+  async bankPinStatus() {
+    return 'missing'
   },
   async bankPinDelete() {},
   async bankForget() {},

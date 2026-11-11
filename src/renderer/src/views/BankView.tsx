@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api'
+import { api, isElectron } from '../api'
+import { BankDialog, BankPinSettings } from '../components/BankPinSettings'
 import { useStore } from '../store'
 import { mergeImportResponse } from '../importResponse'
 import { makeId } from '@shared/defaults'
 import { legacyRowHashes, rowHash } from '@shared/csv'
 import { formatDate } from '@shared/money'
+import { validateBankAccountConfig } from '@shared/bankValidation'
 import type { StatementRow } from '@shared/csv'
 import type { BankAccountChoice, BankFetchResult, BankFetchedRow } from '@shared/bank'
 import type { BankAccountConfig, KontoId } from '@shared/types'
 
 /** FinTS-Zugangsadressen der großen Rechenzentren als Vorschlag. */
 const FINTS_URL_SUGGESTIONS = [
-  { label: 'Volksbanken / Raiffeisenbanken (Atruvia)', url: 'https://fints2.atruvia.de/cgi-bin/hbciservlet' },
-  { label: 'Volksbanken (Atruvia, ehem. GAD)', url: 'https://fints.atruvia.de/cgi-bin/hbciservlet' },
+  { label: 'Atruvia · FinTS 1', url: 'https://fints1.atruvia.de/cgi-bin/hbciservlet' },
+  { label: 'Atruvia · FinTS 2', url: 'https://fints2.atruvia.de/cgi-bin/hbciservlet' },
 ]
-
-const DEFAULT_FINTS_URL = FINTS_URL_SUGGESTIONS[0].url
 
 type FlowModal =
   | { kind: 'pin' }
@@ -103,8 +103,19 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
     catch { if (mounted.current) setError('Die Bankfreigabe konnte nicht abgebrochen werden. Bitte den Abruf in der Banking-App prüfen.') }
   }
 
+  function newRequest(): FetchRequest {
+    return { id: makeId(), target: { konto: bankKonto, year: file!.year } }
+  }
+
+  function enterPin(account: BankAccountConfig) {
+    const request = newRequest()
+    activeRequest.current = request
+    setError('')
+    setFlow({ account, request, savePin: false, modal: { kind: 'pin' } })
+  }
+
   async function beginFetch(account: BankAccountConfig, pin?: string, savePin = false, previousRequest?: FetchRequest) {
-    const request = previousRequest ?? { id: makeId(), target: { konto: file!.konto ?? 'haupt', year: file!.year } }
+    const request = previousRequest ?? newRequest()
     if (cancelledRequests.current.has(request.id)) return
     activeRequest.current = request
     if (isCurrentView(request)) {
@@ -155,6 +166,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
       case 'ok':
         await applyRows(account, request, result.rows)
         endFlow(request)
+        if (result.pinSaveFailed && isCurrentView(request)) setError('Die PIN konnte auf diesem Gerät nicht gespeichert werden.')
         return
       case 'error':
         endFlow(request)
@@ -233,6 +245,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
     }
     await api.bankForget(account.id)
     await updateSettings({ bankAccounts: accounts.filter((a) => a.id !== account.id) })
+    setError('')
   }
 
   async function saveAccount(draft: BankAccountConfig) {
@@ -240,6 +253,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
     const next = isNew ? [...accounts, withKonto] : accounts.map((a) => (a.id === draft.id ? withKonto : a))
     await updateSettings({ bankAccounts: next })
     setEditing(null)
+    setError('')
   }
 
   return (
@@ -269,14 +283,13 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
               Jedes Kassenbuch hat seine eigene Bankverbindung – hinterlege hier das Online-Banking-Konto
               (VR-NetKey und Bankleitzahl), das zu {kontoLabel} gehört.
               <br />
-              Die PIN wird ausschließlich verschlüsselt im Schlüsselbund deines Rechners gespeichert, niemals in den
-              Kassendaten.
+              Die PIN kannst du verschlüsselt auf diesem Gerät speichern.
             </p>
             <button
               className="btn btn--primary"
               onClick={() => {
                 setIsNew(true)
-                setEditing({ id: makeId(), konto: bankKonto, label: '', blz: '', fintsUrl: DEFAULT_FINTS_URL, userId: '' })
+                setEditing({ id: makeId(), konto: bankKonto, label: '', blz: '', fintsUrl: '', userId: '' })
               }}
             >
               Bankverbindung einrichten
@@ -285,7 +298,7 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
         )}
 
         {account && (
-          <table className="ledger">
+          <div className="table-scroll"><table className="ledger">
             <thead>
               <tr>
                 <th>Konto</th>
@@ -334,16 +347,17 @@ export function BankImportPanel({ onFetchResult }: { onFetchResult: (message: st
                 </td>
               </tr>
             </tbody>
-          </table>
+          </table></div>
         )}
 
+        {account && isElectron && <BankPinSettings key={account.id} account={account} busy={busyId !== null || editing !== null}
+          onReenter={() => enterPin(account)} />}
+
         {error && (
-          <p className="hint split-editor__error" style={{ marginTop: 'var(--space-3)' }}>
+          <p className="hint split-editor__error" role="alert" style={{ marginTop: 'var(--space-3)' }}>
             {error}
           </p>
         )}
-
-
       </section>
 
       {editing && (
@@ -395,13 +409,18 @@ function AccountForm({
   onCancel: () => void
 }) {
   const [draft, setDraft] = useState(account)
-  const valid = draft.label.trim() && /^\d{8}$/.test(draft.blz.trim()) && draft.fintsUrl.trim() && draft.userId.trim()
+  const [addressTouched, setAddressTouched] = useState(false)
+  const normalized = normalize(draft)
+  const errors = validateBankAccountConfig(normalized)
+  const addressError = addressTouched && draft.fintsUrl.trim()
+    ? errors.find((message) => message.startsWith('Die FinTS-Adresse'))
+    : undefined
 
   return (
     <section className="card">
       <h2 className="card__title">{isNew ? 'Bankkonto hinzufügen' : `Bankkonto bearbeiten: ${account.label}`}</h2>
-      <div className="form-grid">
-        <label>
+      <div className="account-settings-fields">
+        <label className="field">
           Anzeigename
           <input
             value={draft.label}
@@ -410,7 +429,7 @@ function AccountForm({
             autoFocus
           />
         </label>
-        <label>
+        <label className="field">
           Bankleitzahl
           <input
             value={draft.blz}
@@ -419,7 +438,7 @@ function AccountForm({
             inputMode="numeric"
           />
         </label>
-        <label>
+        <label className="field">
           VR-NetKey / Anmeldename
           <input
             value={draft.userId}
@@ -427,13 +446,17 @@ function AccountForm({
             placeholder="Anmeldename im Online-Banking"
           />
         </label>
-        <label>
+        <label className="field bank-account-address">
           FinTS-Zugangsadresse
           <input
+            type="url"
             value={draft.fintsUrl}
             onChange={(e) => setDraft({ ...draft, fintsUrl: e.target.value })}
+            onBlur={() => setAddressTouched(true)}
             list="fints-url-suggestions"
             placeholder="https://…"
+            aria-invalid={addressError ? true : undefined}
+            aria-describedby={addressError ? 'bank-address-error' : undefined}
           />
           <datalist id="fints-url-suggestions">
             {FINTS_URL_SUGGESTIONS.map((s) => (
@@ -443,17 +466,17 @@ function AccountForm({
             ))}
           </datalist>
         </label>
+        {addressError && <p className="bank-account-address hint split-editor__error" id="bank-address-error">{addressError}</p>}
       </div>
       <p className="hint">
-        Die PIN wird beim ersten Abruf abgefragt und auf Wunsch verschlüsselt im Schlüsselbund gespeichert – niemals in
-        den Kassendaten.
+        Die PIN wird beim ersten Abruf abgefragt und auf Wunsch verschlüsselt auf diesem Gerät gespeichert.
       </p>
       <div className="toolbar">
         <div className="toolbar__spacer" />
         <button className="btn btn--ghost" onClick={onCancel}>
           Abbrechen
         </button>
-        <button className="btn btn--primary" disabled={!valid} onClick={() => onSave(normalize(draft))}>
+        <button className="btn btn--primary" disabled={errors.length > 0} onClick={() => onSave(normalized)}>
           Speichern
         </button>
       </div>
@@ -481,42 +504,31 @@ function PinModal({
   onCancel: () => void
 }) {
   const [pin, setPin] = useState('')
-  const [savePin, setSavePin] = useState(true)
+  const [savePin, setSavePin] = useState(false)
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="PIN eingeben">
+    <BankDialog label="PIN eingeben" onCancel={onCancel}>
+      <form onSubmit={(event) => { event.preventDefault(); if (pin.trim()) onSubmit(pin.trim(), savePin) }}>
         <h3>PIN für {account.label}</h3>
-        <p className="hint">
-          Die PIN deines Online-Bankings (BLZ {account.blz}). Sie wird nur für diesen Abruf verwendet
-          {savePin ? ' und verschlüsselt im Schlüsselbund gespeichert' : ''}.
-        </p>
-        <input
-          type="password"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && pin.trim()) onSubmit(pin.trim(), savePin)
-          }}
-          placeholder="Online-Banking-PIN"
-          aria-label="PIN"
-          autoFocus
-        />
-        <label className="checkrow" style={{ marginTop: 'var(--space-2)' }}>
-          <input type="checkbox" checked={savePin} onChange={(e) => setSavePin(e.target.checked)} />
-          PIN im Schlüsselbund merken
+        <label>
+          Online-Banking-PIN
+          <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} aria-label="PIN"
+            autoComplete="off" maxLength={1024} autoFocus />
         </label>
-        <div className="toolbar" style={{ marginTop: 'var(--space-3)' }}>
-          <div className="toolbar__spacer" />
-          <button className="btn btn--ghost" onClick={onCancel}>
+        <label className="checkrow">
+          <input type="checkbox" checked={savePin} onChange={(e) => setSavePin(e.target.checked)} />
+          PIN auf diesem Gerät speichern
+        </label>
+        <div className="bank-pin-actions">
+          <button type="button" className="btn" onClick={onCancel}>
             Abbrechen
           </button>
-          <button className="btn btn--primary" disabled={!pin.trim()} onClick={() => onSubmit(pin.trim(), savePin)}>
+          <button type="submit" className="btn btn--primary" disabled={!pin.trim()}>
             Abrufen
           </button>
         </div>
-      </div>
-    </div>
+      </form>
+    </BankDialog>
   )
 }
 

@@ -6,10 +6,10 @@ import { FinTSClient, FinTSConfig } from 'lib-fints'
 import type { BankingInformation, ClientResponse, StatementResponse } from 'lib-fints'
 import { loadSettings } from './storage'
 import { bankDescription } from '../shared/csv'
-import type { BankAccountChoice, BankFetchOptions, BankFetchResult, BankFetchedRow } from '../shared/bank'
-import type { BankAccountConfig } from '../shared/types'
+import type { BankAccountChoice, BankFetchOptions, BankFetchResult, BankFetchedRow, BankPinStatus } from '../shared/bank'
+import type { AppSettings, BankAccountConfig } from '../shared/types'
 import { assertBankAccountConfig, assertBankAccountId, assertBankFetchOptions, assertBankSessionId, assertBankTan, bankInfoFilename } from '../shared/bankValidation'
-import { bankConnectionIdentity, sameBankEndpoint } from './bankIdentity'
+import { bankConnectionIdentity, sameBankEndpoint } from '../shared/bankIdentity'
 
 /**
  * Online-Banking-Abruf über FinTS 3.0 (PIN/TAN) im Main-Prozess.
@@ -45,9 +45,12 @@ interface BankSession {
   challenge: string
   decoupled: boolean
   from?: Date
+  pinToSave?: { pin: string; token: symbol }
 }
 
 const sessions = new Map<string, BankSession>()
+const pinSaveTokens = new Map<string, symbol>()
+const expiredSession = { status: 'error', message: 'Die Abruf-Sitzung ist abgelaufen. Bitte erneut abrufen.' } as const
 
 function bankDir(): string {
   const dir = join(app.getPath('userData'), 'bank')
@@ -62,36 +65,47 @@ function pinsFile(): string {
 }
 
 function loadPins(): Record<string, unknown> {
-  if (!existsSync(pinsFile())) return {}
   try {
     const value: unknown = JSON.parse(readFileSync(pinsFile(), 'utf-8'))
-    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
-  } catch {
-    return {}
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}
   }
+  throw new Error('Der lokale PIN-Speicher konnte nicht gelesen werden.')
 }
 
 function writePins(pins: Record<string, unknown>): void {
-  const tmp = `${pinsFile()}.${randomUUID()}.tmp`
-  writeFileSync(tmp, JSON.stringify(pins), { encoding: 'utf-8', mode: 0o600 })
-  renameSync(tmp, pinsFile())
-}
-
-function savePin(account: BankAccountConfig, pin: string): void {
-  assertBankAccountId(account.id)
-  if (!safeStorage.isEncryptionAvailable()) return
-  const payload = JSON.stringify({ version: 1, connection: bankConnectionIdentity(account), pin })
-  const encrypted = safeStorage.encryptString(payload).toString('base64')
-  writePins({ ...loadPins(), [account.id]: { version: 1, encrypted } })
-}
-
-function loadPin(account: BankAccountConfig): string | null {
-  assertBankAccountId(account.id)
-  const entry = loadPins()[account.id] as { version?: unknown; encrypted?: unknown } | undefined
-  // Old PIN-only ciphertext has no provable login identity and requires re-entry.
-  if (!entry || typeof entry !== 'object' || entry.version !== 1 || typeof entry.encrypted !== 'string'
-    || !entry.encrypted || !safeStorage.isEncryptionAvailable()) return null
+  const file = pinsFile()
+  const tmp = `${file}.${randomUUID()}.tmp`
   try {
+    writeFileSync(tmp, JSON.stringify(pins), { encoding: 'utf-8', mode: 0o600 })
+    renameSync(tmp, file)
+  } finally {
+    rmSync(tmp, { force: true })
+  }
+}
+
+function saveFetchedPin({ account, pinToSave }: BankSession): boolean {
+  if (!pinToSave || pinSaveTokens.get(account.id) !== pinToSave.token) return true
+  pinSaveTokens.delete(account.id)
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return false
+    const payload = JSON.stringify({ version: 1, connection: bankConnectionIdentity(account), pin: pinToSave.pin })
+    const encrypted = safeStorage.encryptString(payload).toString('base64')
+    writePins({ ...loadPins(), [account.id]: { version: 1, encrypted } })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function loadPin(account: BankAccountConfig, pins?: Record<string, unknown>): string | null {
+  assertBankAccountId(account.id)
+  try {
+    const entry = (pins ?? loadPins())[account.id] as { version?: unknown; encrypted?: unknown } | undefined
+    // Old PIN-only ciphertext has no provable login identity and requires re-entry.
+    if (!entry || typeof entry !== 'object' || entry.version !== 1 || typeof entry.encrypted !== 'string'
+      || !entry.encrypted || !safeStorage.isEncryptionAvailable()) return null
     const value = JSON.parse(safeStorage.decryptString(Buffer.from(entry.encrypted, 'base64')))
     return value?.version === 1 && value.connection === bankConnectionIdentity(account)
       && typeof value.pin === 'string' && value.pin.length > 0 && value.pin.length <= 1024 ? value.pin : null
@@ -102,10 +116,18 @@ function loadPin(account: BankAccountConfig): string | null {
 
 function deletePin(accountId: string): void {
   assertBankAccountId(accountId)
+  pinSaveTokens.delete(accountId)
   const pins = loadPins()
-  if (accountId in pins) {
+  if (Object.hasOwn(pins, accountId)) {
     writePins(Object.fromEntries(Object.entries(pins).filter(([id]) => id !== accountId)))
   }
+}
+
+function pinStatus(accountId: string): BankPinStatus {
+  const pins = loadPins()
+  if (!Object.hasOwn(pins, accountId)) return 'missing'
+  const account = (loadSettings() as AppSettings).bankAccounts?.find((entry) => entry.id === accountId)
+  return account && loadPin(account, pins) !== null ? 'saved' : 'unusable'
 }
 
 // ---------- Bank-Stammdaten (BPD/UPD/systemId) je Konto ----------
@@ -146,10 +168,16 @@ function forgetAccount(accountId: string): void {
 }
 
 function assertClientConnection(account: BankAccountConfig, client: FinTSClient): void {
-  if (!sameBankEndpoint(account, client.config.bankingUrl, client.config.bankId)
-    || client.config.userId !== account.userId) {
-    throw new Error('Die Verbindungsdaten der Bank haben sich geändert. Bitte die FinTS-Adresse und den Anmeldenamen prüfen und erneut abrufen.')
-  }
+  const { bankingUrl, bankId, userId } = client.config
+  if (bankId !== account.blz) throw new Error('Die gemeldete Bankleitzahl weicht ab. Prüfe die Bankleitzahl und die FinTS-Zugangsadresse unter „Bearbeiten“.')
+  if (userId !== account.userId) throw new Error('Der Anmeldename im Bankdialog weicht von der gespeicherten Bankverbindung ab.')
+  if (sameBankEndpoint(account, bankingUrl, bankId)) return
+  const configuredHost = new URL(account.fintsUrl).hostname
+  const reportedHost = URL.canParse(bankingUrl) ? new URL(bankingUrl).hostname : ''
+  const detail = reportedHost && reportedHost !== configuredHost
+    ? `Die Bank meldet den FinTS-Server „${reportedHost}“. Eingetragen ist „${configuredHost}“.`
+    : 'Die gemeldete FinTS-Zugangsadresse weicht von der eingetragenen Adresse ab.'
+  throw new Error(`${detail} Prüfe die FinTS-Zugangsadresse deiner Bank unter „Bearbeiten“.`)
 }
 
 // ---------- FinTS-Abruf ----------
@@ -229,7 +257,7 @@ function mapStatements(response: StatementResponse): BankFetchedRow[] {
 }
 
 /** Nach erfolgreicher Synchronisation: Kontoauswahl prüfen, dann Umsätze abrufen. */
-async function fetchStatements(session: BankSession): Promise<BankFetchResult> {
+async function fetchStatements(session: BankSession, sessionId?: string): Promise<BankFetchResult> {
   const { account, client } = session
   assertClientConnection(account, client)
   if (!account.accountNumber) {
@@ -248,6 +276,7 @@ async function fetchStatements(session: BankSession): Promise<BankFetchResult> {
   }
   session.phase = 'statements'
   const response = await client.getAccountStatements(account.accountNumber, session.from)
+  if (sessionId && sessions.get(sessionId) !== session) return expiredSession
   return handleStatementsResponse(session, response)
 }
 
@@ -256,19 +285,24 @@ function handleStatementsResponse(session: BankSession, response: StatementRespo
   if (response.requiresTan) return tanResult(session, response, false)
   if (!response.success) return errorFromResponse(response, 'Der Umsatzabruf ist fehlgeschlagen.')
   persistBankInfo(session.account, session.client)
-  cleanupSession(session)
-  return { status: 'ok', rows: mapStatements(response) }
+  const rows = mapStatements(response)
+  return saveFetchedPin(session) ? { status: 'ok', rows } : { status: 'ok', rows, pinSaveFailed: true }
 }
 
-function cleanupSession(session: BankSession): void {
-  const id = findSessionId(session)
-  if (id) sessions.delete(id)
+function closeSession(sessionId: string): void {
+  const session = sessions.get(sessionId)
+  if (session?.pinToSave && pinSaveTokens.get(session.account.id) === session.pinToSave.token) {
+    pinSaveTokens.delete(session.account.id)
+  }
+  sessions.delete(sessionId)
 }
 
 async function startFetch(account: BankAccountConfig, opts: BankFetchOptions): Promise<BankFetchResult> {
-  const pin = opts.pin?.trim() || loadPin(account)
+  const enteredPin = opts.pin?.trim()
+  const pin = enteredPin || loadPin(account)
   if (!pin) return { status: 'needPin' }
-  if (opts.pin?.trim() && opts.savePin) savePin(account, opts.pin.trim())
+  const pinToSave = enteredPin && opts.savePin ? { pin: enteredPin, token: Symbol() } : undefined
+  if (pinToSave) pinSaveTokens.set(account.id, pinToSave.token)
 
   const stored = loadBankInfo(account)
   const config = stored
@@ -292,6 +326,7 @@ async function startFetch(account: BankAccountConfig, opts: BankFetchOptions): P
     challenge: '',
     decoupled: false,
     from: opts.from ? new Date(opts.from) : undefined,
+    pinToSave,
   }
 
   if (!stored) {
@@ -316,27 +351,33 @@ async function startFetch(account: BankAccountConfig, opts: BankFetchOptions): P
 
 async function continueFetch(sessionId: string, tan?: string): Promise<BankFetchResult> {
   const session = sessions.get(sessionId)
-  if (!session) return { status: 'error', message: 'Die Abruf-Sitzung ist abgelaufen. Bitte erneut abrufen.' }
+  if (!session) return expiredSession
+  let needsTan = false
+  try {
+    const result = await resumeSession(sessionId, session, tan)
+    needsTan = result.status === 'tan' || result.status === 'tanPending'
+    return result
+  } finally {
+    if (!needsTan) closeSession(sessionId)
+  }
+}
+
+async function resumeSession(sessionId: string, session: BankSession, tan?: string): Promise<BankFetchResult> {
   const { client } = session
   assertClientConnection(session.account, client)
   if (session.phase === 'sync') {
     const response = await client.synchronizeWithTan(session.tanReference, tan)
+    if (sessions.get(sessionId) !== session) return expiredSession
     assertClientConnection(session.account, client)
     if (response.requiresTan) return tanResult(session, response, true)
-    if (!response.success) {
-      cleanupSession(session)
-      return errorFromResponse(response, 'Die Anmeldung bei der Bank ist fehlgeschlagen.')
-    }
+    if (!response.success) return errorFromResponse(response, 'Die Anmeldung bei der Bank ist fehlgeschlagen.')
     persistBankInfo(session.account, client)
-    return fetchStatements(session)
+    return fetchStatements(session, sessionId)
   }
   const response = await client.getAccountStatementsWithTan(session.tanReference, tan)
+  if (sessions.get(sessionId) !== session) return expiredSession
   assertClientConnection(session.account, client)
   if (response.requiresTan) return tanResult(session, response, true)
-  if (!response.success) {
-    cleanupSession(session)
-    return errorFromResponse(response, 'Der Umsatzabruf ist fehlgeschlagen.')
-  }
   return handleStatementsResponse(session, response)
 }
 
@@ -364,13 +405,15 @@ export function registerBankIpc(): void {
   }))
   ipcMain.handle('bank:cancel', (_e, sessionId: unknown) => {
     assertBankSessionId(sessionId)
-    sessions.delete(sessionId)
+    closeSession(sessionId)
   })
   ipcMain.handle('bank:pin:has', (_e, accountId: unknown) => {
     assertBankAccountId(accountId)
-    const settings = loadSettings() as { bankAccounts?: BankAccountConfig[] }
-    const account = settings.bankAccounts?.find((entry) => entry.id === accountId)
-    return account !== undefined && loadPin(account) !== null
+    return pinStatus(accountId) === 'saved'
+  })
+  ipcMain.handle('bank:pin:status', (_e, accountId: unknown) => {
+    assertBankAccountId(accountId)
+    return pinStatus(accountId)
   })
   ipcMain.handle('bank:pin:delete', (_e, accountId: unknown) => {
     assertBankAccountId(accountId)

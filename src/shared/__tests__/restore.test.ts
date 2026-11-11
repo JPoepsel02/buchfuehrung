@@ -16,6 +16,8 @@ const year = (konto: string, number: number): YearFile => ({ schemaVersion: 1, k
   ], bookings: [booking(`${konto}-${number}`, number)] })
 const key = (konto: string, number: number) => JSON.stringify([konto, number, `${konto}-${number}`])
 const organization = (): OrganizationConfig => ({ name: 'Test', treasurerName: 'Person', rules: [], assignments: {}, transfers: [] })
+const localBank = { id: 'local-bank', konto: 'haupt', label: 'Testbank', blz: '12345678',
+  userId: 'Test', fintsUrl: 'https://bank.example.test/fints', accountNumber: '123', iban: 'DE123' }
 const transfer = (id: string, number: number, from = 'haupt', to = 'zweit'): OrganizationTransfer => ({
   id, from: { konto: from, year: number, bookingId: `${from}-${number}` },
   to: { konto: to, year: number, bookingId: `${to}-${number}` }, amount: 1000,
@@ -34,7 +36,8 @@ describe('partial restore', () => {
       organization: { ...organization(), rules: [{ id: 'r', konto: 'k3', categoryId: 'b', area: 'I' }],
         assignments: { [key('k3', 2026)]: kept }, transfers: [transfer('collision', 2026, 'k3', 'k4')] },
     }
-    const source = buildBackup(imported, { accountNumbers: { haupt: 'DE222', k3: 'DE000' }, bankAccounts: [bank('bank1', 'haupt')],
+    const source = buildBackup(imported, { accountNumbers: { haupt: 'DE222', k3: 'DE000' },
+      bankAccounts: [{ ...bank('bank1', 'haupt'), userId: 'Aus dem Backup' }],
       organization: { ...organization(), rules: [{ id: 'r', konto: 'haupt', categoryId: 'b', area: 'Z' }, { id: 'foreign', konto: 'k3', categoryId: 'b', area: 'W' }],
         assignments: { [key('haupt', 2025)]: incoming, [key('k3', 2026)]: incoming }, transfers: [transfer('collision', 2025)] },
     }, '2026-11-01T00:00:00Z')
@@ -97,12 +100,30 @@ describe('partial restore', () => {
     expect(allOrganizationBookings([main, second], restored.settings!.organization!).every((entry) => entry.transferId === 'cross')).toBe(true)
   })
 
-  test('requires a new bank credential identity even when an imported configuration uses the existing account ID', () => {
-    const bank = { id: 'same', konto: 'haupt', label: 'Test', blz: '12345678', userId: 'Test', fintsUrl: 'https://bank.example.test/fints' }
+  test('keeps the local credential ID when restoring the same account and login', () => {
+    const bank = { ...localBank, id: 'backup-bank', konto: undefined, label: 'Archivname',
+      fintsUrl: 'https://BANK.EXAMPLE.TEST:443/fints' }
     const imported = buildBackup([year('haupt', 2026)], { bankAccounts: [bank] }, '2026-11-01T00:00:00Z')
-    const restored = buildRestoreSnapshot(imported, { bankAccounts: [bank] })
-    expect(restored.settings?.bankAccounts?.[0].id).not.toBe(bank.id)
-    expect(imported.settings?.bankAccounts?.[0].id).toBe(bank.id)
+    const restored = buildRestoreSnapshot(imported, { bankAccounts: [localBank] })
+    expect(restored.settings?.bankAccounts).toEqual([{ ...bank, id: localBank.id }])
+    expect(imported.settings?.bankAccounts?.[0].id).toBe('backup-bank')
+  })
+
+  test.each([
+    { fintsUrl: 'https://bank.example.test/other' }, { blz: '87654321' }, { userId: 'Other' },
+    { accountNumber: '456' }, { iban: 'DE456' }, { konto: 'zweit' },
+  ])('isolates changed bank connections even when the backup reuses the local ID: %j', (change) => {
+    const bank = { ...localBank, ...change }
+    const imported = buildBackup([year('haupt', 2026), year('zweit', 2026)], { bankAccounts: [bank] }, '2026-11-01T00:00:00Z')
+    const restored = buildRestoreSnapshot(imported, { bankAccounts: [localBank] })
+    expect(restored.settings?.bankAccounts?.[0].id).toMatch(/^restored-/)
+  })
+
+  test('never adopts a backup credential ID on a new installation or if the local match is ambiguous', () => {
+    const imported = buildBackup([year('haupt', 2026)], { bankAccounts: [localBank] }, '2026-11-01T00:00:00Z')
+    expect(buildRestoreSnapshot(imported, {}).settings?.bankAccounts?.[0].id).toMatch(/^restored-/)
+    expect(buildRestoreSnapshot(imported, { bankAccounts: [localBank, { ...localBank, id: 'duplicate' }] })
+      .settings?.bankAccounts?.[0].id).toMatch(/^restored-/)
   })
 
   test('never rolls back reserved account identifiers from current or imported history', () => {

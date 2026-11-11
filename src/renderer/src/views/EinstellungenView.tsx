@@ -498,7 +498,7 @@ export function DataStorageCard({ notify }: { notify: (msg: string) => void }) {
     const notes = [
       'Nicht enthaltene Kassenjahre und deren Zuordnungen bleiben erhalten. Die Cloud-Sicherung wird deaktiviert.',
       ...(!result.backup.settings?.organization ? ['Die Sicherung enthält keine Bereichszuordnungen. Zuordnungen und Umbuchungen der importierten Kassenjahre werden zurückgesetzt.'] : []),
-      ...(result.backup.settings?.bankAccounts?.length ? ['Für importierte Bankverbindungen muss die PIN erneut eingegeben werden.'] : []),
+      ...(result.backup.settings?.bankAccounts?.length ? ['Bei neuen oder geänderten Bankverbindungen wird die PIN beim nächsten Abruf abgefragt.'] : []),
     ].join('\n')
     if (
       !confirm(

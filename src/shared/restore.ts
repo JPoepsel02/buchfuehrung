@@ -1,9 +1,10 @@
 import type { Backup } from './backup'
-import type { AppSettings, YearFile } from './types'
+import type { AppSettings, BankAccountConfig, YearFile } from './types'
 import type { SnapshotPayload } from './snapshot'
 import { bookingKey } from './organization'
 import type { OrganizationConfig } from './organization'
 import { makeId } from './defaults'
+import { sameBankAccount } from './bankIdentity'
 
 const scope = (konto: string, year: number) => JSON.stringify([konto, year])
 const ruleKey = (rule: { konto: string; categoryId: string }) => JSON.stringify([rule.konto, rule.categoryId])
@@ -66,6 +67,26 @@ function reservedSequence(settings: AppSettings, files: readonly YearFile[]): nu
   }, Math.max(1, settings.kontoSequence ?? 1))
 }
 
+function restoreBankAccounts(
+  imported: BankAccountConfig[] | undefined, current: BankAccountConfig[] | undefined, kontos: Set<string>,
+): BankAccountConfig[] | undefined {
+  if (imported === undefined) return current
+  const local = current ?? []
+  const kept = local.filter((account) => !kontos.has(account.konto ?? 'haupt'))
+  const incoming = imported.filter((account) => kontos.has(account.konto ?? 'haupt'))
+  const used = new Set(local.map((account) => account.id))
+  return [...kept, ...incoming.map((account) => {
+    const matches = local.filter((entry) => sameBankAccount(entry, account))
+    if (matches.length === 1 && incoming.filter((entry) => sameBankAccount(entry, account)).length === 1) {
+      return { ...account, id: matches[0].id }
+    }
+    let id: string
+    do { id = `restored-${makeId()}` } while (used.has(id))
+    used.add(id)
+    return { ...account, id }
+  })]
+}
+
 /** Only the included account-years are replaced; references outside them survive. */
 export function buildRestoreSnapshot(backup: Backup, current: AppSettings, currentYears: readonly YearFile[] = []): SnapshotPayload {
   const imported = backup.settings
@@ -74,10 +95,7 @@ export function buildRestoreSnapshot(backup: Backup, current: AppSettings, curre
     ...Object.fromEntries(Object.entries(current.accountNumbers ?? {}).filter(([konto]) => !kontos.has(konto))),
     ...Object.fromEntries(Object.entries(imported.accountNumbers).filter(([konto]) => kontos.has(konto))),
   }
-  const bankAccounts = imported?.bankAccounts === undefined ? current.bankAccounts : appendWithUniqueIds(
-    (current.bankAccounts ?? []).filter((account) => !kontos.has(account.konto ?? 'haupt')),
-    imported.bankAccounts.filter((account) => kontos.has(account.konto ?? 'haupt')).map((account) => ({ ...account, id: `restored-${makeId()}` })),
-  )
+  const bankAccounts = restoreBankAccounts(imported?.bankAccounts, current.bankAccounts, kontos)
   return {
     years: backup.years.map((year) => ({ konto: year.konto ?? 'haupt', year: year.year, data: year })),
     settings: { ...current, ...imported, accountNumbers, bankAccounts,

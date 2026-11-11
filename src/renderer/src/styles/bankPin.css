@@ -1,0 +1,57 @@
+.bank-account-address {
+  grid-column: 1 / -1;
+}
+
+.bank-account-address.hint {
+  margin: 0;
+}
+
+.bank-pin-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-line);
+}
+
+.bank-pin-settings .hint {
+  margin: 3px 0 0;
+}
+
+.bank-pin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bank-pin-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  color: var(--color-ink);
+}
+
+.bank-pin-dialog::backdrop {
+  background: rgb(15 25 34 / .38);
+}
+
+.bank-pin-dialog form {
+  display: grid;
+  gap: 12px;
+}
+
+.bank-pin-dialog form > label:not(.checkrow) {
+  display: grid;
+  gap: 6px;
+}
+
+.bank-pin-dialog .checkrow {
+  min-height: 28px;
+}
+
+.bank-pin-dialog .bank-pin-actions {
+  justify-content: flex-end;
+}
