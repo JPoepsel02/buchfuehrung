@@ -27,6 +27,7 @@ jobs:
   release:
     needs: validate
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest

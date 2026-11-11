@@ -35,7 +35,8 @@ export function atomicWrite(path: string, content: string, io: FileIo = defaultI
   const temporary = `${path}.${randomUUID()}.tmp`
   try {
     io.writeFile(temporary, content)
-    const descriptor = fs.openSync(temporary, 'r')
+    // Windows requires a writable handle to flush file contents.
+    const descriptor = fs.openSync(temporary, 'r+')
     try { fs.fsyncSync(descriptor) } finally { fs.closeSync(descriptor) }
     io.rename(temporary, path)
     syncDirectory(dirname(path))

@@ -1,9 +1,9 @@
 {
   "name": "kassenwart",
-  "version": "1.17.0",
-  "description": "Buchf\u00fchrung und Vereinszentrale",
+  "version": "1.17.1",
+  "description": "Buchführung und Vereinszentrale",
   "main": "out/main/index.js",
-  "author": "Buchf\u00fchrung contributors",
+  "author": "Buchführung contributors",
   "license": "MIT",
   "private": true,
   "overrides": {
