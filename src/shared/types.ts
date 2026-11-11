@@ -232,6 +232,8 @@ export interface YearFile {
   kontoName?: string
   /** Erster Monat des Wirtschaftsjahres (1 = Januar, 11 = November); Standard 1 */
   fiscalStartMonth?: number
+  /** Das Konto bestand vor diesem Kassenjahr noch nicht. */
+  isFirstFiscalYear?: boolean
   /** Anfangssaldo in Cent (Abschlusssaldo des Vorjahres) */
   openingBalance: Cents
   /** Name des Vereins / der Ortsgruppe für Berichte */

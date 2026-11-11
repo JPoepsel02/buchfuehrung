@@ -118,9 +118,11 @@ export function validateBackup(data: unknown): ValidationResult {
       (!Number.isInteger(f.fiscalStartMonth) || (f.fiscalStartMonth as number) < 1 || (f.fiscalStartMonth as number) > 12)
     )
       err(`Kassenjahr ${yearNo}: Startmonat des Kassenjahres muss 1–12 sein.`)
+    if (f.isFirstFiscalYear !== undefined && typeof f.isFirstFiscalYear !== 'boolean')
+      err(`Kassenjahr ${yearNo}: Angabe zum ersten Kassenjahr ist ungültig.`)
 
-    if (!Array.isArray(f.categories) || f.categories.length === 0) {
-      err(`Kassenjahr ${yearNo}: keine Kategorien.`)
+    if (!Array.isArray(f.categories)) {
+      err(`Kassenjahr ${yearNo}: Kategorienliste fehlt.`)
       return
     }
     const catIds = new Set<string>()

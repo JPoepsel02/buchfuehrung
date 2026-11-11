@@ -289,6 +289,21 @@ export function createTransfer(files: readonly YearFile[], first: BookingReferen
   }
 }
 
+export function confirmedAccountStarts(files: readonly YearFile[]): Map<string, string> {
+  const starts = new Map<string, string>()
+  for (const file of files) {
+    if (file.isFirstFiscalYear !== true) continue
+    const konto = file.konto ?? 'haupt'
+    const start = fiscalRange(file).start
+    const accountFiles = files.filter((entry) => (entry.konto ?? 'haupt') === konto)
+    if (!validDate(start) || accountFiles.filter((entry) => entry.isFirstFiscalYear === true).length !== 1) continue
+    if (accountFiles.filter((entry) => fiscalRange(entry).start <= start).length !== 1 ||
+      accountFiles.some((entry) => entry.bookings.some((booking) => booking.date < start))) continue
+    starts.set(konto, start)
+  }
+  return starts
+}
+
 function coverageIssues(files: readonly YearFile[], konto: string, period: OrganizationPeriod): string[] {
   const name = accountName(konto, files)
   const ranges = files.filter((file) => (file.konto ?? 'haupt') === konto)
@@ -372,7 +387,9 @@ export function buildOrganizationReport(
     return { ...result, issues: ['Bitte einen gültigen Berichtszeitraum auswählen.'] }
   }
   const source = resolvedSnapshot(files, config)
+  const starts = confirmedAccountStarts(files)
   const selected = [...new Set(period.kontos ?? files.map((file) => file.konto ?? 'haupt'))]
+    .filter((konto) => (starts.get(konto) ?? '') <= period.to)
   const bookings = source.rows.filter((row) => selected.includes(row.reference.konto) && row.booking.date >= period.from && row.booking.date <= period.to)
     .sort((a, b) => a.booking.date.localeCompare(b.booking.date) || a.key.localeCompare(b.key))
   const external = bookings.filter((row) => !row.transferId)
@@ -387,14 +404,17 @@ export function buildOrganizationReport(
     if (row.status === 'invalid' && !row.transferId) issues.push(`${row.kontoName}: Zuordnung von ${row.booking.ref} muss erneut geprüft werden.`)
   }
   const accountTotals = selected.map((konto) => {
+    const start = starts.get(konto)
+    const accountPeriod = start && period.from < start ? { ...period, from: start } : period
     const knownClosingBalance = balanceAt(files, konto, period.to, true)
-    const carried = carryForwardBalances && knownClosingBalance === null ? carryForwardBalance(files, konto, period) : null
-    if (!carried) issues.push(...coverageIssues(files, konto, period))
-    issues.push(...continuityIssues(files, konto, period))
+    const carried = carryForwardBalances && knownClosingBalance === null ? carryForwardBalance(files, konto, accountPeriod) : null
+    if (!carried) issues.push(...coverageIssues(files, konto, accountPeriod))
+    issues.push(...continuityIssues(files, konto, accountPeriod))
     const accountRows = external.filter((row) => row.reference.konto === konto)
     const accountIncome = accountRows.filter((row) => row.booking.type === 'einnahme').reduce((sum, row) => sum + row.booking.amount, 0)
     const accountExpenses = accountRows.filter((row) => row.booking.type === 'ausgabe').reduce((sum, row) => sum + row.booking.amount, 0)
-    const openingBalance = carried && period.from > carried.date ? carried.amount : balanceAt(files, konto, period.from, false)
+    const openingBalance = accountPeriod !== period ? 0
+      : carried && period.from > carried.date ? carried.amount : balanceAt(files, konto, period.from, false)
     const closingBalance = carried?.amount ?? knownClosingBalance
     if (openingBalance === null || closingBalance === null) issues.push(`${accountName(konto, files)}: Bestand am Berichtsanfang oder -ende ist nicht eindeutig ermittelbar.`)
     return { konto, name: accountName(konto, files), income: accountIncome, expenses: accountExpenses,

@@ -6,6 +6,7 @@ import { exportAnnualPresentation } from '../presentationExport'
 import { ReportPreview } from '../components/ReportPreview'
 import { fiscalLabel, fiscalRange } from '@shared/fiscal'
 import { accountNumberFor } from '@shared/accountDetails'
+import { confirmedAccountStarts } from '@shared/organization'
 import type { AuditInfo } from '@shared/types'
 
 const AUDIT_FIELDS: { key: keyof AuditInfo; label: string; span: number; placeholder?: string }[] = [
@@ -25,8 +26,11 @@ export function PruefberichtView({ embedded = false }: { embedded?: boolean } = 
   const [exporting, setExporting] = useState(false)
   const Heading = embedded ? 'h2' : 'h1'
   const SectionHeading = embedded ? 'h3' : 'h2'
-  const reportEndYear = file ? Number(fiscalRange(file).end.slice(0, 4)) : null
-  const otherKontos = kontos.filter((entry) => entry.id !== 'haupt')
+  const reportEnd = file ? fiscalRange(file).end : null
+  const reportEndYear = reportEnd ? Number(reportEnd.slice(0, 4)) : null
+  const starts = useMemo(() => confirmedAccountStarts(allFiles), [allFiles])
+  const reportKontos = kontos.filter((entry) => !reportEnd || (starts.get(entry.id) ?? '') <= reportEnd)
+  const otherKontos = reportKontos.filter((entry) => entry.id !== 'haupt')
   const excluded = new Set(file?.reportExcludedKontos ?? [])
   const otherIds = otherKontos.filter((entry) => !excluded.has(entry.id)).map((entry) => entry.id).join(',')
   const others = useMemo(() => {
@@ -42,7 +46,7 @@ export function PruefberichtView({ embedded = false }: { embedded?: boolean } = 
     treasurerName: organization.treasurerName || file.treasurerName,
   } : null, [file, kontos, organization.name, organization.treasurerName])
   const missing = otherIds.split(',').filter((id) => id && !others.some((entry) => (entry.konto ?? 'haupt') === id))
-  const selectedKontos = kontos.filter((entry) => !excluded.has(entry.id))
+  const selectedKontos = reportKontos.filter((entry) => !excluded.has(entry.id))
   const selectionMessage = selectedKontos.length === 0 ? 'Bitte mindestens ein Konto auswählen.'
     : missing.length > 0 ? `Fehlendes Kassenjahr: ${missing.map((id) => kontos.find((entry) => entry.id === id)?.name ?? id).join(', ')}` : ''
   const selectedFiles = reportFile ? [reportFile, ...others].filter((entry) => !excluded.has(entry.konto ?? 'haupt')) : []
@@ -130,7 +134,7 @@ export function PruefberichtView({ embedded = false }: { embedded?: boolean } = 
         <section className="card">
           <SectionHeading className="card__title">Konten im Bericht</SectionHeading>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
-            {kontos.map((k) => (
+            {reportKontos.map((k) => (
               <label className="checkrow" key={k.id}>
                 <input
                   type="checkbox"

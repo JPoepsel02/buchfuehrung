@@ -34,6 +34,24 @@ function backup(y: YearFile[] = [year()]) {
 }
 
 describe('validateBackup', () => {
+  test('prüft und erhält die Bestätigung des ersten Kassenjahres', () => {
+    const data = backup([year({ isFirstFiscalYear: true })])
+    expect(validateBackup(data)).toEqual({ ok: true, backup: data })
+    data.years[0].isFirstFiscalYear = 'true'
+    expect(validateBackup(data).ok).toBe(false)
+  })
+
+  test('sichert ein leeres Kassenjahr ohne übernommene Kategorien', () => {
+    const data = backup([year({ categories: [], bookings: [] })])
+    const result = validateBackup(data)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.backup).toEqual(data)
+  })
+
+  test('lehnt Buchungen ohne passende Kategorie ab', () => {
+    expect(validateBackup(backup([year({ categories: [] })])).ok).toBe(false)
+  })
+
   test.each([true, false])('sichert die Clean-Mode-Einstellung ohne Buchungsänderungen: %j', (bookingsCleanMode) => {
     const data = backup()
     data.settings.bookingsCleanMode = bookingsCleanMode

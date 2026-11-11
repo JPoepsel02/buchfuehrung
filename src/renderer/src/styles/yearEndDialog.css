@@ -1,0 +1,81 @@
+.year-end-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  color: var(--color-ink);
+  overflow-y: auto;
+}
+
+.year-end-dialog::backdrop {
+  background: rgb(15 25 34 / .38);
+}
+
+.year-end-dialog form {
+  display: grid;
+  gap: 16px;
+}
+
+.year-end-dialog h2 {
+  margin-bottom: 4px;
+}
+
+.year-end-dialog h2:focus {
+  outline: none;
+}
+
+.year-end-dialog__balance {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding-block: 10px;
+  border-block: 1px solid var(--color-line);
+}
+
+.year-end-dialog__balance dd {
+  margin: 0;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.year-end-dialog__categories {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.year-end-dialog__categories legend {
+  margin-bottom: 8px;
+  font-weight: 650;
+}
+
+.year-end-dialog__choices {
+  max-height: min(36dvh, 300px);
+  overflow-y: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.year-end-dialog__choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.year-end-dialog__choice + .year-end-dialog__choice {
+  border-top: 1px solid var(--color-line);
+}
+
+.year-end-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}

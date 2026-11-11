@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { buildOrganizationReport } from '@shared/organization'
+import { buildOrganizationReport, confirmedAccountStarts } from '@shared/organization'
 import type { OrganizationPeriod } from '@shared/organization'
 import { fiscalLabel, fiscalRange } from '@shared/fiscal'
 import { buildOrganizationReportHtml, canExportOrganizationReport, ORGANIZATION_REPORT_TITLES, organizationReportToCsv } from '../organizationReport'
@@ -54,6 +54,8 @@ export function ReportsView({ period, onPeriodChange }: Props) {
   const reportPeriod = useMemo(() => ({ ...period, kontos: selectedKontos ?? period.kontos }), [period, selectedKontos])
   const report = useMemo(() => buildOrganizationReport(allFiles, organization, reportPeriod), [allFiles, organization, reportPeriod])
   const html = useMemo(() => standardKind ? buildOrganizationReportHtml(report, organization, settings.logoDataUrl, standardKind) : '', [report, organization, settings.logoDataUrl, standardKind])
+  const accountStarts = useMemo(() => confirmedAccountStarts(allFiles), [allFiles])
+  const reportKontos = kontos.filter((konto) => (accountStarts.get(konto.id) ?? '') <= period.to)
   const included = selectedKontos ?? period.kontos ?? kontos.map((konto) => konto.id)
   const legacyReady = file && (file.konto ?? 'haupt') === 'haupt' && file.year === legacyYear
   const exportDisabled = busy || !standardKind || !canExportOrganizationReport(report, standardKind)
@@ -138,7 +140,7 @@ export function ReportsView({ period, onPeriodChange }: Props) {
           <h2 className="org-report-group-title org-report-filter-title">Zeitraum &amp; Konten</h2>
           <div className="field"><label htmlFor="report-from">Von</label><input id="report-from" type="date" value={period.from} max={period.to} onChange={(event) => event.target.value && onPeriodChange({ ...period, from: event.target.value })} /></div>
           <div className="field"><label htmlFor="report-to">Bis</label><input id="report-to" type="date" value={period.to} min={period.from} onChange={(event) => event.target.value && onPeriodChange({ ...period, to: event.target.value })} /></div>
-          <div className="org-report-kontos">{kontos.map((konto) => <label className="checkrow" key={konto.id}><input type="checkbox" checked={included.includes(konto.id)} onChange={(event) => toggleKonto(konto.id, event.target.checked)} />{konto.name}</label>)}</div>
+          <div className="org-report-kontos">{reportKontos.map((konto) => <label className="checkrow" key={konto.id}><input type="checkbox" checked={included.includes(konto.id)} onChange={(event) => toggleKonto(konto.id, event.target.checked)} />{konto.name}</label>)}</div>
           <div className={`org-status${report.openCount || report.issues.length ? ' org-status--warn' : ''}`}>{report.issues.length ? 'Abgleich erforderlich' : report.openCount ? `${report.openCount} Zuordnungen offen` : 'Zuordnung vollständig'}</div>
         </section> : <section className="org-report-group org-report-filters">
           <h2 className="org-report-group-title org-report-filter-title">Kassenjahr</h2>

@@ -85,6 +85,46 @@ describe('Vereinskonfiguration und Referenzen', () => {
   })
 })
 
+describe('Erstes Kassenjahr eines Kontos', () => {
+  const first = year({ konto: 'k3', kontoName: 'China', openingBalance: 0, isFirstFiscalYear: true,
+    bookings: [booking({ date: '2026-01-02' })] })
+  const prior = { from: '2025-01-01', to: '2025-12-31' }
+
+  test('berücksichtigt das bestätigte Konto erst ab seinem ersten Kassenjahr', () => {
+    const main = year({ year: 2025 })
+    const old = buildOrganizationReport([main, first], config(), prior)
+    expect(old.accounts.map((entry) => entry.konto)).toEqual(['haupt'])
+    expect(old.issues).toEqual([])
+    const crossing = buildOrganizationReport([first], config(), { from: prior.from, to: period.to })
+    expect(crossing.accounts[0]).toMatchObject({ openingBalance: 0, closingBalance: 10000, income: 10000 })
+    expect(crossing.issues).toEqual([])
+    const laterStart = buildOrganizationReport([{ ...first, openingBalance: 5000 }], config(), { from: prior.from, to: period.to })
+    expect(laterStart.accounts[0]).toMatchObject({ openingBalance: 0, closingBalance: 15000, income: 10000 })
+  })
+
+  test('meldet eine Lücke ohne Bestätigung oder nach einem bestätigten Kontobeginn', () => {
+    const unconfirmed = buildOrganizationReport([{ ...first, isFirstFiscalYear: undefined }], config(), prior)
+    expect(unconfirmed.issues.join(' ')).toMatch(/Kassenjahr.*fehlt/)
+    const successor = { ...first, year: 2028, isFirstFiscalYear: undefined, bookings: [] }
+    const gap = buildOrganizationReport([first, successor], config(), { from: '2026-01-01', to: '2028-12-31' })
+    expect(gap.issues.join(' ')).toContain('2027-01-01 fehlt')
+  })
+
+  test('zeigt widersprüchliche ältere Buchungen trotz Bestätigung an', () => {
+    const invalid = { ...first, bookings: [booking({ date: '2025-12-01' })] }
+    const report = buildOrganizationReport([invalid], config(), prior)
+    expect(report.bookings).toHaveLength(1)
+    expect(report.issues.join(' ')).toMatch(/außerhalb ihres Kassenjahres/)
+  })
+
+  test('verwirft die Bestätigung bei einem älteren importierten Kassenjahr', () => {
+    const earlier = { ...first, year: 2024, isFirstFiscalYear: undefined, bookings: [] }
+    const report = buildOrganizationReport([first, earlier], config(), prior)
+    expect(report.accounts[0].closingBalance).toBeNull()
+    expect(report.issues.join(' ')).toContain('2025-01-01 fehlt')
+  })
+})
+
 describe('Bestätigte Bereichszuordnung', () => {
   test('speichert eine centgenaue Aufteilung mit Fingerprint und unabhängigen Kopien', () => {
     const input = frozen(booking())

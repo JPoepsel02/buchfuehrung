@@ -3,13 +3,15 @@ import { api, isElectron } from '../api'
 import type { CloudSyncStatus, UpdateInfo } from '../api'
 import { AmountField } from '../components/AmountInput'
 import { LogoMark } from '../components/LogoMark'
+import { YearEndDialog } from '../components/YearEndDialog'
 import { useStore } from '../store'
+import { assertNewYear } from '../accountLifecycle'
 import { praesentationsModus } from '../presentation'
 import { fiscalLabel } from '@shared/fiscal'
 import { accountNumberFor } from '@shared/accountDetails'
 import { buildBackup, validateBackup } from '@shared/backup'
 import { yearTotals } from '@shared/ledger'
-import { MONTH_NAMES, formatEur, parseAmountToCents } from '@shared/money'
+import { MONTH_NAMES, parseAmountToCents } from '@shared/money'
 import { AREA_DEFINITIONS, suggestedArea } from '@shared/organization'
 import type { ActivityAreaId } from '@shared/organization'
 import type { Category, YearFile } from '@shared/types'
@@ -41,6 +43,9 @@ function readLogoFile(file: File): Promise<string> {
 export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: { focusYearEnd?: boolean; yearEndDue?: boolean }) {
   const {
     file,
+    allFiles,
+    error,
+    clearError,
     years,
     konto,
     settings,
@@ -56,7 +61,10 @@ export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: 
     deleteCategory,
   } = useStore()
   const [toast, setToast] = useState('')
+  const [yearEndScope, setYearEndScope] = useState<string | null>(null)
+  const scope = file ? `${konto}:${file.year}` : null
   const yearEndButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => setYearEndScope(null), [scope])
   useEffect(() => {
     if (focusYearEnd) yearEndButton.current?.focus()
   }, [focusYearEnd])
@@ -79,6 +87,8 @@ export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: 
   const jahrWort = 'Kassenjahr'
   const totals = yearTotals(file)
   const cats = [...file.categories].sort((a, b) => a.sortOrder - b.sortOrder)
+  const nextYear = file.year + 1
+  const nextYearLabel = fiscalLabel({ year: nextYear, fiscalStartMonth: file.fiscalStartMonth })
 
   function notify(msg: string) {
     setToast(msg)
@@ -141,17 +151,20 @@ export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: 
     notify(`${jahrWort} ${label} gelöscht.`)
   }
 
-  async function startNextYear() {
-    const nextYear = file!.year + 1
-    const label = fiscalLabel({ year: nextYear, fiscalStartMonth: file!.fiscalStartMonth })
-    if (
-      !confirm(
-        `Jahresabschluss: ${jahrWort} ${label} anlegen?\n\nDer Abschlusssaldo ${formatEur(totals.closingBalance)} wird als Anfangssaldo übernommen, die Kategorien werden kopiert.`,
-      )
-    )
-      return
-    await createYear(nextYear, totals.closingBalance, file!.clubName, file!.treasurerName)
-    notify(`${jahrWort} ${label} angelegt.`)
+  function openYearEnd() {
+    try {
+      assertNewYear(allFiles, konto, nextYear)
+      setYearEndScope(scope)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  async function startNextYear(categoryIds: readonly string[]) {
+    if (error) clearError()
+    await createYear(nextYear, totals.closingBalance, file!.clubName, file!.treasurerName, categoryIds)
+    setYearEndScope(null)
+    notify(`${jahrWort} ${nextYearLabel} angelegt.`)
   }
 
   return (
@@ -195,8 +208,8 @@ export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: 
             <h2 className="card__title">{jahrWort}e{konto !== 'haupt' ? ` · ${file.kontoName ?? 'Konto'}` : ''}</h2>
             {yearEndDue && <p className="account-years__due">Jahresabschluss fällig</p>}
           </div>
-          <button ref={yearEndButton} type="button" className={`btn${yearEndDue ? ' btn--primary' : ''}`} onClick={() => run(startNextYear)}>
-            Jahresabschluss → {fiscalLabel({ year: file.year + 1, fiscalStartMonth: file.fiscalStartMonth })}
+          <button ref={yearEndButton} type="button" className={`btn${yearEndDue ? ' btn--primary' : ''}`} onClick={openYearEnd}>
+            Jahresabschluss → {nextYearLabel}
           </button>
         </div>
         <table className="ledger">
@@ -225,6 +238,16 @@ export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: 
             ))}
           </tbody>
         </table>
+        {(file.isFirstFiscalYear || years.every((year) => year >= file.year)) && (
+          <label className="checkrow">
+            <input type="checkbox" checked={file.isFirstFiscalYear === true}
+              onChange={(event) => {
+                const checked = event.target.checked
+                update((current) => ({ ...current, isFirstFiscalYear: checked || undefined }))
+              }} />
+            Erstes Kassenjahr des Kontos
+          </label>
+        )}
         <p className="hint">Gelöschte Kassenjahre bleiben im Backup-Ordner erhalten.</p>
       </section>
 
@@ -394,6 +417,14 @@ export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: 
         </form>
 
       </section>
+      {yearEndScope !== null && yearEndScope === scope && <YearEndDialog
+        key={scope}
+        yearLabel={nextYearLabel}
+        openingBalance={totals.closingBalance}
+        categories={cats}
+        onCancel={() => setYearEndScope(null)}
+        onConfirm={startNextYear}
+      />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   )

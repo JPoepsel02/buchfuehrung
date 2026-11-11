@@ -59,7 +59,7 @@ interface Store {
   /** Konto und Kassenjahr gemeinsam öffnen (z. B. aus der globalen Suche). */
   selectKontoYear(konto: KontoId, year: number): Promise<void>
   /** Neues Jahr im aktiven Buch anlegen (Jahresabschluss / Erststart) */
-  createYear(year: number, openingBalance: number, clubName: string, treasurerName: string): Promise<void>
+  createYear(year: number, openingBalance: number, clubName: string, treasurerName: string, categoryIds?: readonly string[]): Promise<void>
   /** Weiteres Konto mit erstem Kassenjahr anlegen */
   createKonto(name: string, fiscalStartMonth: number, year: number, openingBalance: number): Promise<void>
   /** Jahr im aktiven Buch löschen (Datei wandert in den Backup-Ordner) */
@@ -434,15 +434,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setKonto(target)
         activateFile(data)
       },
-      async createYear(year, openingBalance, clubName, treasurerName) {
+      async createYear(year, openingBalance, clubName, treasurerName, categoryIds) {
         const target = konto, version = selectionVersion.current
         await changeLifecycle(async () => {
           assertNewYear(filesRef.current, target, year)
           if (!Number.isSafeInteger(openingBalance)) throw new Error('Der Anfangssaldo ist ungültig.')
           const current = filesRef.current.find((entry) => (entry.konto ?? 'haupt') === target && entry.year === file?.year)
+          const selected = categoryIds === undefined ? undefined : new Set(categoryIds)
+          const categories = current?.categories.filter((category) => !selected || selected.has(category.id))
+          if (selected && (!categories || categories.length !== selected.size)) {
+            throw new Error('Die Kategorien haben sich geändert. Bitte öffne den Jahresabschluss erneut.')
+          }
           const common = currentOrganization()
           const next: YearFile = { ...emptyYearFile(year), konto: target,
-            categories: current ? current.categories.map((category) => ({ ...category })) : emptyYearFile(year).categories,
+            ...(categories ? { categories: categories.map((category) => ({ ...category })) } : {}),
             kontoName: current?.kontoName, fiscalStartMonth: current?.fiscalStartMonth, openingBalance,
             clubName: common.name || clubName, treasurerName: common.treasurerName || treasurerName }
           await enqueue(async () => {
