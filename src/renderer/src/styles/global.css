@@ -228,7 +228,7 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm)
 .bookings-list__scroll .ledger thead { position: sticky; top: 0; z-index: 1; background: var(--color-paper-sunken); }
 .bookings-list .ledger tbody tr { cursor: pointer; }
 .booking-filterbar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin-bottom: 12px; padding: 12px; border: 1px solid var(--color-line); border-radius: 7px; background: var(--color-paper); }
-.booking-filterbar__actions { min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.booking-filterbar__actions { grid-column: 1 / -1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .booking-filterbar__check { min-height: 36px; align-self: end; }
 .booking-filter-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .booking-filter-summary__text { flex: 1; color: var(--color-ink-soft); font-size: var(--text-sm); }
@@ -348,7 +348,6 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm)
   .bookings-list { flex: none; max-width: 100%; overflow: visible; }
   .bookings-list__scroll { min-height: 200px; max-height: 65vh; overflow: auto; flex: auto; }
   .booking-filterbar { grid-template-columns: minmax(0, 1fr); }
-  .booking-filterbar__actions { grid-column: 1 / -1; }
   .split-editor__line { min-width: 650px; }
   .setup__card { padding: 24px; }
   .btn { min-height: 40px; }

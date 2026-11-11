@@ -1,13 +1,15 @@
 import { bookingMatches } from '@shared/ledger'
 import { parseAmountToCents } from '@shared/money'
+import { receiptStatus } from '@shared/receipt'
 import { bookingMatchesSelectionFilter } from './bookingSelection'
-import type { BookingType, ComputedBooking, YearFile } from '@shared/types'
+import type { BookingType, ComputedBooking, ReceiptStatus, YearFile } from '@shared/types'
 
 export interface BookingFilters {
   categoryId: string
   amount: string
   subcategory: string
   type: '' | BookingType
+  receiptStatus: '' | ReceiptStatus
   dateFrom: string
   dateTo: string
   umsatzOnly: boolean
@@ -28,13 +30,13 @@ export function bookingScope(file: Pick<YearFile, 'konto' | 'year'>): string {
 
 export function createBookingFilters(preset: BookingFilterPreset = {}): BookingFilters {
   return {
-    categoryId: preset.categoryId ?? '', amount: '', subcategory: '',
+    categoryId: preset.categoryId ?? '', amount: '', subcategory: '', receiptStatus: '',
     type: preset.type ?? '', dateFrom: preset.dateFrom ?? '', dateTo: preset.dateTo ?? '', umsatzOnly: preset.umsatzOnly ?? false,
   }
 }
 
 export function hasBookingFilters(filter: BookingFilters): boolean {
-  return Boolean(filter.categoryId || filter.amount.trim() || filter.subcategory || filter.type || filter.dateFrom || filter.dateTo || filter.umsatzOnly)
+  return Boolean(filter.categoryId || filter.amount.trim() || filter.subcategory || filter.type || filter.receiptStatus || filter.dateFrom || filter.dateTo || filter.umsatzOnly)
 }
 
 /** Dieselben sichtbaren Kriterien gelten für Liste, Mehrfachauswahl und CSV. */
@@ -45,6 +47,7 @@ export function filterBookings<T extends ComputedBooking>(rows: readonly T[], qu
     bookingMatches(row, query) &&
     bookingMatchesSelectionFilter(row, { categoryId: filter.categoryId, amount, subcategory: filter.subcategory }) &&
     (!filter.type || row.type === filter.type) &&
+    (!filter.receiptStatus || receiptStatus(row) === filter.receiptStatus) &&
     (!filter.dateFrom || row.date >= filter.dateFrom) &&
     (!filter.dateTo || row.date <= filter.dateTo) &&
     (!filter.umsatzOnly || row.umsatzAmount !== 0),

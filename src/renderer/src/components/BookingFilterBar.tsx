@@ -3,6 +3,7 @@ import { AmountField } from './AmountInput'
 import type { Category } from '@shared/types'
 import { invalidBookingDateRange, type BookingFilters } from '../bookingFilters'
 import { formatDate } from '@shared/money'
+import { receiptStatusLabel } from '@shared/receipt'
 
 interface Props {
   compact?: boolean
@@ -29,6 +30,7 @@ function filterSummary(props: Props): string {
     f.dateTo && `Bis ${formatDate(f.dateTo)}`,
     f.amount.trim() && `Betrag: ${f.amount} €`,
     f.subcategory,
+    f.receiptStatus && receiptStatusLabel(f.receiptStatus),
     f.umsatzOnly && 'Nur Umsatzbuchungen',
     props.query?.trim() && `Suche: ${props.query.trim()}`,
   ].filter(Boolean).join(' · ') || 'Alle Buchungen'
@@ -93,6 +95,16 @@ export function BookingFilterBar(props: Props) {
           onChange={(event) => onChange({ subcategory: event.target.value })}>
           <option value="">Alle Unterkategorien</option>
           {props.subcategories.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="booking-filter-receipt">Belegstatus</label>
+        <select id="booking-filter-receipt" value={filter.receiptStatus}
+          onChange={(event) => onChange({ receiptStatus: event.target.value as BookingFilters['receiptStatus'] })}>
+          <option value="">Alle Status</option>
+          {(['vorhanden', 'offen', 'nicht_erforderlich'] as const).map((status) => (
+            <option key={status} value={status}>{receiptStatusLabel(status)}</option>
+          ))}
         </select>
       </div>
       <label className="checkrow booking-filterbar__check">

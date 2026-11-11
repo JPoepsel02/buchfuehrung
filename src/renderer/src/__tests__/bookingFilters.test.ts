@@ -44,7 +44,7 @@ describe('Vorausgefüllte Buchungsfilter aus der Übersicht', () => {
     expect(hasBookingFilters(filters)).toBe(false)
     expect(filterBookings(rows, '', filters)).toEqual(rows)
     expect(createBookingFilters({ type: 'ausgabe' })).toEqual({
-      categoryId: '', amount: '', subcategory: '', type: 'ausgabe', dateFrom: '', dateTo: '', umsatzOnly: false,
+      categoryId: '', amount: '', subcategory: '', receiptStatus: '', type: 'ausgabe', dateFrom: '', dateTo: '', umsatzOnly: false,
     })
   })
 

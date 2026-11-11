@@ -1,6 +1,6 @@
 {
   "name": "kassenwart",
-  "version": "1.17.4",
+  "version": "1.17.5",
   "description": "Buchführung und Vereinszentrale",
   "main": "out/main/index.js",
   "author": "Buchführung contributors",
