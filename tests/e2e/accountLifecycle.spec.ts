@@ -41,6 +41,25 @@ async function accountSettings(page: Page, konto: string) {
   await expect(page.getByRole('heading', { name: 'Kontoeinstellungen', exact: true })).toBeVisible()
 }
 const yearRow = (page: Page, year: number) => page.locator('table').first().getByRole('row').filter({ hasText: String(year) })
+const yearEndDialog = (page: Page) => page.getByRole('dialog', { name: 'Jahresabschluss', exact: true })
+async function finishYearEnd(page: Page) {
+  await yearEndDialog(page).getByRole('button', { name: 'Kassenjahr anlegen', exact: true }).click()
+}
+async function failNextYearWrite(app: ElectronApplication, file: string, message: string) {
+  await app.evaluate((_, { file, message }) => {
+    const fs = (globalThis as typeof globalThis & { __readinessFs: typeof import('node:fs') }).__readinessFs
+    const original = fs.writeFileSync
+    let failed = false
+    fs.writeFileSync = ((path: unknown, ...args: unknown[]) => {
+      const name = String(path)
+      if (!failed && name.includes(`${file}.`) && name.endsWith('.tmp')) {
+        failed = true
+        throw new Error(message)
+      }
+      return Reflect.apply(original, fs, [path, ...args])
+    }) as typeof fs.writeFileSync
+  }, { file, message })
+}
 async function removeYear(page: Page, year: number, confirm = true) {
   await page.evaluate((accept) => { window.confirm = () => accept }, confirm)
   await yearRow(page, year).getByRole('button', { name: 'Löschen', exact: true }).click()
@@ -121,8 +140,8 @@ test('erinnert nach dem Geschäftsjahresende an den fälligen Abschluss des rich
     await accountNav.getByRole('button', { name: 'Übersicht', exact: true }).click()
     await expect(notice).toContainText('Karnevalskonto')
     await open.click()
-    await page.evaluate(() => { window.confirm = () => true })
     await closeYear.click()
+    await finishYearEnd(page)
     await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2026')
     await expect(page.getByText('Jahresabschluss fällig', { exact: true })).toHaveCount(0)
     await page.getByRole('navigation', { name: 'Verein', exact: true }).getByRole('button', { name: 'Vereinsübersicht' }).click()
@@ -172,8 +191,8 @@ test('legt einen abweichenden Jahresabschluss mit korrektem Vortrag an und verä
   const { app, page } = await launch(root)
   try {
     await accountSettings(page, 'zweit')
-    await page.evaluate(() => { window.confirm = () => true })
     await page.getByRole('button', { name: /Jahresabschluss → 2026/ }).click()
+    await finishYearEnd(page)
     await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2026')
     const next = readYear(data, 'zweit', 2026)
     expect(next).toMatchObject({ openingBalance: 14200, fiscalStartMonth: 11, bookings: [] })
@@ -190,6 +209,109 @@ test('legt einen abweichenden Jahresabschluss mit korrektem Vortrag an und verä
   } finally { await close(app, root) }
 })
 
+test('übernimmt beim Jahresabschluss die gewählten Kategorien mit Kennung und Aktivstatus', async () => {
+  const source = fixture('zweit', 2025, 10000, 11)
+  const { root, data } = setup([fixture('haupt', 2026), {
+    ...source,
+    categories: [
+      ...source.categories,
+      { id: 'fest', name: 'Einmaliges Fest', code: 'F', active: true, sortOrder: 2 },
+      { id: 'archiv', name: 'Historisch', code: 'H', active: false, sortOrder: 3 },
+    ],
+    bookings: [
+      ...source.bookings,
+      { ...source.bookings[0], id: 'fest-2025', seq: 2, categoryId: 'fest', description: 'Festkosten', amount: 1000, type: 'ausgabe' },
+    ],
+    refNoCounters: { b: 1, fest: 1 },
+  }])
+  const { app, page } = await launch(root)
+  try {
+    await accountSettings(page, 'zweit')
+    const before = readYear(data, 'zweit', 2025)
+    const open = page.getByRole('button', { name: 'Jahresabschluss → 2026/2027', exact: true })
+    const dialog = yearEndDialog(page)
+    const oneOff = dialog.getByRole('checkbox', { name: /Einmaliges Fest/ })
+    await open.click()
+    await expect(dialog.getByRole('checkbox', { name: /Beiträge/ })).toBeChecked()
+    await expect(dialog.getByRole('checkbox', { name: /Historisch/ })).toBeChecked()
+    await expect(oneOff).toBeChecked()
+    await oneOff.uncheck()
+    await dialog.getByRole('button', { name: 'Abbrechen', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(existsSync(join(data, 'kassenbuch-k2-2026.json'))).toBe(false)
+    expect(readYear(data, 'zweit', 2025)).toEqual(before)
+
+    await open.click()
+    await expect(oneOff).toBeChecked()
+    await oneOff.uncheck()
+    await finishYearEnd(page)
+    await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2026')
+    expect(readYear(data, 'zweit', 2026)).toMatchObject({
+      openingBalance: 13200,
+      fiscalStartMonth: 11,
+      categories: [before.categories[0], before.categories[2]],
+      bookings: [],
+    })
+    expect(readYear(data, 'zweit', 2025)).toEqual(before)
+  } finally { await close(app, root) }
+})
+
+test('legt ein Folgejahr ohne übernommene Kategorien an und lädt es nach einem Neustart', async () => {
+  const { root, data } = setup([fixture('haupt', 2026)])
+  let { app, page } = await launch(root)
+  try {
+    await accountSettings(page, 'haupt')
+    const before = readYear(data, 'haupt', 2026)
+    await page.getByRole('button', { name: 'Jahresabschluss → 2027', exact: true }).click()
+    await yearEndDialog(page).getByRole('checkbox', { name: /Beiträge/ }).uncheck()
+    await finishYearEnd(page)
+    await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2027')
+    expect(readYear(data, 'haupt', 2027)).toMatchObject({ categories: [], bookings: [], openingBalance: 14200 })
+    expect(readYear(data, 'haupt', 2026)).toEqual(before)
+
+    await app.close()
+    ;({ app, page } = await launch(root))
+    await accountSettings(page, 'haupt')
+    await page.getByLabel('Jahr wählen', { exact: true }).selectOption('2027')
+    await expect(page.getByLabel('Kategoriename', { exact: true })).toHaveCount(0)
+    expect(readYear(data, 'haupt', 2026)).toEqual(before)
+  } finally { await close(app, root) }
+})
+
+test('behält die Kategorieauswahl bei einem Schreibfehler und wiederholt den Jahresabschluss', async () => {
+  const source = fixture('zweit', 2025, 10000, 11)
+  const { root, data } = setup([fixture('haupt', 2026), {
+    ...source,
+    categories: [...source.categories, { id: 'fest', name: 'Einmaliges Fest', code: 'F', active: true, sortOrder: 2 }],
+  }])
+  const { app, page } = await launch(root)
+  try {
+    await accountSettings(page, 'zweit')
+    const before = readYear(data, 'zweit', 2025)
+    const nextName = 'kassenbuch-k2-2026.json'
+    const failure = 'Simulierter Fehler beim Jahresabschluss'
+    await failNextYearWrite(app, nextName, failure)
+
+    await page.getByRole('button', { name: 'Jahresabschluss → 2026/2027', exact: true }).click()
+    const dialog = yearEndDialog(page)
+    const oneOff = dialog.getByRole('checkbox', { name: /Einmaliges Fest/ })
+    await oneOff.uncheck()
+    await finishYearEnd(page)
+    await expect(dialog.getByRole('alert')).toContainText(failure)
+    await expect(oneOff).not.toBeChecked()
+    await expect(dialog.getByRole('checkbox', { name: /Beiträge/ })).toBeChecked()
+    await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2025')
+    expect(existsSync(join(data, nextName))).toBe(false)
+
+    await finishYearEnd(page)
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2026')
+    expect(readYear(data, 'zweit', 2026)).toMatchObject({ categories: source.categories, bookings: [], openingBalance: 14200 })
+    expect(readYear(data, 'zweit', 2025)).toEqual(before)
+    expect(readdirSync(data).filter((name) => name.startsWith(nextName))).toEqual([nextName])
+  } finally { await close(app, root) }
+})
+
 test('bricht eine Kontoanlage ohne neue Datei ab und begrenzt Jahresabschlüsse ohne weitere Änderungen zu blockieren', async () => {
   const { root, data } = setup([fixture('haupt', 2100)])
   const { app, page } = await launch(root)
@@ -199,7 +321,6 @@ test('bricht eine Kontoanlage ohne neue Datei ab und begrenzt Jahresabschlüsse 
     await page.getByRole('button', { name: 'Abbrechen', exact: true }).click()
     expect(readdirSync(data).filter((name) => name.startsWith('kassenbuch') && name.endsWith('.json'))).toEqual(['kassenbuch-2100.json'])
     await accountSettings(page, 'haupt')
-    await page.evaluate(() => { window.confirm = () => true })
     await page.getByRole('button', { name: /Jahresabschluss → 2101/ }).click()
     await expect(page.getByText(/Das Kassenjahr muss zwischen 2000 und 2100 liegen/)).toBeVisible()
     expect(existsSync(join(data, 'kassenbuch-2101.json'))).toBe(false)
@@ -229,18 +350,7 @@ test('zeigt einen Fehler bei der Kontoanlage, behält die Eingaben und wiederhol
   const { root, data } = setup([fixture('haupt', 2026)], { kontoSequence: 10 })
   const { app, page } = await launch(root)
   try {
-    await app.evaluate(() => {
-      const fs = (globalThis as typeof globalThis & { __readinessFs: typeof import('node:fs') }).__readinessFs
-      const original = fs.writeFileSync
-      let failed = false
-      fs.writeFileSync = ((path: unknown, ...args: unknown[]) => {
-        if (!failed && /kassenbuch-k11-2027\.json\.[^.]+\.tmp$/.test(String(path))) {
-          failed = true
-          throw new Error('Simulierter Fehler bei Kontoanlage')
-        }
-        return Reflect.apply(original, fs, [path, ...args])
-      }) as typeof fs.writeFileSync
-    })
+    await failNextYearWrite(app, 'kassenbuch-k11-2027.json', 'Simulierter Fehler bei Kontoanlage')
     await createAccount(page, 'Wiederholbares Konto')
     await expect(page.getByRole('alert')).toContainText('Simulierter Fehler bei Kontoanlage')
     await expect(page.getByLabel('Name des Kontos', { exact: true })).toHaveValue('Wiederholbares Konto')

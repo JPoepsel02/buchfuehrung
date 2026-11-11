@@ -104,6 +104,51 @@ test('konsolidiert Bankkonten und Barkasse über zwei Kassenjahre ohne doppelte 
   } finally { await close(app, root) }
 })
 
+test('berücksichtigt China erst ab dem bestätigten ersten Kassenjahr', async () => {
+  const harness = await launch((demo) => ({
+    ...demo, files: demo.files.map((file) => file.konto === 'k3' ? { ...file, kontoName: 'China' } : file),
+  }))
+  let { app, page } = harness
+  const { root, data } = harness
+  const china = () => page.locator('.org-account-card').filter({ hasText: 'China' })
+  const accountSettings = async () => {
+    await page.getByLabel('Konto wählen', { exact: true }).selectOption('k3')
+    await page.getByRole('navigation', { name: 'Hauptnavigation', exact: true })
+      .getByRole('button', { name: 'Kontoeinstellungen', exact: true }).click()
+    await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2026')
+  }
+  const firstYear = () => page.getByRole('checkbox', { name: 'Erstes Kassenjahr des Kontos', exact: true })
+  try {
+    await page.getByLabel('Von', { exact: true }).fill('2025-01-01')
+    await page.getByLabel('Bis', { exact: true }).fill('2025-12-31')
+    await expect(china()).toContainText('Bestand offen')
+
+    await accountSettings()
+    const file = join(data, 'kassenbuch-k3-2026.json')
+    const before = readFileSync(file, 'utf8')
+    await expect(firstYear()).not.toBeChecked()
+    await firstYear().check()
+    await expect.poll(() => readFileSync(file, 'utf8')).not.toBe(before)
+    await organizationNav(page).getByRole('button', { name: 'Vereinsübersicht', exact: true }).click()
+    await expect(china()).toHaveCount(0)
+    await expect(page.locator('.org-account-card').filter({ hasText: 'Hauptkonto' })).toContainText('Bestand offen')
+
+    await organizationNav(page).getByRole('button', { name: 'Berichte', exact: true }).click()
+    await page.getByRole('button', { name: 'Einnahmenüberschussrechnung (EÜR)', exact: true }).click()
+    await expect(page.getByRole('checkbox', { name: 'China', exact: true })).toHaveCount(0)
+    await organizationNav(page).getByRole('button', { name: 'Vereinsübersicht', exact: true }).click()
+
+    await page.getByLabel('Bis', { exact: true }).fill('2026-12-31')
+    await page.getByLabel('Von', { exact: true }).fill('2026-01-01')
+    await expect(china()).toContainText(money('1.620,00'))
+
+    await app.close()
+    ;({ app, page } = await startAt(root))
+    await accountSettings()
+    await expect(firstYear()).toBeChecked()
+  } finally { await close(app, root) }
+})
+
 test('zeigt den letzten Karnevalsbestand auch für den Rest des Berichtszeitraums', async () => {
   const { app, page, root, data } = await launch((demo) => ({
     ...demo, files: demo.files.filter((file) => file.konto !== 'zweit' || file.year !== 2026),
