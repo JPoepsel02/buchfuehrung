@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { AREA_DEFINITIONS, buildOrganizationReport } from '@shared/organization'
 import type { OrganizationPeriod } from '@shared/organization'
 import { formatDate, formatEur } from '@shared/money'
@@ -11,13 +11,15 @@ interface Props {
   onNavigate(view: 'bereiche' | 'berichte'): void
   period: OrganizationPeriod
   onPeriodChange(period: OrganizationPeriod): void
+  yearEndNotice?: ReactNode
 }
 
-export function OrganizationView({ onOpenAccount, onNavigate, period, onPeriodChange }: Props) {
+export function OrganizationView({ onOpenAccount, onNavigate, period, onPeriodChange, yearEndNotice }: Props) {
   const { allFiles, organization } = useStore()
-  const report = useMemo(() => buildOrganizationReport(allFiles, organization, period), [allFiles, organization, period])
-  const balanceComplete = report.accounts.every((account) => account.closingBalance !== null)
-  const closingBalance = report.accounts.reduce((sum, account) => sum + (account.closingBalance ?? 0), 0)
+  const report = useMemo(() => buildOrganizationReport(allFiles, organization, period, { carryForwardBalances: true }), [allFiles, organization, period])
+  const closingBalance = Number(report.accounts.reduce((sum, account) => sum + BigInt(account.closingBalance ?? 0), 0n))
+  const balanceComplete = Number.isSafeInteger(closingBalance) && report.accounts.every((account) => account.closingBalance !== null)
+  const hasCarriedBalance = report.accounts.some((account) => account.balanceCarriedFrom !== undefined)
   const openAmount = report.unassignedIncome + report.unassignedExpenses
 
   return (
@@ -26,6 +28,7 @@ export function OrganizationView({ onOpenAccount, onNavigate, period, onPeriodCh
         <h1 className="view__title">Vereinsübersicht</h1>
         <button className="btn btn--primary" onClick={() => onNavigate('berichte')}><Icon name="report" size={17} />Berichte</button>
       </header>
+      {yearEndNotice}
       <div className="org-period-bar">
         <label className="field"><span>Von</span><input type="date" value={period.from} max={period.to} onChange={(event) => event.target.value && onPeriodChange({ ...period, from: event.target.value })} /></label>
         <label className="field"><span>Bis</span><input type="date" value={period.to} min={period.from} onChange={(event) => event.target.value && onPeriodChange({ ...period, to: event.target.value })} /></label>
@@ -33,7 +36,11 @@ export function OrganizationView({ onOpenAccount, onNavigate, period, onPeriodCh
       </div>
       {report.issues.length > 0 && <div className="org-issues" role="status"><strong>Abgleich erforderlich</strong><ul>{report.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></div>}
       <section className="stats org-stats" aria-label="Kennzahlen des Vereins">
-        <div className="stat stat--hero"><div className="stat__top"><span className="stat__label">Gesamter Geldbestand</span><Icon name="wallet" size={19} /></div><div className="stat__value">{balanceComplete ? formatEur(closingBalance) : '—'}</div><div className="stat__foot">{formatDate(period.to)}</div></div>
+        <div className="stat stat--hero">
+          <div className="stat__top"><span className="stat__label">Gesamter Geldbestand</span><Icon name="wallet" size={19} /></div>
+          <div className="stat__value">{balanceComplete ? formatEur(closingBalance) : '—'}</div>
+          <div className="stat__foot">{formatDate(period.to)}{balanceComplete && hasCarriedBalance ? ' · mit fortgeführtem Stand' : ''}</div>
+        </div>
         <div className="stat"><div className="stat__top"><span className="stat__label">Einnahmen</span><Icon name="income" size={19} /></div><div className="stat__value amount--in">{formatEur(report.income)}</div></div>
         <div className="stat"><div className="stat__top"><span className="stat__label">Ausgaben</span><Icon name="expense" size={19} /></div><div className="stat__value amount--out">{formatEur(report.expenses)}</div></div>
         <div className="stat"><div className="stat__top"><span className="stat__label">Ergebnis</span><Icon name="report" size={19} /></div><div className="stat__value"><Amount cents={report.result} currency /></div></div>
@@ -41,7 +48,14 @@ export function OrganizationView({ onOpenAccount, onNavigate, period, onPeriodCh
       <section aria-labelledby="org-accounts-title">
         <div className="section-heading"><h2 id="org-accounts-title">Konten &amp; Kassen</h2></div>
         <div className="org-account-grid">
-          {report.accounts.map((account) => <button className="card org-account-card" key={account.konto} onClick={() => onOpenAccount(account.konto)}><span className="org-account-card__name"><Icon name="book" size={19} /><strong>{account.name}</strong></span><span className="org-account-card__balance">{account.closingBalance === null ? 'Bestand offen' : formatEur(account.closingBalance)}</span><Icon name="arrow" size={17} /></button>)}
+          {report.accounts.map((account) => <button className="card org-account-card" key={account.konto} onClick={() => onOpenAccount(account.konto)}>
+            <span className="org-account-card__name"><Icon name="book" size={19} /><strong>{account.name}</strong></span>
+            <span className="org-account-card__balance">
+              {account.closingBalance === null ? 'Bestand offen' : formatEur(account.closingBalance)}
+              {account.balanceCarriedFrom && <small className="org-account-card__basis">Stand vom {formatDate(account.balanceCarriedFrom)}</small>}
+            </span>
+            <Icon name="arrow" size={17} />
+          </button>)}
           {report.accounts.length === 0 && <div className="card empty"><h3>Keine Konten im Zeitraum</h3></div>}
         </div>
       </section>

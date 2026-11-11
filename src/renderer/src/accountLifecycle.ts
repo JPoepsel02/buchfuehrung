@@ -1,4 +1,9 @@
+import { fiscalRange } from '@shared/fiscal'
 import type { AppSettings, KontoId, YearFile } from '@shared/types'
+
+function isSupportedYear(year: number): boolean {
+  return Number.isInteger(year) && year >= 2000 && year <= 2100
+}
 
 export function usedKontoSequence(existing: readonly KontoId[], settings: AppSettings): number {
   const references = [
@@ -21,8 +26,26 @@ export function nextKontoIdentity(existing: readonly KontoId[], settings: AppSet
 }
 
 export function assertNewYear(files: readonly YearFile[], konto: KontoId, year: number): void {
-  if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new Error('Das Kassenjahr muss zwischen 2000 und 2100 liegen.')
+  if (!isSupportedYear(year)) throw new Error('Das Kassenjahr muss zwischen 2000 und 2100 liegen.')
   if (files.some((file) => (file.konto ?? 'haupt') === konto && file.year === year)) {
     throw new Error('Dieses Kassenjahr ist bereits vorhanden. Bitte das vorhandene Kassenjahr öffnen.')
   }
+}
+
+export function localCalendarDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+export function dueYearEnds(files: readonly YearFile[], today: string): YearFile[] {
+  const latestByAccount = new Map<KontoId, YearFile>()
+  for (const file of files) {
+    const account = file.konto ?? 'haupt'
+    const latest = latestByAccount.get(account)
+    if (!latest || file.year > latest.year) latestByAccount.set(account, file)
+  }
+  return [...latestByAccount.values()].filter((file) =>
+    isSupportedYear(file.year + 1) && fiscalRange(file).end < today,
+  )
 }

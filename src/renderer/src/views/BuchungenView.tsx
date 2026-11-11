@@ -727,7 +727,6 @@ export function BuchungenView({
                     <td>{r.name?.trim() || '–'}</td>
                     <td className="cell-desc">
                       {r.description}
-                      {r.source === 'import' && <span className="pill" style={{ marginLeft: 6 }}>Import</span>}
                       {r.note && (
                         <div className="hint hint--clamp" title={r.note}>
                           {r.note}

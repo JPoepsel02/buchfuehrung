@@ -4,7 +4,7 @@ import {
   createTransfer, makeAssignment, organizationDefaults, suggestedArea, validateOrganizationConfig,
 } from '../organization'
 import type {
-  ActivityAllocation, BookingReference, OrganizationConfig, OrganizationTransfer,
+  ActivityAllocation, BookingReference, OrganizationConfig, OrganizationPeriod, OrganizationTransfer,
 } from '../organization'
 import type { Booking, YearFile } from '../types'
 
@@ -199,6 +199,86 @@ describe('Zeiträume, Kassenjahre und Bestände', () => {
     const unknown = buildOrganizationReport([], config(), { ...period, kontos: ['k3'] })
     expect(unknown.accounts[0].name).toBe('Konto 3')
     expect(unknown.issues.length).toBeGreaterThan(0)
+  })
+
+  describe('Fortführung eines bekannten Kontostands in der Vereinsübersicht', () => {
+    const options = { carryForwardBalances: true }
+    const karneval = year({ konto: 'zweit', kontoName: 'Karnevalskonto', year: 2025, fiscalStartMonth: 11, openingBalance: 10000,
+      bookings: [booking({ id: 'vorjahr', date: '2025-11-02', amount: 5000 }), booking({ id: 'januar', date: '2026-01-05', amount: 15000 }),
+        booking({ id: 'oktober', date: '2026-10-31', amount: 4000, type: 'ausgabe' })] })
+
+    test('trägt den Oktober-Endsaldo bis Dezember vor und lässt die gebuchten Bewegungen unverändert', () => {
+      const files = frozen([year({ bookings: [booking({ date: '2026-12-01', amount: 3000 })] }), karneval])
+      const strict = buildOrganizationReport(files, config(), period)
+      const overview = buildOrganizationReport(files, config(), period, options)
+      expect(strict.accounts[1].closingBalance).toBeNull()
+      expect(strict.issues.join(' ')).toMatch(/2026-11-01 fehlt/)
+      expect(overview.accounts[1]).toMatchObject({ openingBalance: 15000, closingBalance: 26000, balanceCarriedFrom: '2026-10-31' })
+      expect(overview.accounts[0]).toEqual(strict.accounts[0])
+      expect(overview).toMatchObject({ income: 18000, expenses: 4000, result: 14000, issues: [] })
+      expect(overview.bookings).toEqual(strict.bookings)
+    })
+
+    test('kennzeichnet den echten letzten Tag des Kassenjahres nicht als fortgeführt', () => {
+      const report = buildOrganizationReport([karneval], config(), { ...period, to: '2026-10-31' }, options)
+      expect(report.accounts[0].closingBalance).toBe(26000)
+      expect(report.accounts[0]).not.toHaveProperty('balanceCarriedFrom')
+      expect(report.issues).toEqual([])
+    })
+
+    test('zeigt nach dem letzten Kassenjahr denselben Anfangs- und Endbestand ohne Bewegungen', () => {
+      const report = buildOrganizationReport([karneval], config(), { ...period, from: '2026-11-01' }, options)
+      expect(report.accounts[0]).toMatchObject({ openingBalance: 26000, closingBalance: 26000, balanceCarriedFrom: '2026-10-31' })
+      expect(report).toMatchObject({ income: 0, expenses: 0, result: 0, bookings: [], issues: [] })
+    })
+
+    test('rechnet nach Anlage des Folgejahres wieder mit dessen Bewegungen', () => {
+      const successor = year({ konto: 'zweit', year: 2026, fiscalStartMonth: 11, openingBalance: 26000,
+        bookings: [booking({ date: '2026-11-01', amount: 7000 })] })
+      const report = buildOrganizationReport([karneval, successor], config(), period, options)
+      expect(report.accounts[0].closingBalance).toBe(33000)
+      expect(report.accounts[0]).not.toHaveProperty('balanceCarriedFrom')
+      expect(report.income).toBe(22000)
+    })
+
+    test('lässt Lücken vor und zwischen Kassenjahren sowie unbekannte Konten sichtbar', () => {
+      const newer = year({ konto: 'zweit', year: 2027, fiscalStartMonth: 11 })
+      const prior = year({ konto: 'zweit', year: 2023, fiscalStartMonth: 11 })
+      const cases: [readonly YearFile[], OrganizationPeriod][] = [
+        [[karneval, newer], period],
+        [[prior, karneval], { ...period, from: '2024-01-01' }],
+        [[karneval], { ...period, from: '2025-01-01' }],
+        [[], { ...period, kontos: ['zweit'] }],
+      ]
+      for (const [files, range] of cases) {
+        const report = buildOrganizationReport(files, config(), range, options)
+        expect(report.accounts[0].closingBalance).toBeNull()
+        expect(report.accounts[0]).not.toHaveProperty('balanceCarriedFrom')
+        expect(report.issues.join(' ')).toMatch(/fehlt/)
+      }
+    })
+
+    test('übernimmt keinen unklaren Endbestand aus überlappenden oder fehlerhaften Dateien', () => {
+      const overlap = year({ konto: 'zweit', year: 2025 })
+      const invalid = { ...karneval, openingBalance: 1.5 }
+      const duplicate = { ...karneval, bookings: [...karneval.bookings, karneval.bookings[0]] }
+      const misplaced = { ...karneval, bookings: [booking({ date: '2026-11-02' })] }
+      const priorWithTailBooking = year({ konto: 'zweit', year: 2024, fiscalStartMonth: 11, bookings: misplaced.bookings })
+      for (const files of [[overlap, karneval], [invalid], [duplicate], [misplaced], [priorWithTailBooking, karneval]]) {
+        const report = buildOrganizationReport(files, config(), { ...period, from: '2026-11-01' }, options)
+        expect(report.accounts[0]).toMatchObject({ openingBalance: null, closingBalance: null })
+        expect(report.accounts[0]).not.toHaveProperty('balanceCarriedFrom')
+        expect(report.issues.join(' ')).toMatch(/nicht eindeutig/)
+      }
+    })
+
+    test('meldet einen offenen Bestand, wenn vor dem Filterzeitraum bereits eine Buchung im fehlenden Folgejahr liegt', () => {
+      const misplaced = booking({ date: '2026-11-02' })
+      const prior = year({ konto: 'zweit', year: 2024, fiscalStartMonth: 11, bookings: [misplaced] })
+      const report = buildOrganizationReport([prior, karneval], config(), { ...period, from: '2026-12-01' }, options)
+      expect(report.accounts[0]).toMatchObject({ openingBalance: null, closingBalance: null })
+      expect(report.issues.join(' ')).toMatch(/nicht eindeutig/)
+    })
   })
 
   test('meldet unterbrochene Jahre und widersprüchliche Jahresübergänge', () => {

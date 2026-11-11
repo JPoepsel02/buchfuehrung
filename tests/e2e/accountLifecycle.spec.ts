@@ -54,6 +54,82 @@ async function createAccount(page: Page, name: string, year = 2027) {
   await page.getByRole('button', { name: 'Konto anlegen', exact: true }).click()
 }
 
+test('hält Kontofelder und Jahresabschluss bei unterschiedlichen Fensterbreiten getrennt erreichbar', async ({}, testInfo) => {
+  const { root } = setup([fixture('haupt', 2026), fixture('zweit', 2025, 7686, 11)])
+  const { app, page } = await launch(root)
+  try {
+    await accountSettings(page, 'zweit')
+    const controls = [
+      page.getByLabel('Anfangssaldo (€)', { exact: true }),
+      page.getByLabel('Konto-Name', { exact: true }),
+      page.getByLabel('IBAN / Kontonummer', { exact: true }),
+      page.getByRole('button', { name: 'Jahresabschluss → 2026/2027', exact: true }),
+    ]
+    for (const width of [1280, 960, 390]) {
+      await page.setViewportSize({ width, height: 840 })
+      if (width === 390) await page.getByRole('button', { name: 'Navigation schließen' }).click()
+      const bounds = await Promise.all(controls.map(async (control) => {
+        await expect(control).toBeVisible()
+        const box = await control.boundingBox()
+        expect(box).not.toBeNull()
+        return box!
+      }))
+      for (const [index, a] of bounds.entries()) {
+        expect(a.x + a.width).toBeLessThanOrEqual(width)
+        for (const b of bounds.slice(index + 1)) {
+          const overlap = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+          expect(overlap, `Überlappende Kontoeinstellungen bei ${width} px`).toBe(false)
+        }
+      }
+      for (const control of controls) await control.click({ trial: true })
+      await page.screenshot({ path: testInfo.outputPath(`kontoeinstellungen-${width}.png`) })
+    }
+  } finally { await close(app, root) }
+})
+
+test('erinnert nach dem Geschäftsjahresende an den fälligen Abschluss des richtigen Kontos', async ({}, testInfo) => {
+  const { root, data } = setup([
+    fixture('haupt', 2026),
+    { ...fixture('zweit', 2025, 7686, 11), kontoName: 'Karnevalskonto' },
+    fixture('k3', 2025, 10000, 11),
+    fixture('k3', 2026, 10000, 11),
+  ])
+  const { app, page } = await launch(root)
+  try {
+    await page.clock.setFixedTime(new Date(2026, 9, 31, 12))
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Vereinsübersicht', exact: true })).toBeVisible()
+    const notice = page.getByRole('region', { name: 'Jahresabschluss fällig', exact: true })
+    await expect(notice).toHaveCount(0)
+
+    await page.clock.setFixedTime(new Date(2026, 10, 1, 12))
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect(notice).toContainText('Karnevalskonto')
+    await expect(notice).toContainText('31.10.2026')
+    await expect(notice.getByRole('button')).toHaveCount(1)
+    await notice.screenshot({ path: testInfo.outputPath('jahresabschluss-faellig.png') })
+
+    const open = notice.getByRole('button', { name: 'Zum Jahresabschluss für Karnevalskonto', exact: true })
+    await open.click()
+    await expect(page.getByLabel('Konto wählen', { exact: true })).toHaveValue('zweit')
+    await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2025')
+    const closeYear = page.getByRole('button', { name: 'Jahresabschluss → 2026/2027', exact: true })
+    await expect(closeYear).toBeFocused()
+    expect(existsSync(join(data, 'kassenbuch-k2-2026.json'))).toBe(false)
+
+    const accountNav = page.getByRole('navigation', { name: 'Hauptnavigation', exact: true })
+    await accountNav.getByRole('button', { name: 'Übersicht', exact: true }).click()
+    await expect(notice).toContainText('Karnevalskonto')
+    await open.click()
+    await page.evaluate(() => { window.confirm = () => true })
+    await closeYear.click()
+    await expect(page.getByLabel('Jahr wählen', { exact: true })).toHaveValue('2026')
+    await expect(page.getByText('Jahresabschluss fällig', { exact: true })).toHaveCount(0)
+    await page.getByRole('navigation', { name: 'Verein', exact: true }).getByRole('button', { name: 'Vereinsübersicht' }).click()
+    await expect(notice).toHaveCount(0)
+  } finally { await close(app, root) }
+})
+
 test('schützt das letzte Hauptjahr, sichert geschlossene Konten und vergibt nach Neustart niemals deren Kennung erneut', async () => {
   test.setTimeout(60_000)
   const { root, data } = setup([fixture('haupt', 2026), fixture('zweit', 2025), fixture('zweit', 2026)], {

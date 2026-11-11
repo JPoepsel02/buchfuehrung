@@ -104,6 +104,32 @@ test('konsolidiert Bankkonten und Barkasse über zwei Kassenjahre ohne doppelte 
   } finally { await close(app, root) }
 })
 
+test('zeigt den letzten Karnevalsbestand auch für den Rest des Berichtszeitraums', async () => {
+  const { app, page, root, data } = await launch((demo) => ({
+    ...demo, files: demo.files.filter((file) => file.konto !== 'zweit' || file.year !== 2026),
+  }))
+  try {
+    await page.getByLabel('Von', { exact: true }).fill('2026-01-01')
+    await page.getByLabel('Bis', { exact: true }).fill('2026-12-31')
+    const karneval = page.locator('.org-account-card').filter({ hasText: 'Karnevalskonto' })
+    await expectTotals(page)
+    await expect(karneval).toContainText(money('12.100,00'))
+    await expect(karneval).toContainText('Stand vom 31.10.2026')
+    await expect(page.locator('.org-stats .stat--hero')).toContainText('mit fortgeführtem Stand')
+    await expect(page.getByText('Abgleich erforderlich', { exact: true })).toHaveCount(0)
+
+    await page.getByLabel('Von', { exact: true }).fill('2026-11-01')
+    await expectTotals(page, ['36.700,00', '0,00', '360,00', '-360,00'])
+    await expect(karneval).toContainText('Stand vom 31.10.2026')
+    expect(existsSync(join(data, 'kassenbuch-k2-2026.json'))).toBe(false)
+
+    await page.getByLabel('Von', { exact: true }).fill('2026-01-01')
+    await page.getByLabel('Bis', { exact: true }).fill('2026-10-31')
+    await expect(karneval).toContainText(money('12.100,00'))
+    await expect(karneval.getByText('Stand vom 31.10.2026')).toHaveCount(0)
+  } finally { await close(app, root) }
+})
+
 test('speichert eine centgenaue Aufteilung und lädt sie nach einem App-Neustart wieder', async () => {
   const harness = await launch()
   let { app, page } = harness

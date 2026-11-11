@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useStore } from '../store'
 import { Amount } from '../components/Amount'
 import { Icon } from '../components/Icon'
@@ -11,9 +12,10 @@ import type { BookingFilterPreset } from '../bookingFilters'
 
 type OverviewTarget = 'buchungen' | 'import'
 
-export function UebersichtView({ onNavigate, onOpenBooking }: {
+export function UebersichtView({ onNavigate, onOpenBooking, yearEndNotice }: {
   onNavigate?: (view: OverviewTarget, filters?: BookingFilterPreset) => void
   onOpenBooking?: (id: string) => void
+  yearEndNotice?: ReactNode
 }) {
   const { file } = useStore()
   if (!file) return null
@@ -43,6 +45,7 @@ export function UebersichtView({ onNavigate, onOpenBooking }: {
           </button>
         </div>
       </header>
+      {yearEndNotice}
 
       <section className="stats" aria-label="Kennzahlen des Kassenjahres">
         <div className="stat stat--hero">

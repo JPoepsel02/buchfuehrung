@@ -38,7 +38,7 @@ function readLogoFile(file: File): Promise<string> {
   })
 }
 
-export function EinstellungenView() {
+export function EinstellungenView({ focusYearEnd = false, yearEndDue = false }: { focusYearEnd?: boolean; yearEndDue?: boolean }) {
   const {
     file,
     years,
@@ -56,6 +56,10 @@ export function EinstellungenView() {
     deleteCategory,
   } = useStore()
   const [toast, setToast] = useState('')
+  const yearEndButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (focusYearEnd) yearEndButton.current?.focus()
+  }, [focusYearEnd])
   const [newCat, setNewCat] = useState({ name: '', code: '', area: '' as '' | ActivityAreaId })
   const [addingCategory, setAddingCategory] = useState(false)
   const [balanceInput, setBalanceInput] = useState(() =>
@@ -163,26 +167,21 @@ export function EinstellungenView() {
           {konto !== 'haupt' ? `${file.kontoName ?? 'Konto'} · ` : ''}
           {jahrWort} {fiscalLabel(file)}
         </h2>
-        <div className="form-grid">
-          <div className="field" style={{ gridColumn: 'span 2' }}>
+        <div className="account-settings-fields">
+          <div className="field">
             <label htmlFor="s-balance">Anfangssaldo (€)</label>
             <AmountField id="s-balance" value={balanceInput} onChange={setBalanceInput} onBlur={saveBalance} allowNegative />
           </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <button className="btn" onClick={() => run(startNextYear)}>
-              Jahresabschluss → {fiscalLabel({ year: file.year + 1, fiscalStartMonth: file.fiscalStartMonth })}
-            </button>
+          <div className="field">
+            <label htmlFor="s-kontoname">Konto-Name</label>
+            <input
+              id="s-kontoname"
+              value={file.kontoName ?? ''}
+              onChange={(e) => update((f) => ({ ...f, kontoName: e.target.value }))}
+              placeholder="z. B. Karnevalskonto"
+            />
           </div>
-          <div className="field" style={{ gridColumn: 'span 4' }}>
-              <label htmlFor="s-kontoname">Konto-Name</label>
-              <input
-                id="s-kontoname"
-                value={file.kontoName ?? ''}
-                onChange={(e) => update((f) => ({ ...f, kontoName: e.target.value }))}
-                placeholder="z. B. Karnevalskonto"
-              />
-          </div>
-          <div className="field" style={{ gridColumn: 'span 4' }}>
+          <div className="field">
             <label htmlFor="s-account-number">IBAN / Kontonummer</label>
             <input id="s-account-number" value={accountNumberInput} maxLength={80} autoComplete="off" spellCheck={false}
               onChange={(event) => setAccountNumberInput(event.target.value)} onBlur={() => run(saveAccountNumber)} />
@@ -191,7 +190,15 @@ export function EinstellungenView() {
       </section>
 
       <section className="card">
-        <h2 className="card__title">{jahrWort}e{konto !== 'haupt' ? ` · ${file.kontoName ?? 'Konto'}` : ''}</h2>
+        <div className="card__heading account-years__heading">
+          <div>
+            <h2 className="card__title">{jahrWort}e{konto !== 'haupt' ? ` · ${file.kontoName ?? 'Konto'}` : ''}</h2>
+            {yearEndDue && <p className="account-years__due">Jahresabschluss fällig</p>}
+          </div>
+          <button ref={yearEndButton} type="button" className={`btn${yearEndDue ? ' btn--primary' : ''}`} onClick={() => run(startNextYear)}>
+            Jahresabschluss → {fiscalLabel({ year: file.year + 1, fiscalStartMonth: file.fiscalStartMonth })}
+          </button>
+        </div>
         <table className="ledger">
           <tbody>
             {years.map((y) => (

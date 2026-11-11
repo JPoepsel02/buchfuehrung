@@ -56,6 +56,7 @@ export interface OrganizationAccountTotal {
   result: number
   openingBalance: number | null
   closingBalance: number | null
+  balanceCarriedFrom?: string
 }
 export interface OrganizationReport {
   period: OrganizationPeriod
@@ -324,6 +325,24 @@ function balanceAt(files: readonly YearFile[], konto: string, date: string, incl
   return Number.isSafeInteger(balance) ? balance : null
 }
 
+function carryForwardBalance(files: readonly YearFile[], konto: string, period: OrganizationPeriod) {
+  const accountFiles = files.filter((file) => (file.konto ?? 'haupt') === konto)
+  const latest = accountFiles.map((file) => ({ file, ...fiscalRange(file) }))
+    .sort((a, b) => b.end.localeCompare(a.end))[0]
+  if (!latest || latest.end >= period.to || !validDate(latest.start) || !validDate(latest.end)) return null
+
+  // The carried closing balance depends on the whole source fiscal year.
+  const from = period.from < latest.start ? period.from : latest.start
+  if (coverageIssues(accountFiles, konto, { from, to: latest.end }).length > 0) return null
+  if (new Set(latest.file.bookings.map((booking) => booking.id)).size !== latest.file.bookings.length) return null
+  if (accountFiles.some((file) => file.bookings.some((booking) =>
+    booking.date > latest.end && booking.date <= period.to,
+  ))) return null
+
+  const amount = balanceAt(accountFiles, konto, latest.end, true)
+  return amount === null ? null : { date: latest.end, amount }
+}
+
 function continuityIssues(files: readonly YearFile[], konto: string, period: OrganizationPeriod): string[] {
   const ordered = files.filter((file) => (file.konto ?? 'haupt') === konto)
     .map((file) => ({ file, ...fiscalRange(file) }))
@@ -340,6 +359,7 @@ function continuityIssues(files: readonly YearFile[], konto: string, period: Org
 
 export function buildOrganizationReport(
   files: readonly YearFile[], config: OrganizationConfig, period: OrganizationPeriod,
+  { carryForwardBalances = false }: { carryForwardBalances?: boolean } = {},
 ): OrganizationReport {
   const result: OrganizationReport = {
     period: { ...period, ...(period.kontos ? { kontos: [...period.kontos] } : {}) },
@@ -367,15 +387,18 @@ export function buildOrganizationReport(
     if (row.status === 'invalid' && !row.transferId) issues.push(`${row.kontoName}: Zuordnung von ${row.booking.ref} muss erneut geprüft werden.`)
   }
   const accountTotals = selected.map((konto) => {
-    issues.push(...coverageIssues(files, konto, period), ...continuityIssues(files, konto, period))
+    const knownClosingBalance = balanceAt(files, konto, period.to, true)
+    const carried = carryForwardBalances && knownClosingBalance === null ? carryForwardBalance(files, konto, period) : null
+    if (!carried) issues.push(...coverageIssues(files, konto, period))
+    issues.push(...continuityIssues(files, konto, period))
     const accountRows = external.filter((row) => row.reference.konto === konto)
     const accountIncome = accountRows.filter((row) => row.booking.type === 'einnahme').reduce((sum, row) => sum + row.booking.amount, 0)
     const accountExpenses = accountRows.filter((row) => row.booking.type === 'ausgabe').reduce((sum, row) => sum + row.booking.amount, 0)
-    const openingBalance = balanceAt(files, konto, period.from, false)
-    const closingBalance = balanceAt(files, konto, period.to, true)
+    const openingBalance = carried && period.from > carried.date ? carried.amount : balanceAt(files, konto, period.from, false)
+    const closingBalance = carried?.amount ?? knownClosingBalance
     if (openingBalance === null || closingBalance === null) issues.push(`${accountName(konto, files)}: Bestand am Berichtsanfang oder -ende ist nicht eindeutig ermittelbar.`)
     return { konto, name: accountName(konto, files), income: accountIncome, expenses: accountExpenses,
-      result: accountIncome - accountExpenses, openingBalance, closingBalance }
+      result: accountIncome - accountExpenses, openingBalance, closingBalance, ...(carried ? { balanceCarriedFrom: carried.date } : {}) }
   })
   const areaTotals = AREA_DEFINITIONS.map(({ id }) => {
     const allocated = (type: Booking['type']) => external.filter((row) => row.booking.type === type)

@@ -4,6 +4,8 @@ import { isLocalExperiment } from '@shared/runtime'
 import { runStartupBankFetch } from './autoFetch'
 import { LogoMark } from './components/LogoMark'
 import { Icon } from './components/Icon'
+import { YearEndNotice } from './components/YearEndNotice'
+import { dueYearEnds, localCalendarDate } from './accountLifecycle'
 import { useStore } from './store'
 import { SetupView } from './views/SetupView'
 import { KontoSetupView } from './views/KontoSetupView'
@@ -57,6 +59,8 @@ export function App() {
   const { loading, restoring, file, years, selectYear, selectKontoYear, settings, konto, kontos,
     creatingKonto, startKontoSetup, allFiles, error, clearError, updateAccount } = useStore()
   const [view, setView] = useState<ViewId>('verein')
+  const [today, setToday] = useState(() => localCalendarDate(new Date()))
+  const [focusYearEnd, setFocusYearEnd] = useState(false)
   const [period, setPeriod] = useState<OrganizationPeriod>({ from: `${calendarYear}-01-01`, to: `${calendarYear}-12-31` })
   const [searchOpen, setSearchOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(() => window.innerWidth > 720)
@@ -71,6 +75,15 @@ export function App() {
   const lastAccountView = useRef<Record<string, ViewId>>({})
   const consumeBookingPreset = useCallback(() => setBookingPreset(null), [])
   const isOrganizationView = ['verein', 'bereiche', 'berichte', 'gemeinsam', 'pruefbericht', 'praesentation'].includes(view)
+  const dueYears = useMemo(() => dueYearEnds(allFiles, today), [allFiles, today])
+  const dueAccountYears = dueYears.filter((year) => (year.konto ?? 'haupt') === konto)
+
+  useEffect(() => {
+    const refreshDate = () => setToday(localCalendarDate(new Date()))
+    const timer = window.setInterval(refreshDate, 60_000)
+    window.addEventListener('focus', refreshDate)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshDate) }
+  }, [])
 
   useEffect(() => {
     if (loading || !file || !isElectron || isLocalExperiment || !settings.bankAccounts?.length) return
@@ -117,8 +130,9 @@ export function App() {
   }, [])
   const dragStrip = isElectron && isMac ? <div className="titlebar-drag" aria-hidden /> : null
 
-  function navigate(next: ViewId) {
+  function navigate(next: ViewId, focusClosingAction = false) {
     if (next === 'berichte') setReportsVisit((visit) => visit + 1)
+    setFocusYearEnd(focusClosingAction)
     setView(next)
     if (window.innerWidth <= 720) setSidebarVisible(false)
   }
@@ -126,7 +140,7 @@ export function App() {
     try { setNavigationError(''); await task() }
     catch (failure) { setNavigationError(failure instanceof Error ? failure.message : 'Ansicht konnte nicht geöffnet werden.') }
   }
-  async function openAccountView(target: string, nextView?: ViewId, selectedYear?: number) {
+  async function openAccountView(target: string, nextView?: ViewId, selectedYear?: number, focusClosingAction = false) {
     setBookingPreset(null); setBookingToOpen(null)
     const targetView = nextView ?? lastAccountView.current[target] ?? (isOrganizationView ? 'uebersicht' : view)
     const files = allFiles.filter((entry) => (entry.konto ?? 'haupt') === target).sort((left, right) => right.year - left.year)
@@ -136,8 +150,11 @@ export function App() {
     await perform(async () => {
       await selectKontoYear(target, year)
       setSidebarKonto(target)
-      navigate(targetView)
+      navigate(targetView, focusClosingAction)
     })
+  }
+  function openYearEnd(year: YearFile) {
+    void openAccountView(year.konto ?? 'haupt', 'einstellungen', year.year, true)
   }
   async function switchKonto(target: string) { await openAccountView(target) }
   async function openBooking(reference: BookingReference) {
@@ -200,23 +217,24 @@ export function App() {
           })}</div>)}</nav>
         </div>
       </section>
-      <div className="sidebar__footer"><div className="sidebar__identity"><Icon name="shield" size={16} /><strong>{isLocalExperiment ? 'Lokal' : 'Auf diesem Gerät'}</strong></div><span>{kontos.length} Konten</span></div>
     </aside>
     <div className="workspace"><div className="app-toolbar"><div className="app-toolbar__context"><button className="icon-button" onClick={() => setSidebarVisible((visible) => !visible)} aria-label={sidebarVisible ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'} aria-expanded={sidebarVisible} aria-controls="app-sidebar"><Icon name="sidebar" size={20} /></button><span>{isOrganizationView ? 'Gesamter Verein' : kontos.find((entry) => entry.id === konto)?.name}</span><span className="hint">/</span><strong>{selectedTitle}</strong></div><div className="app-toolbar__actions"><button className="sidebar-search" aria-label="Buchungen suchen" onClick={() => setSearchOpen(true)}><Icon name="search" size={16} /><span>Suchen</span><kbd>{isMac ? '⌘' : 'Strg'} F</kbd></button><span className="pill">{isOrganizationView ? period.to.slice(0, 4) : fiscalLabel(file)}</span></div></div>
       {(error || navigationError) && <div className="org-global-error" role="alert"><span>{error || navigationError}</span><button className="btn btn--sm" onClick={() => { if (error) clearError(); setNavigationError('') }}>{error ? 'Erneut speichern' : 'Schließen'}</button></div>}
       {bankHint && <div className="org-global-error" role="status"><span>{bankHint}</span><button className="btn btn--sm" onClick={() => setBankHint(null)}>Schließen</button></div>}
       <main className={`main${view === 'buchungen' ? ' main--bookings' : ''}`}>
-        {view === 'verein' && <OrganizationView period={period} onPeriodChange={setPeriod} onNavigate={navigate} onOpenAccount={(id) => void switchKonto(id)} />}
+        {view === 'verein' && <OrganizationView period={period} onPeriodChange={setPeriod} onNavigate={navigate} onOpenAccount={(id) => void switchKonto(id)}
+          yearEndNotice={<YearEndNotice years={dueYears} accounts={kontos} onOpen={openYearEnd} />} />}
         {view === 'bereiche' && <ActivityAreasView period={period} onOpenBooking={(reference) => void openBooking(reference)} />}
         {view === 'berichte' && <ReportsView key={reportsVisit} period={period} onPeriodChange={setPeriod} onOpenAccountReport={(target, id) => void openAccountReport(target, id)} />}
         {view === 'gemeinsam' && <OrganizationSettingsView />}
         {view === 'praesentation' && <PresentationView onBack={() => setView('berichte')} />}
-        {view === 'uebersicht' && <UebersichtView onNavigate={openOverviewTarget} onOpenBooking={(id) => { setBookingPreset(null); setBookingToOpen({ scope: bookingScope(file), id }); setView('buchungen') }} />}
+        {view === 'uebersicht' && <UebersichtView onNavigate={openOverviewTarget} onOpenBooking={(id) => { setBookingPreset(null); setBookingToOpen({ scope: bookingScope(file), id }); setView('buchungen') }}
+          yearEndNotice={<YearEndNotice years={dueAccountYears} accounts={kontos} onOpen={openYearEnd} />} />}
         {view === 'buchungen' && <BuchungenView key={bookingScope(file)} preset={bookingPreset} onPresetConsumed={consumeBookingPreset} bookingToOpenId={bookingToOpen?.scope === bookingScope(file) ? bookingToOpen.id : null} onBookingOpened={() => setBookingToOpen(null)} />}
         {view === 'chronologisch' && <ChronoView />}
         {view === 'veranstaltungen' && <VeranstaltungenView />}
         {view === 'import' && <ImportView />}
-        {view === 'einstellungen' && <EinstellungenView />}
+        {view === 'einstellungen' && <EinstellungenView focusYearEnd={focusYearEnd} yearEndDue={dueAccountYears.some((year) => year.year === file.year)} />}
         {view === 'pruefbericht' && <><div className="org-legacy-report-toolbar"><button className="btn btn--ghost" onClick={() => setView('berichte')}>← Berichte</button><label className="field"><span>Kassenjahr</span><select value={file.year} aria-label="Berichtsjahr" onChange={(event) => void perform(() => selectYear(Number(event.target.value)))}>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label></div><PruefberichtView /></>}
       </main>
     </div>

@@ -42,9 +42,6 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--color-accent);
 .sidebar-search { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 4px 0 12px; min-height: 35px; width: 100%; text-align: left; border: 1px solid var(--color-line-strong); border-radius: 6px; color: var(--color-ink-soft); background: var(--color-paper-raised); font-size: var(--text-xs); }
 .sidebar-search:hover { border-color: var(--color-accent); }
 .sidebar-search kbd { margin-left: auto; padding: 0 3px; border: 1px solid var(--color-line); border-radius: 3px; font: inherit; font-size: 10px; }
-.sidebar__footer { margin-top: auto; padding: 24px 8px 0; color: var(--color-ink-faint); font-size: var(--text-xs); -webkit-app-region: no-drag; }
-.sidebar__identity { display: flex; align-items: center; gap: 9px; padding-top: 16px; margin-top: 18px; border-top: 1px solid var(--color-line-strong); color: var(--color-ink-soft); font-size: var(--text-xs); }
-.sidebar__identity strong { display: block; color: var(--color-ink); font-weight: 600; }
 .workspace { display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; }
 .app-toolbar { flex: none; min-height: 64px; padding: 12px 30px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--color-line); background: var(--color-paper-raised); -webkit-app-region: drag; }
 .app-toolbar__context, .app-toolbar__actions { display: flex; align-items: center; gap: 12px; min-width: 0; -webkit-app-region: no-drag; }
@@ -166,6 +163,10 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm)
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field label { font-size: var(--text-xs); font-weight: 550; color: var(--color-ink-soft); }
 .form-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px 16px; align-items: end; }
+.account-settings-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 14px 16px; align-items: end; }
+.account-years__heading { flex-wrap: wrap; }
+.account-years__heading .card__title { min-width: 0; overflow-wrap: anywhere; }
+.account-years__heading .btn { max-width: 100%; white-space: normal; text-align: center; }
 .form-advanced-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-height: 28px; }
 .view input:not([type='checkbox']):not([type='radio']), .view select, .view textarea,
 .setup input:not([type='checkbox']):not([type='radio']), .setup select, .setup textarea,
@@ -326,8 +327,6 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm)
   .sidebar nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
   .sidebar nav .sidebar__section-label { grid-column: 1 / -1; }
   .navlink { min-height: 44px; }
-  .sidebar__footer { padding-top: 14px; }
-  .sidebar__identity { padding-top: 10px; margin-top: 10px; }
   .workspace { height: auto; min-height: 0; }
   .app-toolbar { min-height: 58px; padding: 12px 16px; gap: 8px; flex-wrap: wrap; }
   .app-toolbar__actions { gap: 8px; }
